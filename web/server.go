@@ -9,6 +9,7 @@ import (
 
 	"goeat/config"
 	"goeat/db"
+	"goeat/llm"
 	"goeat/middleware"
 )
 
@@ -16,14 +17,15 @@ import (
 type Server struct {
 	cfg     *config.Config
 	store   db.Store
+	gen     llm.Generator // nil when no LLM is configured
 	version string
 	handler http.Handler
 }
 
 // NewServer wires up routes, session loading, and CSRF middleware, then
 // returns a ready-to-run Server.
-func NewServer(cfg *config.Config, store db.Store, version string) *Server {
-	s := &Server{cfg: cfg, store: store, version: version}
+func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string) *Server {
+	s := &Server{cfg: cfg, store: store, gen: gen, version: version}
 	s.handler = s.buildHandler()
 	return s
 }

@@ -30,5 +30,13 @@ func (s *Server) routes(mux *http.ServeMux) {
 	requireAuth := middleware.RequireAuth
 
 	mux.Handle("POST /auth/logout", requireAuth(http.HandlerFunc(s.handleLogout)))
+
+	mux.Handle("GET /preferences", requireAuth(http.HandlerFunc(s.handlePreferencesPage)))
+	mux.Handle("POST /preferences", requireAuth(http.HandlerFunc(s.handlePreferences)))
+
+	mux.Handle("GET /stores", requireAuth(http.HandlerFunc(s.handleStoresPage)))
+	mux.Handle("POST /stores", requireAuth(http.HandlerFunc(s.handleStoreCreate)))
+	mux.Handle("POST /stores/{id}/delete", requireAuth(http.HandlerFunc(s.handleStoreDelete)))
+
 	mux.Handle("GET /", requireAuth(http.HandlerFunc(s.handleDashboard)))
 }
