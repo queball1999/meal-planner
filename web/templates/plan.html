@@ -1,0 +1,93 @@
+{{define "title"}}Meal Plan — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "calendar"}} Weekly Plan</h1>
+    {{if .Data.HasPlan}}
+    <p class="page-subtitle">{{.Data.WeekStart}} &ndash; {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}</p>
+    {{else}}
+    <p class="page-subtitle">No plan yet for this week.</p>
+    {{end}}
+</div>
+
+{{if .Data.HasPlan}}
+<div class="plan-actions">
+    {{if .Data.HasLLM}}
+    <form method="POST" action="/plan/generate">
+        {{.CSRFField}}
+        <button type="submit" class="btn btn--outline btn--sm">
+            {{icon "autorenew"}} Regenerate plan
+        </button>
+    </form>
+    {{end}}
+</div>
+
+<div class="plan-calendar" role="grid" aria-label="Weekly meal calendar">
+    <div class="plan-calendar__header" role="row">
+        <div class="plan-calendar__corner" role="columnheader"></div>
+        <div class="plan-calendar__slot-label" role="columnheader">Breakfast</div>
+        <div class="plan-calendar__slot-label" role="columnheader">Lunch</div>
+        <div class="plan-calendar__slot-label" role="columnheader">Dinner</div>
+    </div>
+
+    {{range .Data.Days}}
+    {{$day := .}}
+    <div class="plan-calendar__row" role="row">
+        <div class="plan-calendar__day-label" role="rowheader">{{$day.DateLabel}}</div>
+
+        {{with index $day.Slots "breakfast"}}
+        <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
+            {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
+            <div class="plan-cell">
+                <span class="plan-cell__title">{{.Title}}</span>
+                <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
+                {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+            </div>{{end}}
+        </div>
+        {{end}}
+
+        {{with index $day.Slots "lunch"}}
+        <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
+            {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
+            <div class="plan-cell">
+                <span class="plan-cell__title">{{.Title}}</span>
+                <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
+                {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+            </div>{{end}}
+        </div>
+        {{end}}
+
+        {{with index $day.Slots "dinner"}}
+        <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
+            {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
+            <div class="plan-cell">
+                <span class="plan-cell__title">{{.Title}}</span>
+                <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
+                {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+            </div>{{end}}
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+
+{{else}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🍳</div>
+    <h2 class="skeleton-card__title">No meal plan yet</h2>
+    <p class="skeleton-card__body">
+        Generate your first weekly plan — the AI will respect your preferences,
+        allergies, budget, and meal slot hints.
+    </p>
+    {{if .Data.HasLLM}}
+    <form method="POST" action="/plan/generate">
+        {{.CSRFField}}
+        <button type="submit" class="btn btn--primary">
+            {{icon "chef-hat"}} Generate this week's plan
+        </button>
+    </form>
+    {{else}}
+    <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
+    {{end}}
+</div>
+{{end}}
+{{end}}

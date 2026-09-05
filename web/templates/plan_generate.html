@@ -1,0 +1,46 @@
+{{define "title"}}Generating Plan — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "chef-hat"}} Generating your plan</h1>
+    <p class="page-subtitle">The AI is building your weekly meal plan. This takes 15–30 seconds.</p>
+</div>
+
+<div class="skeleton-card" id="gen-card">
+    <div class="skeleton-card__icon" aria-hidden="true" id="gen-icon">⏳</div>
+    <h2 class="skeleton-card__title" id="gen-title">Working…</h2>
+    <p class="skeleton-card__body" id="gen-status">Connecting to generation service…</p>
+</div>
+
+<script>
+(function () {
+    var es = new EventSource('/plan/generate/status');
+    var title  = document.getElementById('gen-title');
+    var status = document.getElementById('gen-status');
+    var icon   = document.getElementById('gen-icon');
+
+    es.addEventListener('status', function (e) {
+        status.textContent = e.data;
+    });
+
+    es.addEventListener('done', function (e) {
+        es.close();
+        icon.textContent   = '✅';
+        title.textContent  = 'Plan ready!';
+        status.textContent = 'Redirecting to your plan…';
+        setTimeout(function () { window.location.href = '/plan'; }, 800);
+    });
+
+    es.addEventListener('error', function (e) {
+        es.close();
+        icon.textContent   = '❌';
+        title.textContent  = 'Generation failed';
+        status.textContent = e.data || 'An error occurred. Check the server logs.';
+    });
+
+    es.onerror = function () {
+        if (es.readyState === EventSource.CLOSED) return;
+        status.textContent = 'Connection lost — retrying…';
+    };
+})();
+</script>
+{{end}}
