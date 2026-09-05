@@ -84,4 +84,28 @@ type Store interface {
 	// ── AI runs (§7.7, §10.1) ─────────────────────────────────────────────
 
 	CreateAIRun(ctx context.Context, p CreateAIRunParams) (*AIRun, error)
+
+	// ── Plans (§5, §7.3, §10.1) ──────────────────────────────────────────────
+
+	CreatePlan(ctx context.Context, p CreatePlanParams) (*Plan, error)
+	UpdatePlanStatus(ctx context.Context, planID int64, status string) error
+	GetLatestPlan(ctx context.Context, householdID int64) (*Plan, error)
+	GetPlanByID(ctx context.Context, planID int64) (*Plan, error)
+
+	// ── Meals (§5.2, §5.3, §10.1) ────────────────────────────────────────────
+
+	CreateMeal(ctx context.Context, p CreateMealParams) (*Meal, error)
+	ListMealsByPlan(ctx context.Context, planID int64) ([]*Meal, error)
+	UpdateMealLocked(ctx context.Context, mealID int64, locked bool) error
+
+	// ── Meal recipes (§5.2, §10.1) ───────────────────────────────────────────
+
+	CreateMealRecipe(ctx context.Context, p CreateMealRecipeParams) error
+	GetMealRecipe(ctx context.Context, mealID int64) (*MealRecipe, error)
+
+	// ── Meal ingredients (§5.2, §6.3, §10.1) ────────────────────────────────
+
+	CreateMealIngredient(ctx context.Context, p CreateMealIngredientParams) error
+	ListIngredientsByMeal(ctx context.Context, mealID int64) ([]*MealIngredient, error)
+	ListIngredientsByPlan(ctx context.Context, planID int64) ([]*MealIngredient, error)
 }

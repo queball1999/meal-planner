@@ -167,3 +167,89 @@ type CreateAIRunParams struct {
 	EstCostCents     int
 	Status           string
 }
+
+// ── Phase 3 — Plans & meals (§5, §7, §10.1) ──────────────────────────────────
+
+// Plan is one week's meal plan (§10.1). Retained after the week passes (§5.5).
+type Plan struct {
+	ID                int64
+	HouseholdID       int64
+	WeekStart         string // YYYY-MM-DD
+	WeekEnd           string // YYYY-MM-DD
+	BudgetCents       int64
+	TotalCents        int64
+	ConfidenceSummary string
+	Status            string // "generating" | "ready" | "error"
+	CreatedAt         time.Time
+}
+
+// Meal is one slot in a plan (§10.1).
+type Meal struct {
+	ID                   int64
+	PlanID               int64
+	Day                  string // YYYY-MM-DD
+	Slot                 string // "breakfast" | "lunch" | "dinner"
+	Title                string
+	Effort               string // "quick" | "standard" | "elaborate"
+	Servings             int
+	CookedPortions       int
+	IsLeftover           bool
+	LeftoverSourceMealID *int64
+	Locked               bool
+	AIRunID              *int64
+}
+
+// MealRecipe holds steps for one meal (§5.2, §10.1).
+type MealRecipe struct {
+	ID        int64
+	MealID    int64
+	StepsJSON string // JSON array of step strings
+	Servings  int
+	Notes     string
+}
+
+// MealIngredient is one ingredient line on a meal (§10.1).
+type MealIngredient struct {
+	ID             int64
+	MealID         int64
+	Name           string
+	Quantity       float64
+	Unit           string
+	NormalizedTerm string
+}
+
+// CreatePlanParams bundles inputs for creating a plan.
+type CreatePlanParams struct {
+	HouseholdID int64
+	WeekStart   string
+	WeekEnd     string
+	BudgetCents int64
+}
+
+// CreateMealParams bundles inputs for creating a meal.
+type CreateMealParams struct {
+	PlanID         int64
+	Day            string
+	Slot           string
+	Title          string
+	Effort         string
+	Servings       int
+	CookedPortions int
+	AIRunID        *int64
+}
+
+// CreateMealRecipeParams bundles inputs for creating a meal recipe.
+type CreateMealRecipeParams struct {
+	MealID    int64
+	StepsJSON string
+	Servings  int
+	Notes     string
+}
+
+// CreateMealIngredientParams bundles inputs for creating one ingredient.
+type CreateMealIngredientParams struct {
+	MealID   int64
+	Name     string
+	Quantity float64
+	Unit     string
+}
