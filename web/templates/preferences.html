@@ -1,0 +1,131 @@
+{{define "title"}}Preferences — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">Preferences</h1>
+    <p class="page-subtitle">Tell us how your household eats so we can plan smarter meals.</p>
+</div>
+
+<form method="POST" action="/preferences" class="pref-form" novalidate>
+    {{.CSRFField}}
+
+    <!-- ── Meal slot descriptions (§4.1 free-text) ─────────────────────── -->
+    <section class="card form-section" aria-labelledby="hints-heading">
+        <h2 class="form-section__title" id="hints-heading">
+            {{icon "fork"}} Typical meals
+        </h2>
+        <p class="form-section__desc">
+            Describe what you normally eat for each meal. Be as loose or specific as you like —
+            {{if .Data.HasLLM}}the AI will extract structured data from your descriptions.{{else}}these notes help guide meal generation.{{end}}
+        </p>
+
+        {{range .Data.Hints}}
+        <div class="form-section__row hint-slot">
+            <h3 class="hint-slot__label">{{.SlotLabel}}</h3>
+            <div class="field">
+                <label class="field-label" for="hint_{{.Slot}}">What do you usually eat?</label>
+                <textarea class="field-input field-input--textarea"
+                          id="hint_{{.Slot}}"
+                          name="hint_{{.Slot}}"
+                          rows="3"
+                          placeholder="e.g. cereal, yogurt, eggs on weekends…">{{.RawText}}</textarea>
+            </div>
+            <div class="field field--inline">
+                <label class="field-label" for="effort_{{.Slot}}">Cooking effort</label>
+                <select class="field-input" id="effort_{{.Slot}}" name="effort_{{.Slot}}">
+                    <option value="quick"    {{if eq .Effort "quick"}}selected{{end}}>Quick (&lt;15 min)</option>
+                    <option value="standard" {{if eq .Effort "standard"}}selected{{end}}>Standard (15–45 min)</option>
+                    <option value="elaborate"{{if eq .Effort "elaborate"}}selected{{end}}>Elaborate (45+ min)</option>
+                </select>
+            </div>
+        </div>
+        {{end}}
+    </section>
+
+    <!-- ── Diet tags (§4.2) ────────────────────────────────────────────── -->
+    <section class="card form-section" aria-labelledby="diet-heading">
+        <h2 class="form-section__title" id="diet-heading">
+            {{icon "tag-multiple"}} Dietary preferences
+        </h2>
+        <p class="form-section__desc">Select all that apply. These are treated as hard constraints.</p>
+        <div class="checkbox-grid">
+            {{range .Data.DietTagOptions}}
+            <label class="checkbox-label">
+                <input type="checkbox" name="diet_tags" value="{{.Value}}"
+                    {{if .Checked}}checked{{end}}>
+                {{.Label}}
+            </label>
+            {{end}}
+        </div>
+    </section>
+
+    <!-- ── Allergies (§4.2) ────────────────────────────────────────────── -->
+    <section class="card form-section" aria-labelledby="allergies-heading">
+        <h2 class="form-section__title" id="allergies-heading">
+            {{icon "alert"}} Allergies &amp; intolerances
+        </h2>
+        <div class="field">
+            <label class="field-label" for="allergies">Allergens</label>
+            <input class="field-input"
+                   type="text"
+                   id="allergies"
+                   name="allergies"
+                   value="{{.Data.AllergiesCSV}}"
+                   placeholder="peanuts, shellfish, dairy…">
+            <span class="field-hint">Comma-separated. Matching ingredients are excluded from all plans.</span>
+        </div>
+    </section>
+
+    <!-- ── Dislikes (§4.3) ────────────────────────────────────────────── -->
+    <section class="card form-section" aria-labelledby="dislikes-heading">
+        <h2 class="form-section__title" id="dislikes-heading">
+            {{icon "thumb-down"}} Dislikes
+        </h2>
+        <div class="field">
+            <label class="field-label" for="dislikes">Foods we don't enjoy</label>
+            <input class="field-input"
+                   type="text"
+                   id="dislikes"
+                   name="dislikes"
+                   value="{{.Data.DislikesCSV}}"
+                   placeholder="liver, Brussels sprouts…">
+            <span class="field-hint">Comma-separated. Soft-weighted — avoided but not strictly excluded.</span>
+        </div>
+    </section>
+
+    <!-- ── Cuisines (§4.3) ────────────────────────────────────────────── -->
+    <section class="card form-section" aria-labelledby="cuisines-heading">
+        <h2 class="form-section__title" id="cuisines-heading">
+            {{icon "thumb-up"}} Cuisine preferences
+        </h2>
+        <p class="form-section__desc">Select cuisines you enjoy. These are soft weights, not restrictions.</p>
+        <div class="checkbox-grid">
+            {{range .Data.CuisineOptions}}
+            <label class="checkbox-label">
+                <input type="checkbox" name="cuisines" value="{{.Value}}"
+                    {{if .Checked}}checked{{end}}>
+                {{.Label}}
+            </label>
+            {{end}}
+        </div>
+    </section>
+
+    <!-- ── Leftovers (§4.3) ───────────────────────────────────────────── -->
+    <section class="card form-section" aria-labelledby="leftover-heading">
+        <h2 class="form-section__title" id="leftover-heading">
+            {{icon "refresh"}} Leftovers
+        </h2>
+        <label class="checkbox-label checkbox-label--block">
+            <input type="checkbox" name="leftover_tolerance" value="1"
+                {{if .Data.LeftoverTolerance}}checked{{end}}>
+            We're fine eating leftovers for the next day's lunch or dinner
+        </label>
+        <p class="field-hint">When enabled, the planner can batch-cook one meal and reuse it.</p>
+    </section>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+            {{icon "check"}} Save preferences
+        </button>
+    </div>
+</form>
+{{end}}

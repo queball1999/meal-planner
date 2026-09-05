@@ -1,0 +1,66 @@
+{{define "title"}}Grocery Stores — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">Grocery Stores</h1>
+    <p class="page-subtitle">The stores your household shops at. Used for price lookups and shopping list sorting.</p>
+</div>
+
+<!-- ── Existing stores ─────────────────────────────────────────────────── -->
+{{if .Data.Stores}}
+<ul class="store-list" aria-label="Your grocery stores">
+    {{range .Data.Stores}}
+    <li class="store-item card">
+        <span class="store-item__icon" aria-hidden="true">{{icon "store"}}</span>
+        <div class="store-item__info">
+            <span class="store-item__name">{{.Name}}</span>
+            {{if .Kind}}<span class="badge badge-muted">{{.Kind}}</span>{{end}}
+        </div>
+        <form method="POST" action="/stores/{{.ID}}/delete" class="store-item__delete">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-ghost btn-sm btn-danger"
+                    aria-label="Remove {{.Name}}"
+                    onclick="return confirm('Remove {{.Name}}?')">
+                {{icon "delete"}}
+            </button>
+        </form>
+    </li>
+    {{end}}
+</ul>
+{{else}}
+<div class="empty-state card">
+    <p class="empty-state__text">No stores added yet. Add your first store below.</p>
+</div>
+{{end}}
+
+<!-- ── Add store form ──────────────────────────────────────────────────── -->
+<div class="card form-section">
+    <h2 class="form-section__title">{{icon "plus"}} Add a store</h2>
+    <form method="POST" action="/stores" novalidate>
+        {{.CSRFField}}
+        <div class="field">
+            <label class="field-label" for="name">Store name</label>
+            <input class="field-input"
+                   type="text"
+                   id="name"
+                   name="name"
+                   placeholder="Costco, Trader Joe's…"
+                   autofocus
+                   required>
+        </div>
+        <div class="field field--inline">
+            <label class="field-label" for="kind">Type</label>
+            <select class="field-input" id="kind" name="kind">
+                <option value="grocery">Grocery</option>
+                <option value="warehouse">Warehouse / club</option>
+                <option value="specialty">Specialty</option>
+                <option value="online">Online</option>
+            </select>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                {{icon "plus"}} Add store
+            </button>
+        </div>
+    </form>
+</div>
+{{end}}
