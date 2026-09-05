@@ -17,35 +17,55 @@
             <span aria-hidden="true">🍳</span> {{.AppName}}
         </a>
 
+        {{if .User}}
         <nav class="site-nav" aria-label="Main navigation">
-            <a href="/"        class="nav-link{{if eq .Page "index"}}  nav-link--active{{end}}" aria-label="Dashboard"{{if eq .Page "index"}} aria-current="page"{{end}}>
+            <a href="/"        class="nav-link{{if eq .Page "index"}}   nav-link--active{{end}}"{{if eq .Page "index"}} aria-current="page"{{end}} aria-label="Dashboard">
                 {{icon "home"}} Dashboard
             </a>
-            <a href="/plan"    class="nav-link{{if eq .Page "plan"}}   nav-link--active{{end}}" aria-label="Plan"{{if eq .Page "plan"}} aria-current="page"{{end}}>
+            <a href="/plan"    class="nav-link{{if eq .Page "plan"}}    nav-link--active{{end}}"{{if eq .Page "plan"}} aria-current="page"{{end}} aria-label="Plan">
                 {{icon "calendar"}} Plan
             </a>
-            <a href="/list"    class="nav-link{{if eq .Page "list"}}   nav-link--active{{end}}" aria-label="Shopping List"{{if eq .Page "list"}} aria-current="page"{{end}}>
+            <a href="/list"    class="nav-link{{if eq .Page "list"}}    nav-link--active{{end}}"{{if eq .Page "list"}} aria-current="page"{{end}} aria-label="Shopping List">
                 {{icon "cart"}} Shopping List
             </a>
-            <a href="/pantry"  class="nav-link{{if eq .Page "pantry"}} nav-link--active{{end}}" aria-label="Pantry"{{if eq .Page "pantry"}} aria-current="page"{{end}}>
+            <a href="/pantry"  class="nav-link{{if eq .Page "pantry"}}  nav-link--active{{end}}"{{if eq .Page "pantry"}} aria-current="page"{{end}} aria-label="Pantry">
                 {{icon "archive"}} Pantry
             </a>
-            <a href="/recipes" class="nav-link{{if eq .Page "recipes"}} nav-link--active{{end}}" aria-label="Recipes"{{if eq .Page "recipes"}} aria-current="page"{{end}}>
+            <a href="/recipes" class="nav-link{{if eq .Page "recipes"}} nav-link--active{{end}}"{{if eq .Page "recipes"}} aria-current="page"{{end}} aria-label="Recipes">
                 {{icon "fork"}} Recipes
             </a>
-            <a href="/settings" class="nav-link{{if eq .Page "settings"}} nav-link--active{{end}}" aria-label="Settings"{{if eq .Page "settings"}} aria-current="page"{{end}}>
+            <a href="/settings" class="nav-link{{if eq .Page "settings"}} nav-link--active{{end}}"{{if eq .Page "settings"}} aria-current="page"{{end}} aria-label="Settings">
                 {{icon "cog"}} Settings
             </a>
         </nav>
+        {{end}}
 
         <div class="site-header-actions">
             <button class="btn btn-icon theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode" id="themeToggle">
                 <span class="theme-icon" aria-hidden="true">🌙</span>
             </button>
+
+            {{if .User}}
+            <div class="user-menu">
+                <span class="user-menu__name" title="Signed in as {{.User.Username}}">
+                    {{.User.Username}}
+                </span>
+                <form method="POST" action="/auth/logout" class="user-menu__logout">
+                    {{.CSRFField}}
+                    <button type="submit" class="btn btn-ghost btn-sm" aria-label="Sign out">
+                        {{icon "logout"}} Sign out
+                    </button>
+                </form>
+            </div>
+            {{end}}
         </div>
     </header>
 
     <main class="site-main" id="main-content" tabindex="-1">
+        {{if .Flash}}
+        <div class="flash flash-danger" role="alert">{{.Flash}}</div>
+        {{end}}
+
         {{block "content" .}}{{end}}
     </main>
 

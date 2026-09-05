@@ -5,36 +5,58 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/csrf"
+
 	"goeat/config"
 	"goeat/db"
+	"goeat/middleware"
 )
 
-// Server holds shared dependencies and owns the HTTP mux.
+// Server holds shared dependencies and the fully-wired HTTP handler.
 type Server struct {
 	cfg     *config.Config
 	store   db.Store
 	version string
-	mux     *http.ServeMux
+	handler http.Handler
 }
 
-// NewServer wires up routes and returns a ready-to-run Server.
+// NewServer wires up routes, session loading, and CSRF middleware, then
+// returns a ready-to-run Server.
 func NewServer(cfg *config.Config, store db.Store, version string) *Server {
-	s := &Server{
-		cfg:     cfg,
-		store:   store,
-		version: version,
-		mux:     http.NewServeMux(),
-	}
-	s.routes()
+	s := &Server{cfg: cfg, store: store, version: version}
+	s.handler = s.buildHandler()
 	return s
 }
 
-// Run starts the HTTP server and blocks until ctx is cancelled or the server
-// errors. On cancellation it performs a graceful shutdown.
+// buildHandler composes the middleware stack around the route mux:
+//
+//	CSRF → LoadSession → mux
+//
+// gorilla/csrf only enforces on non-safe methods (POST/PUT/PATCH/DELETE),
+// so wrapping the whole mux is safe for GET/HEAD.
+func (s *Server) buildHandler() http.Handler {
+	mux := http.NewServeMux()
+	s.routes(mux)
+
+	var h http.Handler = mux
+	h = middleware.LoadSession(s.store)(h)
+	h = csrf.Protect(
+		[]byte(s.cfg.SessionSecret),
+		csrf.Secure(false),                     // Allow plain HTTP on LAN (§9.3)
+		csrf.SameSite(csrf.SameSiteLaxMode),    // Required alongside Secure(false)
+		csrf.HttpOnly(true),
+		csrf.ErrorHandler(http.HandlerFunc(s.handleCSRFError)),
+	)(h)
+
+	return h
+}
+
+// Run starts the HTTP server and blocks until ctx is cancelled. On
+// cancellation it performs a graceful shutdown (10 s deadline).
 func (s *Server) Run(ctx context.Context) error {
 	srv := &http.Server{
 		Addr:         s.cfg.ListenAddr,
-		Handler:      s.mux,
+		Handler:      s.handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,

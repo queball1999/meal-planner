@@ -1,0 +1,40 @@
+{{define "content"}}
+<div class="auth-wrap">
+    <div class="card card--wide">
+        <div class="auth-logo" aria-hidden="true">🍳</div>
+        <h1 class="card-title">Sign in to {{.AppName}}</h1>
+        <p class="card-body">Welcome back. Enter your household credentials below.</p>
+
+        <form method="POST" action="/auth/login" class="auth-form" novalidate>
+            {{.CSRFField}}
+
+            <div class="field">
+                <label class="field-label" for="username">Username</label>
+                <input class="field-input"
+                       type="text"
+                       id="username"
+                       name="username"
+                       autocomplete="username"
+                       autofocus
+                       required>
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="password">Password</label>
+                <input class="field-input"
+                       type="password"
+                       id="password"
+                       name="password"
+                       autocomplete="current-password"
+                       required>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    Sign in
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}

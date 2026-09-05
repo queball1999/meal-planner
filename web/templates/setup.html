@@ -1,0 +1,131 @@
+{{define "content"}}
+<div class="auth-wrap">
+    <div class="card card--wide setup-card">
+        <div class="auth-logo" aria-hidden="true">🍳</div>
+        <h1 class="card-title">Welcome to {{.AppName}}</h1>
+        <p class="card-body">
+            Let's get your household set up. This only happens once — you can
+            change everything later in Settings.
+        </p>
+
+        <form method="POST" action="/setup" class="auth-form" novalidate>
+            {{.CSRFField}}
+
+            <!-- ── Account ────────────────────────────────────────────────── -->
+            <div class="form-section">
+                <h2 class="form-section__title">Your account</h2>
+
+                <div class="field">
+                    <label class="field-label" for="username">Username</label>
+                    <input class="field-input"
+                           type="text"
+                           id="username"
+                           name="username"
+                           autocomplete="username"
+                           minlength="3"
+                           autofocus
+                           required>
+                    <span class="field-hint">At least 3 characters. Used to sign in.</span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="password">Password</label>
+                    <input class="field-input"
+                           type="password"
+                           id="password"
+                           name="password"
+                           autocomplete="new-password"
+                           minlength="8"
+                           required>
+                    <span class="field-hint">At least 8 characters.</span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="password_confirm">Confirm password</label>
+                    <input class="field-input"
+                           type="password"
+                           id="password_confirm"
+                           name="password_confirm"
+                           autocomplete="new-password"
+                           required>
+                </div>
+            </div>
+
+            <!-- ── Household ──────────────────────────────────────────────── -->
+            <div class="form-section">
+                <h2 class="form-section__title">Your household</h2>
+
+                <div class="field">
+                    <label class="field-label" for="household_name">Household name</label>
+                    <input class="field-input"
+                           type="text"
+                           id="household_name"
+                           name="household_name"
+                           value="My Household"
+                           required>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="household_size">Number of people</label>
+                    <input class="field-input"
+                           type="number"
+                           id="household_size"
+                           name="household_size"
+                           min="1" max="20"
+                           value="2"
+                           required>
+                    <span class="field-hint">How many people are you planning meals for?</span>
+                </div>
+            </div>
+
+            <!-- ── Budget & location ──────────────────────────────────────── -->
+            <div class="form-section">
+                <h2 class="form-section__title">Budget &amp; location</h2>
+
+                <div class="field">
+                    <label class="field-label" for="budget">Weekly food budget ($)</label>
+                    <input class="field-input"
+                           type="number"
+                           id="budget"
+                           name="budget"
+                           min="1" max="99999"
+                           step="1"
+                           value="150"
+                           required>
+                    <span class="field-hint">The planner keeps your shopping list at or under this amount.</span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="zip_code">ZIP code</label>
+                    <input class="field-input"
+                           type="text"
+                           id="zip_code"
+                           name="zip_code"
+                           pattern="[0-9]{5}"
+                           maxlength="5"
+                           inputmode="numeric"
+                           placeholder="90210"
+                           required>
+                    <span class="field-hint">Used to look up local store prices. US only in v1.</span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="timezone">Timezone</label>
+                    <select class="field-input" id="timezone" name="timezone" required>
+                        {{range .Data}}
+                        <option value="{{.Value}}">{{.Label}}</option>
+                        {{end}}
+                    </select>
+                    <span class="field-hint">Week boundaries and the shopping calendar use this timezone.</span>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    Get started →
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}

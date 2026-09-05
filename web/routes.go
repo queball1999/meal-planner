@@ -1,16 +1,34 @@
 package web
 
-import "net/http"
+import (
+	"net/http"
 
-// routes registers all HTTP handlers. Literal routes must appear before
-// wildcard routes so they win (e.g. /recipes/import before /recipes/{id}).
-func (s *Server) routes() {
-	// Static assets — served from the embedded FS; path includes "static/" prefix.
-	s.mux.Handle("GET /static/", http.FileServerFS(staticFS))
+	"goeat/middleware"
+)
 
-	// Health check — used by reverse proxies and uptime monitors.
-	s.mux.HandleFunc("GET /health", s.handleHealth)
+// routes registers all HTTP handlers on mux. Literal routes must appear before
+// wildcard routes so they win (§8.2 note on /recipes/import vs /recipes/{id}).
+func (s *Server) routes(mux *http.ServeMux) {
+	// ── Public (no auth) ───────────────────────────────────────────────────
 
-	// Application pages (Phase 0: placeholders only).
-	s.mux.HandleFunc("GET /", s.handleDashboard)
+	// Static assets from the embedded FS; path includes the "static/" prefix.
+	mux.Handle("GET /static/", http.FileServerFS(staticFS))
+
+	// Health check — used by reverse proxies; exempt from auth and CSRF.
+	mux.HandleFunc("GET /health", s.handleHealth)
+
+	// Auth flows
+	mux.HandleFunc("GET /auth/login", s.handleLoginPage)
+	mux.HandleFunc("POST /auth/login", s.handleLogin)
+
+	// Setup wizard (accessible only when no household exists)
+	mux.HandleFunc("GET /setup", s.handleSetupPage)
+	mux.HandleFunc("POST /setup", s.handleSetup)
+
+	// ── Auth-required ──────────────────────────────────────────────────────
+
+	requireAuth := middleware.RequireAuth
+
+	mux.Handle("POST /auth/logout", requireAuth(http.HandlerFunc(s.handleLogout)))
+	mux.Handle("GET /", requireAuth(http.HandlerFunc(s.handleDashboard)))
 }
