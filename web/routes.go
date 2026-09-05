@@ -38,6 +38,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /stores", requireAuth(http.HandlerFunc(s.handleStoreCreate)))
 	mux.Handle("POST /stores/{id}/delete", requireAuth(http.HandlerFunc(s.handleStoreDelete)))
 
+	mux.Handle("GET /list", requireAuth(http.HandlerFunc(s.handleShoppingListPage)))
+	mux.Handle("POST /list/{id}/check", requireAuth(http.HandlerFunc(s.handleShoppingListCheck)))
+
 	mux.Handle("GET /plan", requireAuth(http.HandlerFunc(s.handlePlanPage)))
 	mux.Handle("POST /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGenerate)))
 	mux.Handle("GET /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGeneratePage)))

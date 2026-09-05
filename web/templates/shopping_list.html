@@ -1,0 +1,104 @@
+{{define "title"}}Shopping List — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "cart"}} Shopping List</h1>
+    {{if .Data.HasPlan}}
+    <p class="page-subtitle">Week of {{.Data.WeekStart}}</p>
+    {{end}}
+</div>
+
+{{if not .Data.HasPlan}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🛒</div>
+    <h2 class="skeleton-card__title">No plan yet</h2>
+    <p class="skeleton-card__body">
+        <a href="/plan">Generate a meal plan</a> first — the shopping list is built from it.
+    </p>
+</div>
+{{else}}
+
+<div class="shopping-summary{{if .Data.OverBudget}} shopping-summary--over{{end}}">
+    <span class="shopping-summary__total">
+        {{if .Data.OverBudget}}{{icon "alert"}}{{end}}
+        {{.Data.TotalLabel}} estimated total
+    </span>
+    <span class="shopping-summary__budget">of {{.Data.BudgetLabel}} budget</span>
+</div>
+
+{{range .Data.Groups}}
+<section class="shopping-group" aria-labelledby="store-{{.StoreName}}">
+    <div class="shopping-group__header">
+        <h2 class="shopping-group__title" id="store-{{.StoreName}}">
+            {{icon "store"}} {{.StoreName}}
+        </h2>
+        <span class="shopping-group__subtotal">{{.SubtotalLabel}}</span>
+    </div>
+    <ul class="shopping-list" role="list">
+        {{range .Items}}
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}" data-id="{{.ID}}">
+            <label class="shopping-item__check">
+                <input type="checkbox" class="shopping-item__checkbox"
+                       data-id="{{.ID}}"
+                       {{if .Checked}}checked{{end}}
+                       onchange="toggleCheck(this)">
+                <span class="shopping-item__name">{{.DisplayName}}</span>
+            </label>
+            <span class="shopping-item__qty">{{.BuyLabel}}</span>
+            {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
+            <span class="shopping-item__total">{{.TotalLabel}}</span>
+            <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
+        </li>
+        {{end}}
+    </ul>
+</section>
+{{end}}
+
+{{if .Data.UnassignedItems}}
+<section class="shopping-group" aria-labelledby="store-unassigned">
+    <div class="shopping-group__header">
+        <h2 class="shopping-group__title" id="store-unassigned">Other items</h2>
+    </div>
+    <ul class="shopping-list" role="list">
+        {{range .Data.UnassignedItems}}
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}" data-id="{{.ID}}">
+            <label class="shopping-item__check">
+                <input type="checkbox" class="shopping-item__checkbox"
+                       data-id="{{.ID}}"
+                       {{if .Checked}}checked{{end}}
+                       onchange="toggleCheck(this)">
+                <span class="shopping-item__name">{{.DisplayName}}</span>
+            </label>
+            <span class="shopping-item__qty">{{.BuyLabel}}</span>
+            {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
+            <span class="shopping-item__total">{{.TotalLabel}}</span>
+            <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
+        </li>
+        {{end}}
+    </ul>
+</section>
+{{end}}
+
+<!-- hidden form for CSRF token extraction -->
+<form id="csrf-form" hidden>{{.CSRFField}}</form>
+<script>
+(function () {
+    var csrfInput = document.querySelector('#csrf-form input[name]');
+    var csrfToken = csrfInput ? csrfInput.value : '';
+    window.toggleCheck = function(cb) {
+        var id = cb.dataset.id;
+        var checked = cb.checked ? '1' : '0';
+        fetch('/list/' + id + '/check', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: 'checked=' + checked,
+        });
+        var li = cb.closest('li');
+        if (li) li.classList.toggle('shopping-item--checked', cb.checked);
+    };
+})();
+</script>
+{{end}}
+{{end}}
