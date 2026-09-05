@@ -42,4 +42,46 @@ type Store interface {
 	// ── Audit log (§9.3) ──────────────────────────────────────────────────
 
 	LogEvent(ctx context.Context, e AppEvent) error
+
+	// ── Stores (§10.1) ────────────────────────────────────────────────────
+
+	CreateStore(ctx context.Context, p UpsertStoreParams) (*GroceryStore, error)
+	ListStores(ctx context.Context, householdID int64) ([]*GroceryStore, error)
+	DeleteStore(ctx context.Context, id int64) error
+
+	// ── Preferences (§4.2, §4.3, §10.1) ──────────────────────────────────
+
+	// UpsertPreferences replaces the household's preferences row (insert or replace).
+	UpsertPreferences(ctx context.Context, p UpsertPreferencesParams) error
+
+	// GetPreferences returns the household's preferences, or a zero-value struct
+	// with defaults when no row exists yet.
+	GetPreferences(ctx context.Context, householdID int64) (*Preferences, error)
+
+	// ── Allergies (§4.2, §10.1) ───────────────────────────────────────────
+
+	// SetAllergies replaces all allergy rows for the household atomically.
+	SetAllergies(ctx context.Context, householdID int64, terms []string) error
+
+	// ListAllergies returns all allergy terms for the household.
+	ListAllergies(ctx context.Context, householdID int64) ([]string, error)
+
+	// ── Meal slot hints (§4.1, §10.1) ────────────────────────────────────
+
+	// UpsertMealSlotHint inserts or replaces the hint for one slot.
+	UpsertMealSlotHint(ctx context.Context, p UpsertMealSlotHintParams) error
+
+	// GetMealSlotHints returns all three slot rows, creating empty ones when absent.
+	GetMealSlotHints(ctx context.Context, householdID int64) ([]*MealSlotHint, error)
+
+	// ── Meal feedback (§4.4, §10.1) ───────────────────────────────────────
+
+	CreateFeedback(ctx context.Context, p CreateFeedbackParams) (*MealFeedback, error)
+
+	// ListFeedbackDigest returns up to limit most-recent feedback rows for prompt building.
+	ListFeedbackDigest(ctx context.Context, householdID int64, limit int) ([]*MealFeedback, error)
+
+	// ── AI runs (§7.7, §10.1) ─────────────────────────────────────────────
+
+	CreateAIRun(ctx context.Context, p CreateAIRunParams) (*AIRun, error)
 }
