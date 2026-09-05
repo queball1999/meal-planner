@@ -33,6 +33,17 @@ type Config struct {
 	LLMAPIKey    string
 	LLMMaxTokens int     // default 4096
 	LLMTemp      float64 // default 0.7
+
+	// ── Pricing providers (§11.3) ─────────────────────────────────────────
+	PriceCacheTTLHours int // default 168 (1 week); 0 = no expiry
+
+	// Kroger OfficialAPIProvider (§6.2)
+	KrogerClientID     string
+	KrogerClientSecret string
+	KrogerLocationID   string
+
+	// FlareSolverr proxy for scraper (§6.7); empty = disabled
+	FlareSolverrURL string
 }
 
 // Load reads configuration from .env then the environment, applies defaults,
@@ -71,6 +82,18 @@ func Load() (*Config, error) {
 		LLMAPIKey:       os.Getenv("LLM_API_KEY"),
 		LLMMaxTokens:    maxToks,
 		LLMTemp:         temp,
+
+		PriceCacheTTLHours: func() int {
+			v, _ := strconv.Atoi(os.Getenv("PRICE_CACHE_TTL_HOURS"))
+			if v <= 0 {
+				return 168
+			}
+			return v
+		}(),
+		KrogerClientID:     os.Getenv("KROGER_CLIENT_ID"),
+		KrogerClientSecret: os.Getenv("KROGER_CLIENT_SECRET"),
+		KrogerLocationID:   os.Getenv("KROGER_LOCATION_ID"),
+		FlareSolverrURL:    os.Getenv("FLARESOLVERR_URL"),
 	}
 
 	if cfg.SessionSecret == "" {
