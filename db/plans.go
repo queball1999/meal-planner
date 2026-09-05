@@ -49,6 +49,13 @@ func (s *store) getPlanByID(ctx context.Context, planID int64) (*Plan, error) {
 	return scanPlan(row)
 }
 
+func (s *store) UpdatePlanTotal(ctx context.Context, planID int64, totalCents int64, confidenceSummary string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE plans SET total_cents = ?, confidence_summary = ? WHERE id = ?`,
+		totalCents, confidenceSummary, planID)
+	return err
+}
+
 func scanPlan(row *sql.Row) (*Plan, error) {
 	var p Plan
 	var createdAt string
