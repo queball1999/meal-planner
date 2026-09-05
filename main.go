@@ -9,6 +9,7 @@ import (
 
 	"goeat/config"
 	"goeat/db"
+	"goeat/llm"
 	"goeat/web"
 )
 
@@ -30,7 +31,18 @@ func main() {
 		log.Fatalf("migrations: %v", err)
 	}
 
-	srv := web.NewServer(cfg, store, version)
+	var gen llm.Generator
+	if cfg.Provider != "" {
+		g, err := llm.NewGenerator(cfg)
+		if err != nil {
+			log.Printf("llm: skipping generator: %v", err)
+		} else {
+			gen = g
+			log.Printf("llm: provider=%s model=%s", gen.ProviderName(), gen.ModelName())
+		}
+	}
+
+	srv := web.NewServer(cfg, store, gen, version)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
