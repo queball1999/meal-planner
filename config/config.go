@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -14,11 +15,12 @@ import (
 // present) then from environment variables. SESSION_SECRET, DATABASE_URL, and
 // LISTEN_ADDR are not runtime-editable (§11.4).
 type Config struct {
-	AppName       string
-	ListenAddr    string
-	PublicBaseURL string
-	DatabaseURL   string
-	SessionSecret string
+	AppName         string
+	ListenAddr      string
+	PublicBaseURL   string
+	DatabaseURL     string
+	SessionSecret   string
+	SessionTTLHours int // default 168 (7 days)
 }
 
 // Load reads configuration from .env then the environment, applies defaults,
@@ -27,12 +29,18 @@ func Load() (*Config, error) {
 	// .env is optional; ignore "file not found".
 	_ = godotenv.Load()
 
+	sessionTTL, _ := strconv.Atoi(os.Getenv("SESSION_TTL_HOURS"))
+	if sessionTTL <= 0 {
+		sessionTTL = 168
+	}
+
 	cfg := &Config{
-		AppName:       getenv("APP_NAME", "Go Eat"),
-		ListenAddr:    getenv("LISTEN_ADDR", ":8080"),
-		PublicBaseURL: getenv("PUBLIC_BASE_URL", ""),
-		DatabaseURL:   getenv("DATABASE_URL", "file:./data/goeat.db"),
-		SessionSecret: os.Getenv("SESSION_SECRET"),
+		AppName:         getenv("APP_NAME", "Go Eat"),
+		ListenAddr:      getenv("LISTEN_ADDR", ":8080"),
+		PublicBaseURL:   getenv("PUBLIC_BASE_URL", ""),
+		DatabaseURL:     getenv("DATABASE_URL", "file:./data/goeat.db"),
+		SessionSecret:   os.Getenv("SESSION_SECRET"),
+		SessionTTLHours: sessionTTL,
 	}
 
 	if cfg.SessionSecret == "" {

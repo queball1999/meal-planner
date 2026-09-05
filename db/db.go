@@ -16,14 +16,6 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Store is the application's data access interface. All SQL lives here; no
-// handler or service writes its own queries (§10, §12).
-type Store interface {
-	Ping(ctx context.Context) error
-	Migrate() error
-	Close() error
-}
-
 type store struct {
 	db *sql.DB
 }
