@@ -11,6 +11,18 @@
 
 {{if .Data.HasPlan}}
 <div class="plan-actions">
+    {{if .Data.TotalLabel}}
+    <div class="plan-budget-meter{{if .Data.OverBudget}} plan-budget-meter--over{{end}}">
+        <span class="plan-budget-meter__total">
+            {{if .Data.OverBudget}}{{icon "alert"}}{{end}}
+            {{.Data.TotalLabel}} estimated
+        </span>
+        <span class="plan-budget-meter__budget">of {{.Data.BudgetLabel}} budget</span>
+        {{if .Data.ConfidenceSummary}}
+        <span class="plan-budget-meter__confidence">{{.Data.ConfidenceSummary}}</span>
+        {{end}}
+    </div>
+    {{end}}
     {{if .Data.HasLLM}}
     <form method="POST" action="/plan/generate">
         {{.CSRFField}}

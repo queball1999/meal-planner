@@ -21,9 +21,13 @@ var dayOffset = map[string]int{
 	"saturday":  6,
 }
 
+// Pricer is called after meals are persisted to price the full plan (§6.4).
+// Passing nil skips costing (useful in tests).
+type Pricer func(ctx context.Context, planID int64, hh *db.Household) error
+
 // Generate resolves preferences, calls the LLM, validates the result, persists
-// it to the DB, and returns the new plan ID. weekStart must be a Sunday.
-func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64) (int64, error) {
+// it to the DB, optionally prices it, and returns the new plan ID.
+func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, pricer Pricer) (int64, error) {
 	hh, err := store.GetHousehold(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
@@ -88,6 +92,14 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	if err := persistPlan(ctx, store, plan.ID, aiRun.ID, weekStart, gp); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
 		return plan.ID, fmt.Errorf("persist plan: %w", err)
+	}
+
+	// Price the plan when a pricer is provided. Failure is non-fatal — the plan
+	// is still marked ready; the user can re-cost later.
+	if pricer != nil {
+		if err := pricer(ctx, plan.ID, hh); err != nil {
+			fmt.Printf("warning: plan costing failed: %v\n", err)
+		}
 	}
 
 	if err := store.UpdatePlanStatus(ctx, plan.ID, "ready"); err != nil {

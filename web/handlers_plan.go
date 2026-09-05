@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"goeat/db"
 	"goeat/middleware"
 	"goeat/plan"
+	"goeat/pricing"
 )
 
 // calendarSlot holds one cell in the 7-day × 3-slot calendar grid.
@@ -28,16 +30,34 @@ type calendarDay struct {
 }
 
 type planPageData struct {
-	HasPlan     bool
-	PlanID      int64
-	WeekStart   string
-	WeekEnd     string
-	BudgetLabel string
-	Days        []calendarDay
-	HasLLM      bool
+	HasPlan           bool
+	PlanID            int64
+	WeekStart         string
+	WeekEnd           string
+	BudgetLabel       string
+	TotalLabel        string
+	OverBudget        bool
+	ConfidenceSummary string
+	Days              []calendarDay
+	HasLLM            bool
 }
 
 var slotOrder = []string{"breakfast", "lunch", "dinner"}
+
+// buildPricer returns a plan.Pricer that runs CostPlan using all configured stores.
+func buildPricer(store db.Store, chain *pricing.Chain) plan.Pricer {
+	if chain == nil {
+		return nil
+	}
+	return func(ctx context.Context, planID int64, hh *db.Household) error {
+		stores, err := store.ListStores(ctx, hh.ID)
+		if err != nil {
+			return err
+		}
+		_, err = pricing.CostPlan(ctx, store, chain, planID, hh, stores)
+		return err
+	}
+}
 
 func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
@@ -89,14 +109,22 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	totalLabel := ""
+	if p.TotalCents > 0 {
+		totalLabel = fmt.Sprintf("$%.2f", float64(p.TotalCents)/100)
+	}
+
 	s.render(w, r, "plan", planPageData{
-		HasPlan:     true,
-		PlanID:      p.ID,
-		WeekStart:   p.WeekStart,
-		WeekEnd:     p.WeekEnd,
-		BudgetLabel: fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100),
-		Days:        days,
-		HasLLM:      s.gen != nil,
+		HasPlan:           true,
+		PlanID:            p.ID,
+		WeekStart:         p.WeekStart,
+		WeekEnd:           p.WeekEnd,
+		BudgetLabel:       fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100),
+		TotalLabel:        totalLabel,
+		OverBudget:        p.TotalCents > p.BudgetCents && p.TotalCents > 0,
+		ConfidenceSummary: p.ConfidenceSummary,
+		Days:              days,
+		HasLLM:            s.gen != nil,
 	})
 }
 
@@ -115,13 +143,16 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 
 	store := s.store
 	gen := s.gen
+	chain := s.chain
 	hhID := hh.ID
 
 	_, started := s.jobs.Start(r.Context(), hhID, func(j *plan.Job) {
 		j.Emit(plan.JobEvent{Type: "status", Message: "Resolving preferences…"})
 
 		ctx := context.Background()
-		planID, err := plan.Generate(ctx, store, gen, hhID)
+
+		pricer := buildPricer(store, chain)
+		planID, err := plan.Generate(ctx, store, gen, hhID, pricer)
 		if err != nil {
 			log.Printf("plan generation error household=%d: %v", hhID, err)
 			j.Status = plan.JobFailed
