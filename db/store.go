@@ -108,4 +108,39 @@ type Store interface {
 	CreateMealIngredient(ctx context.Context, p CreateMealIngredientParams) error
 	ListIngredientsByMeal(ctx context.Context, mealID int64) ([]*MealIngredient, error)
 	ListIngredientsByPlan(ctx context.Context, planID int64) ([]*MealIngredient, error)
+
+	// ── Price cache (§6.0, §6.5) ──────────────────────────────────────────────
+
+	UpsertPriceCache(ctx context.Context, p UpsertPriceCacheParams) error
+	GetPriceCache(ctx context.Context, storeID int64, normalizedTerm string) (*PriceCache, error)
+
+	// ── Manual prices (§6.2 ManualProvider) ──────────────────────────────────
+
+	UpsertManualPrice(ctx context.Context, p UpsertManualPriceParams) error
+	GetManualPrice(ctx context.Context, storeID int64, region, normalizedTerm string) (*ManualPrice, error)
+	ListManualPrices(ctx context.Context, storeID int64) ([]*ManualPrice, error)
+	DeleteManualPrice(ctx context.Context, id int64) error
+
+	// ── Item↔product map (§6.3) ───────────────────────────────────────────────
+
+	UpsertItemProductMap(ctx context.Context, p UpsertItemProductMapParams) error
+	GetItemProductMap(ctx context.Context, storeID int64, normalizedTerm string) (*ItemProductMap, error)
+
+	// ── Scrape configs (§6.7) ─────────────────────────────────────────────────
+
+	CreateScrapeConfig(ctx context.Context, p CreateScrapeConfigParams) (*ScrapeConfig, error)
+	GetScrapeConfigByStore(ctx context.Context, storeID int64) (*ScrapeConfig, error)
+	ListScrapeConfigs(ctx context.Context) ([]*ScrapeConfig, error)
+	UpdateScrapeConfig(ctx context.Context, p UpdateScrapeConfigParams) error
+
+	// ── Shopping list (§5.1, §6.4) ───────────────────────────────────────────
+
+	CreateShoppingListItem(ctx context.Context, p CreateShoppingListItemParams) (*ShoppingListItem, error)
+	ListShoppingListItems(ctx context.Context, planID int64) ([]*ShoppingListItem, error)
+	CheckShoppingListItem(ctx context.Context, id int64, checked bool) error
+	DeleteShoppingListItems(ctx context.Context, planID int64) error
+
+	// ── Plan total (§6.4) ─────────────────────────────────────────────────────
+
+	UpdatePlanTotal(ctx context.Context, planID int64, totalCents int64, confidenceSummary string) error
 }

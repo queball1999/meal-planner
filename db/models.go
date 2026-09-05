@@ -253,3 +253,141 @@ type CreateMealIngredientParams struct {
 	Quantity float64
 	Unit     string
 }
+
+// ── Phase 4 — Pricing (§6, §10.1) ────────────────────────────────────────────
+
+// PriceCache is one observed price in the system-of-record (§6.0, §6.5).
+type PriceCache struct {
+	ID             int64
+	StoreID        int64
+	NormalizedTerm string
+	PriceCents     int64
+	PurchaseUnit   string
+	PackSize       float64
+	Source         string // "live"|"cache"|"manual"|"scrape"|"estimate"
+	Confidence     string // "live"|"cached"|"manual"|"scrape"|"estimate"
+	FetchedAt      time.Time
+}
+
+// ManualPrice is an operator-entered price for a store + region (§6.2).
+type ManualPrice struct {
+	ID             int64
+	StoreID        int64
+	Region         string // ZIP/metro text, not a FK
+	NormalizedTerm string
+	PriceCents     int64
+	PackSize       float64
+	PurchaseUnit   string
+	UpdatedBy      string
+	UpdatedAt      time.Time
+}
+
+// ItemProductMap caches the resolved product for a (store, normalized_term) pair (§6.3).
+type ItemProductMap struct {
+	ID             int64
+	StoreID        int64
+	NormalizedTerm string
+	ChosenProduct  string
+	PackSize       float64
+	PurchaseUnit   string
+	Barcode        string
+	UpdatedAt      time.Time
+}
+
+// ScrapeConfig holds the per-store scrape configuration built by §6.7.
+type ScrapeConfig struct {
+	ID                int64
+	StoreID           int64
+	SearchURLTemplate string // {term} placeholder
+	SelectorsJSON     string // JSON: {name, price, pack_size, availability}
+	Mode              string // "assisted"|"auto"|"auto_ai"
+	AIAssisted        bool
+	Status            string // "active"|"degraded"|"unconfigured"
+	LastTestedAt      string // ISO timestamp or ""
+	CreatedAt         time.Time
+}
+
+// ShoppingListItem is one priced buy-line on a plan's shopping list (§5.1, §6.4).
+type ShoppingListItem struct {
+	ID                  int64
+	PlanID              int64
+	StoreID             *int64
+	MealIngredientRefs  string // JSON []int64
+	DisplayName         string
+	BuyQuantity         float64
+	PackSize            float64
+	PurchaseUnit        string
+	UnitPriceCents      int64
+	LineTotalCents      int64
+	PriceSource         string // "live"|"cache"|"manual"|"scrape"|"estimate"
+	Confidence          string
+	Checked             bool
+	InPantry            bool
+}
+
+// UpsertPriceCacheParams bundles inputs for writing a price to the cache.
+type UpsertPriceCacheParams struct {
+	StoreID        int64
+	NormalizedTerm string
+	PriceCents     int64
+	PurchaseUnit   string
+	PackSize       float64
+	Source         string
+	Confidence     string
+}
+
+// UpsertManualPriceParams bundles inputs for an operator-entered price.
+type UpsertManualPriceParams struct {
+	StoreID        int64
+	Region         string
+	NormalizedTerm string
+	PriceCents     int64
+	PackSize       float64
+	PurchaseUnit   string
+	UpdatedBy      string
+}
+
+// UpsertItemProductMapParams bundles inputs for caching a product match.
+type UpsertItemProductMapParams struct {
+	StoreID        int64
+	NormalizedTerm string
+	ChosenProduct  string
+	PackSize       float64
+	PurchaseUnit   string
+	Barcode        string
+}
+
+// CreateScrapeConfigParams bundles inputs for a new scrape config.
+type CreateScrapeConfigParams struct {
+	StoreID           int64
+	SearchURLTemplate string
+	SelectorsJSON     string
+	Mode              string
+	AIAssisted        bool
+}
+
+// UpdateScrapeConfigParams bundles editable fields on a scrape config.
+type UpdateScrapeConfigParams struct {
+	ID                int64
+	SearchURLTemplate string
+	SelectorsJSON     string
+	Mode              string
+	AIAssisted        bool
+	Status            string
+	LastTestedAt      string
+}
+
+// CreateShoppingListItemParams bundles inputs for one shopping list line.
+type CreateShoppingListItemParams struct {
+	PlanID             int64
+	StoreID            *int64
+	MealIngredientRefs string
+	DisplayName        string
+	BuyQuantity        float64
+	PackSize           float64
+	PurchaseUnit       string
+	UnitPriceCents     int64
+	LineTotalCents     int64
+	PriceSource        string
+	Confidence         string
+}
