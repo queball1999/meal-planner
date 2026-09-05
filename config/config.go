@@ -21,6 +21,18 @@ type Config struct {
 	DatabaseURL     string
 	SessionSecret   string
 	SessionTTLHours int // default 168 (7 days)
+
+	// ── AI provider (§11.2) ───────────────────────────────────────────────
+	// Provider selects the active profile: anthropic | openai | google | openai_compatible
+	Provider        string
+	AnthropicAPIKey string
+	AnthropicModel  string // default "claude-sonnet-5"
+	// OpenAI-compatible profiles (openai / google / openai_compatible)
+	LLMAPIUrl    string
+	LLMModel     string
+	LLMAPIKey    string
+	LLMMaxTokens int     // default 4096
+	LLMTemp      float64 // default 0.7
 }
 
 // Load reads configuration from .env then the environment, applies defaults,
@@ -34,6 +46,15 @@ func Load() (*Config, error) {
 		sessionTTL = 168
 	}
 
+	maxToks, _ := strconv.Atoi(os.Getenv("LLM_MAX_TOKENS"))
+	if maxToks <= 0 {
+		maxToks = 4096
+	}
+	temp, _ := strconv.ParseFloat(os.Getenv("LLM_TEMPERATURE"), 64)
+	if temp == 0 {
+		temp = 0.7
+	}
+
 	cfg := &Config{
 		AppName:         getenv("APP_NAME", "Go Eat"),
 		ListenAddr:      getenv("LISTEN_ADDR", ":8080"),
@@ -41,6 +62,15 @@ func Load() (*Config, error) {
 		DatabaseURL:     getenv("DATABASE_URL", "file:./data/goeat.db"),
 		SessionSecret:   os.Getenv("SESSION_SECRET"),
 		SessionTTLHours: sessionTTL,
+
+		Provider:        getenv("PROVIDER", "openai_compatible"),
+		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		AnthropicModel:  getenv("ANTHROPIC_MODEL", "claude-sonnet-5"),
+		LLMAPIUrl:       os.Getenv("LLM_API_URL"),
+		LLMModel:        os.Getenv("LLM_MODEL"),
+		LLMAPIKey:       os.Getenv("LLM_API_KEY"),
+		LLMMaxTokens:    maxToks,
+		LLMTemp:         temp,
 	}
 
 	if cfg.SessionSecret == "" {
