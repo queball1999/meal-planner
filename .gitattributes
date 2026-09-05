@@ -1,0 +1,22 @@
+# Enforce LF line endings for all text files (§16.4).
+* text=auto eol=lf
+
+*.go   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.sql  text eol=lf
+*.md   text eol=lf
+*.mod  text eol=lf
+*.sum  text eol=lf
+*.env* text eol=lf
+
+# Binary files — never mangle.
+*.db   binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary

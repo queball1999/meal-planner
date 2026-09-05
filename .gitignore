@@ -1,0 +1,28 @@
+# Environment / secrets
+.env
+*.env.local
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Build output
+bin/
+
+# Logs
+*.log
+
+# Go test cache / coverage
+*.test
+*.out
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

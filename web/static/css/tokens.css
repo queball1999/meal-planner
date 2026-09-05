@@ -1,0 +1,139 @@
+/* tokens.css — design tokens (CSS custom properties)
+ * All colours, spacing, radii, and type scale live here. Nothing else
+ * defines a colour directly; all other CSS files reference these vars.
+ * Strategy: semantic-tier scheme with a warm-green accent (§8.3).
+ */
+
+:root {
+    /* ── Accent (warm green — "fresh / Go") ───────────────────────────── */
+    --accent:         #43a047;
+    --accent-hover:   #2e7d32;
+    --accent-bg:      #e8f5e9;
+    --accent-text:    #1b5e20;
+    --accent-border:  #a5d6a7;
+
+    /* ── Neutrals ─────────────────────────────────────────────────────── */
+    --bg:             #f5f5f5;
+    --surface:        #ffffff;
+    --surface-raised: #ffffff;
+    --border:         #e0e0e0;
+    --border-focus:   var(--accent);
+    --text:           #212121;
+    --text-muted:     #757575;
+    --text-inverse:   #ffffff;
+
+    /* ── Semantic (budget meter + price badges, §6.6) ─────────────────── */
+    --success:        #2e7d32;
+    --success-bg:     #e8f5e9;
+    --success-border: #a5d6a7;
+
+    --warning:        #e65100;
+    --warning-bg:     #fff3e0;
+    --warning-border: #ffcc80;
+
+    --danger:         #c62828;
+    --danger-bg:      #ffebee;
+    --danger-border:  #ef9a9a;
+
+    --info:           #1565c0;
+    --info-bg:        #e3f2fd;
+    --info-border:    #90caf9;
+
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    --nav-h:          56px;      /* sticky header height (§8.1) */
+    --content-max:    1200px;
+    --sidebar-w:      260px;
+
+    /* ── Radii ────────────────────────────────────────────────────────── */
+    --radius-sm:      3px;
+    --radius:         6px;
+    --radius-lg:      12px;
+    --radius-full:    9999px;
+
+    /* ── Spacing (4-pt grid) ──────────────────────────────────────────── */
+    --sp-1:  4px;
+    --sp-2:  8px;
+    --sp-3:  12px;
+    --sp-4:  16px;
+    --sp-5:  20px;
+    --sp-6:  24px;
+    --sp-8:  32px;
+    --sp-10: 40px;
+    --sp-12: 48px;
+
+    /* ── Typography ───────────────────────────────────────────────────── */
+    --font:      -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --font-mono: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+
+    --text-xs:   0.75rem;   /* 12px */
+    --text-sm:   0.875rem;  /* 14px */
+    --text-base: 1rem;      /* 16px */
+    --text-lg:   1.125rem;  /* 18px */
+    --text-xl:   1.25rem;   /* 20px */
+    --text-2xl:  1.5rem;    /* 24px */
+    --text-3xl:  1.875rem;  /* 30px */
+
+    --weight-normal:  400;
+    --weight-medium:  500;
+    --weight-semi:    600;
+    --weight-bold:    700;
+
+    /* ── Shadows ──────────────────────────────────────────────────────── */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow:    0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.12);
+
+    /* ── Motion (§8.5 — cap UI chrome at ~0.25s) ─────────────────────── */
+    --dur-fast: 0.1s;
+    --dur:      0.15s;
+    --dur-slow: 0.25s;
+    --ease:     cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Dark mode: system preference (strategy 2 from style guide §2.3) ───── */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg:             #121212;
+        --surface:        #1e1e1e;
+        --surface-raised: #252525;
+        --border:         #333333;
+        --text:           #e0e0e0;
+        --text-muted:     #9e9e9e;
+
+        --accent-bg:      #1a2e1b;
+        --accent-text:    #a5d6a7;
+        --accent-border:  #2e5c30;
+
+        --success-bg:     #1a2e1b;
+        --warning-bg:     #2e1e00;
+        --danger-bg:      #2e0a0a;
+        --info-bg:        #0a1a2e;
+
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow:    0 2px 8px rgba(0, 0, 0, 0.4);
+        --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
+    }
+}
+
+/* ── Dark mode: explicit toggle ([data-theme="dark"] wins over media query) */
+:root[data-theme="dark"] {
+    --bg:             #121212;
+    --surface:        #1e1e1e;
+    --surface-raised: #252525;
+    --border:         #333333;
+    --text:           #e0e0e0;
+    --text-muted:     #9e9e9e;
+
+    --accent-bg:      #1a2e1b;
+    --accent-text:    #a5d6a7;
+    --accent-border:  #2e5c30;
+
+    --success-bg:     #1a2e1b;
+    --warning-bg:     #2e1e00;
+    --danger-bg:      #2e0a0a;
+    --info-bg:        #0a1a2e;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow:    0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
+}

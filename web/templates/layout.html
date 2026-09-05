@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{block "title" .}}{{.AppName}}{{end}}</title>
+    <link rel="stylesheet" href="/static/css/tokens.css">
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to content</a>
+
+    <header class="site-header" role="banner">
+        <a href="/" class="site-brand" aria-label="{{.AppName}} — home">
+            <span aria-hidden="true">🍳</span> {{.AppName}}
+        </a>
+
+        <nav class="site-nav" aria-label="Main navigation">
+            <a href="/"        class="nav-link{{if eq .Page "index"}}  nav-link--active{{end}}" aria-label="Dashboard"{{if eq .Page "index"}} aria-current="page"{{end}}>
+                {{icon "home"}} Dashboard
+            </a>
+            <a href="/plan"    class="nav-link{{if eq .Page "plan"}}   nav-link--active{{end}}" aria-label="Plan"{{if eq .Page "plan"}} aria-current="page"{{end}}>
+                {{icon "calendar"}} Plan
+            </a>
+            <a href="/list"    class="nav-link{{if eq .Page "list"}}   nav-link--active{{end}}" aria-label="Shopping List"{{if eq .Page "list"}} aria-current="page"{{end}}>
+                {{icon "cart"}} Shopping List
+            </a>
+            <a href="/pantry"  class="nav-link{{if eq .Page "pantry"}} nav-link--active{{end}}" aria-label="Pantry"{{if eq .Page "pantry"}} aria-current="page"{{end}}>
+                {{icon "archive"}} Pantry
+            </a>
+            <a href="/recipes" class="nav-link{{if eq .Page "recipes"}} nav-link--active{{end}}" aria-label="Recipes"{{if eq .Page "recipes"}} aria-current="page"{{end}}>
+                {{icon "fork"}} Recipes
+            </a>
+            <a href="/settings" class="nav-link{{if eq .Page "settings"}} nav-link--active{{end}}" aria-label="Settings"{{if eq .Page "settings"}} aria-current="page"{{end}}>
+                {{icon "cog"}} Settings
+            </a>
+        </nav>
+
+        <div class="site-header-actions">
+            <button class="btn btn-icon theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode" id="themeToggle">
+                <span class="theme-icon" aria-hidden="true">🌙</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="site-main" id="main-content" tabindex="-1">
+        {{block "content" .}}{{end}}
+    </main>
+
+    <footer class="site-footer" role="contentinfo">
+        <span>{{.AppName}} &middot; v{{.Version}}</span>
+    </footer>
+
+    <script src="/static/js/main.js" defer></script>
+</body>
+</html>
