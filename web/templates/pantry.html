@@ -74,11 +74,11 @@
         <tbody>
             {{range .Data.Items}}
             <tr>
-                <td>{{.Name}}</td>
-                <td>{{.QuantityOnHand}}</td>
-                <td>{{.Unit}}</td>
-                <td>{{.UpdatedAt.Format "Jan 2, 2006"}}</td>
-                <td>
+                <td data-label="Ingredient">{{.Name}}</td>
+                <td data-label="Quantity">{{.QuantityOnHand}}</td>
+                <td data-label="Unit">{{.Unit}}</td>
+                <td data-label="Updated">{{.UpdatedAt.Format "Jan 2, 2006"}}</td>
+                <td data-label="">
                     <form method="POST" action="/pantry/{{.ID}}/delete" style="display:inline">
                         {{$.CSRFField}}
                         <button type="submit" class="btn btn--ghost btn--danger btn--sm"
