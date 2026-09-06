@@ -46,6 +46,10 @@ type Config struct {
 
 	// FlareSolverr proxy for scraper (§6.7); empty = disabled
 	FlareSolverrURL string
+
+	// RecipeImageDir is the writable directory for downloaded recipe images (§5.7).
+	// Served at /recipe-images/{name}. If empty, image download is skipped.
+	RecipeImageDir string
 }
 
 // Load reads configuration from .env then the environment, applies defaults,
@@ -96,6 +100,7 @@ func Load() (*Config, error) {
 		KrogerClientSecret: os.Getenv("KROGER_CLIENT_SECRET"),
 		KrogerLocationID:   os.Getenv("KROGER_LOCATION_ID"),
 		FlareSolverrURL:    os.Getenv("FLARESOLVERR_URL"),
+		RecipeImageDir:     getenv("RECIPE_IMAGE_DIR", "./data/recipe-images"),
 
 		WeekStartDay: func() string {
 			d := os.Getenv("WEEK_START_DAY")

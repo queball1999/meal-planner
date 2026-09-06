@@ -17,13 +17,14 @@ import (
 
 // Server holds shared dependencies and the fully-wired HTTP handler.
 type Server struct {
-	cfg     *config.Config
-	store   db.Store
-	gen     llm.Generator // nil when no LLM is configured
-	chain   *pricing.Chain
-	jobs    *plan.JobManager
-	version string
-	handler http.Handler
+	cfg      *config.Config
+	store    db.Store
+	gen      llm.Generator // nil when no LLM is configured
+	chain    *pricing.Chain
+	jobs     *plan.JobManager
+	version  string
+	imageDir string // writable dir for recipe images (§5.7); "" = skip download
+	handler  http.Handler
 }
 
 // NewServer wires up routes, session loading, and CSRF middleware, then
@@ -31,12 +32,13 @@ type Server struct {
 func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string) *Server {
 	chain := buildChain(cfg, store, gen)
 	s := &Server{
-		cfg:     cfg,
-		store:   store,
-		gen:     gen,
-		chain:   chain,
-		jobs:    plan.NewJobManager(),
-		version: version,
+		cfg:      cfg,
+		store:    store,
+		gen:      gen,
+		chain:    chain,
+		jobs:     plan.NewJobManager(),
+		version:  version,
+		imageDir: cfg.RecipeImageDir,
 	}
 	s.handler = s.buildHandler()
 	return s

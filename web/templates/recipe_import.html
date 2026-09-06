@@ -1,0 +1,85 @@
+{{define "title"}}Import Recipe — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "fork"}} Import Recipe</h1>
+    <p class="page-subtitle">Paste a recipe URL to import it automatically, or enter one by hand.</p>
+</div>
+
+{{if .Flash}}<div class="alert alert--danger" role="alert">{{.Flash}}</div>{{end}}
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">Import from URL</h2>
+    <form method="POST" action="/recipes/import" class="pref-form">
+        {{.CSRFField}}
+        <div class="field-row">
+            <div class="field" style="flex:1">
+                <label class="field-label" for="import-url">Recipe URL</label>
+                <input class="field-input" id="import-url" name="url" type="url"
+                       placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required>
+            </div>
+            <div class="field field--action" style="align-self:flex-end">
+                <button type="submit" class="btn btn--primary">{{icon "download"}} Import</button>
+            </div>
+        </div>
+        <p class="field-hint">Works with most recipe sites that publish structured data (Schema.org).</p>
+    </form>
+</div>
+
+<details class="card form-section">
+    <summary class="form-section__title" style="cursor:pointer;list-style:none">
+        {{icon "edit"}} Enter manually <span style="font-weight:400;color:var(--color-text-muted)">(click to expand)</span>
+    </summary>
+    <form method="POST" action="/recipes/import/manual" class="pref-form" style="margin-top:1rem">
+        {{.CSRFField}}
+
+        <div class="field-row" style="margin-bottom:0.75rem">
+            <div class="field" style="flex:3">
+                <label class="field-label" for="m-title">Title <span aria-hidden="true">*</span></label>
+                <input class="field-input" id="m-title" name="title" type="text"
+                       placeholder="Pasta al Limone" required>
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="m-servings">Servings</label>
+                <input class="field-input" id="m-servings" name="servings" type="number"
+                       min="1" max="50" value="4">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="m-prep">Prep min</label>
+                <input class="field-input" id="m-prep" name="prep_minutes" type="number"
+                       min="0" value="15">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="m-cook">Cook min</label>
+                <input class="field-input" id="m-cook" name="cook_minutes" type="number"
+                       min="0" value="20">
+            </div>
+        </div>
+
+        <div class="field" style="margin-bottom:0.75rem">
+            <label class="field-label" for="m-tags">Tags <span style="font-weight:400">(comma-separated)</span></label>
+            <input class="field-input" id="m-tags" name="tags" type="text"
+                   placeholder="pasta, vegetarian, quick">
+        </div>
+
+        <div class="field" style="margin-bottom:0.75rem">
+            <label class="field-label" for="m-ingredients">Ingredients <span aria-hidden="true">*</span></label>
+            <p class="field-hint">One per line, e.g. <code>2 cups flour</code></p>
+            <textarea class="field-input" id="m-ingredients" name="ingredients"
+                      rows="8" placeholder="2 cups pasta&#10;1 lemon, zested and juiced&#10;2 tbsp butter" required></textarea>
+        </div>
+
+        <div class="field" style="margin-bottom:1rem">
+            <label class="field-label" for="m-steps">Instructions <span aria-hidden="true">*</span></label>
+            <p class="field-hint">One step per line.</p>
+            <textarea class="field-input" id="m-steps" name="steps"
+                      rows="8" placeholder="Boil pasta until al dente.&#10;Toss with butter and lemon." required></textarea>
+        </div>
+
+        <button type="submit" class="btn btn--primary">{{icon "plus"}} Save recipe</button>
+    </form>
+</details>
+
+<div style="margin-top:1.5rem">
+    <a href="/recipes" class="btn btn--ghost">{{icon "arrow-left"}} Back to recipes</a>
+</div>
+{{end}}

@@ -61,6 +61,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /meals/{id}/feedback", requireAuth(http.HandlerFunc(s.handleMealFeedback)))
 	mux.Handle("POST /meals/{id}/lock", requireAuth(http.HandlerFunc(s.handleMealLock)))
 
+	// Recipe catalog — literal routes before /recipes/{id} wildcard (§8.2)
+	mux.Handle("GET /recipes/import", requireAuth(http.HandlerFunc(s.handleRecipeImportPage)))
+	mux.Handle("POST /recipes/import", requireAuth(http.HandlerFunc(s.handleRecipeImport)))
+	mux.Handle("POST /recipes/import/manual", requireAuth(http.HandlerFunc(s.handleRecipeImportManual)))
+
 	mux.Handle("GET /admin/scrape", requireAuth(http.HandlerFunc(s.handleScrapeConfigPage)))
 	mux.Handle("POST /admin/scrape/{storeID}/save", requireAuth(http.HandlerFunc(s.handleScrapeConfigSave)))
 	mux.Handle("POST /admin/scrape/{storeID}/test", requireAuth(http.HandlerFunc(s.handleScrapeConfigTest)))
