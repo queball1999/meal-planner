@@ -15,7 +15,7 @@ Phase 6 hardens the UI and wraps up the project for deployment:
 
 ## Commits
 
-### 1. css: mobile-responsive layout and touch-friendly components
+### 1. css: mobile-responsive layout and touch-friendly components ✅
 Files: `web/static/css/layout.css` (extend), `web/static/css/base.css` (extend),
 `web/static/css/components.css` (extend), `web/templates/layout.html` (hamburger nav)
 
@@ -37,7 +37,7 @@ Breakpoint: `@media (max-width: 768px)`
 ```
 css: add mobile-responsive layout, hamburger nav, and card-stacked tables
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -56,11 +56,11 @@ Files: `web/static/css/base.css` (extend), `web/static/css/components.css` (exte
 ```
 css: add reduced-motion-aware animations and skeleton shimmer
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
-### 3. web: settings page
+### 3. web: settings page ✅
 Files: `web/handlers_settings.go` (new), `web/templates/settings.html` (new),
 `web/routes.go`
 
@@ -91,11 +91,11 @@ Routes: `GET /settings`
 ```
 web: add settings page with AI status, pricing config, and week-start display
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
-### 4. web: accessibility pass
+### 4. web: accessibility pass ✅
 Files: `web/templates/layout.html`, several templates
 
 - **Skip link** (`<a href="#main-content" class="skip-link">`) — already present;
@@ -113,11 +113,11 @@ Files: `web/templates/layout.html`, several templates
 ```
 web: accessibility pass — focus rings, ARIA labels, contrast, live regions
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
-### 5. deploy: README, Dockerfile, and docker-compose
+### 5. deploy: README, Dockerfile, and docker-compose ✅
 Files: `README.md` (new), `Dockerfile` (new), `docker-compose.yml` (new),
 `.dockerignore` (new)
 
@@ -162,17 +162,17 @@ services:
 ```
 deploy: add README, Dockerfile, and docker-compose
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
-### 6. spec: mark Phase 6 complete
+### 6. spec: mark Phase 6 complete ✅
 Files: `spec/commit-plan-phase6-09-05-26.md` (this file, all ✅)
 
 ```
 spec: mark all Phase 6 commits complete
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
