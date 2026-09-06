@@ -44,15 +44,47 @@
     {{range .Data.Days}}
     {{$day := .}}
     <div class="plan-calendar__row" role="row">
-        <div class="plan-calendar__day-label" role="rowheader">{{$day.DateLabel}}</div>
+        <div class="plan-calendar__day-label" role="rowheader">
+            <div>{{$day.DateLabel}}</div>
+            <form method="POST" action="/plan/days/{{$day.Date}}/headcount"
+                  style="display:flex;align-items:center;gap:.25rem;margin-top:.25rem">
+                {{$.CSRFField}}
+                <input type="number" name="headcount" value="{{$day.Headcount}}"
+                       min="1" max="20" class="field-input" style="width:3rem;padding:.2rem .4rem;font-size:.8rem"
+                       title="People eating this day">
+                <button type="submit" class="btn btn--ghost btn--sm" title="Save headcount">
+                    {{icon "account-group"}}
+                </button>
+            </form>
+        </div>
 
         {{with index $day.Slots "breakfast"}}
         <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
             {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
             <div class="plan-cell">
-                <span class="plan-cell__title">{{.Title}}</span>
+                <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
+                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+                <div class="plan-cell__actions">
+                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="rating" value="1">
+                        <button type="submit" class="btn-icon" title="Like this meal" aria-label="Like {{.Title}}">{{icon "thumb-up"}}</button>
+                    </form>
+                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="rating" value="-1">
+                        <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{.Title}}">{{icon "thumb-down"}}</button>
+                    </form>
+                    <form method="POST" action="/meals/{{.MealID}}/lock" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="locked" value="{{if .Locked}}0{{else}}1{{end}}">
+                        <button type="submit" class="btn-icon" title="{{if .Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if .Locked}}Unlock{{else}}Lock{{end}} {{.Title}}">
+                            {{if .Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
+                        </button>
+                    </form>
+                </div>
             </div>{{end}}
         </div>
         {{end}}
@@ -61,9 +93,29 @@
         <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
             {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
             <div class="plan-cell">
-                <span class="plan-cell__title">{{.Title}}</span>
+                <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
+                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+                <div class="plan-cell__actions">
+                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="rating" value="1">
+                        <button type="submit" class="btn-icon" title="Like this meal" aria-label="Like {{.Title}}">{{icon "thumb-up"}}</button>
+                    </form>
+                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="rating" value="-1">
+                        <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{.Title}}">{{icon "thumb-down"}}</button>
+                    </form>
+                    <form method="POST" action="/meals/{{.MealID}}/lock" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="locked" value="{{if .Locked}}0{{else}}1{{end}}">
+                        <button type="submit" class="btn-icon" title="{{if .Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if .Locked}}Unlock{{else}}Lock{{end}} {{.Title}}">
+                            {{if .Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
+                        </button>
+                    </form>
+                </div>
             </div>{{end}}
         </div>
         {{end}}
@@ -72,9 +124,29 @@
         <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
             {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
             <div class="plan-cell">
-                <span class="plan-cell__title">{{.Title}}</span>
+                <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
+                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+                <div class="plan-cell__actions">
+                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="rating" value="1">
+                        <button type="submit" class="btn-icon" title="Like this meal" aria-label="Like {{.Title}}">{{icon "thumb-up"}}</button>
+                    </form>
+                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="rating" value="-1">
+                        <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{.Title}}">{{icon "thumb-down"}}</button>
+                    </form>
+                    <form method="POST" action="/meals/{{.MealID}}/lock" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="locked" value="{{if .Locked}}0{{else}}1{{end}}">
+                        <button type="submit" class="btn-icon" title="{{if .Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if .Locked}}Unlock{{else}}Lock{{end}} {{.Title}}">
+                            {{if .Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
+                        </button>
+                    </form>
+                </div>
             </div>{{end}}
         </div>
         {{end}}

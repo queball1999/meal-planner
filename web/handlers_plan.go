@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"goeat/db"
@@ -15,17 +16,20 @@ import (
 
 // calendarSlot holds one cell in the 7-day × 3-slot calendar grid.
 type calendarSlot struct {
-	MealID   int64
-	Title    string
-	Effort   string
-	Servings int
-	Locked   bool
-	IsEmpty  bool
+	MealID     int64
+	Title      string
+	Effort     string
+	Servings   int
+	Locked     bool
+	IsLeftover bool
+	IsEmpty    bool
 }
 
 // calendarDay holds one column in the calendar grid.
 type calendarDay struct {
+	Date      string // YYYY-MM-DD
 	DateLabel string // "Mon Jan 2"
+	Headcount int
 	Slots     map[string]calendarSlot // "breakfast"|"lunch"|"dinner"
 }
 
@@ -80,12 +84,20 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	for _, m := range meals {
 		key := m.Day + "|" + m.Slot
 		mealMap[key] = calendarSlot{
-			MealID:   m.ID,
-			Title:    m.Title,
-			Effort:   m.Effort,
-			Servings: m.Servings,
-			Locked:   m.Locked,
+			MealID:     m.ID,
+			Title:      m.Title,
+			Effort:     m.Effort,
+			Servings:   m.Servings,
+			Locked:     m.Locked,
+			IsLeftover: m.IsLeftover,
 		}
+	}
+
+	// Load per-day headcount overrides.
+	planDays, _ := s.store.ListPlanDays(ctx, p.ID)
+	headcountByDate := make(map[string]int, len(planDays))
+	for _, pd := range planDays {
+		headcountByDate[pd.Date] = pd.Headcount
 	}
 
 	// Build the 7-day column slice ordered by date.
@@ -103,8 +115,14 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 				slots[slot] = calendarSlot{IsEmpty: true}
 			}
 		}
+		hc := hh.HouseholdSize
+		if override, ok := headcountByDate[dateStr]; ok && override > 0 {
+			hc = override
+		}
 		days[i] = calendarDay{
+			Date:      dateStr,
 			DateLabel: date.Format("Mon Jan 2"),
+			Headcount: hc,
 			Slots:     slots,
 		}
 	}
@@ -178,6 +196,40 @@ func (s *Server) handlePlanGeneratePage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.render(w, r, "plan_generate", nil)
+}
+
+// handlePlanHeadcount saves a per-day headcount override (§5.6).
+func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	date := r.PathValue("date")
+	if date == "" {
+		http.Error(w, "missing date", http.StatusBadRequest)
+		return
+	}
+	hcStr := r.FormValue("headcount")
+	headcount, err := strconv.Atoi(hcStr)
+	if err != nil || headcount < 1 {
+		s.setFlash(w, "Headcount must be at least 1.")
+		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
+	if p == nil {
+		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		return
+	}
+	_ = s.store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
+		PlanID:    p.ID,
+		Date:      date,
+		Headcount: headcount,
+	})
+	http.Redirect(w, r, "/plan", http.StatusSeeOther)
 }
 
 // handlePlanGenerateStatus streams SSE events for the active generation job.
