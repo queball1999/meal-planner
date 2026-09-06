@@ -14,8 +14,8 @@
     <a href="#main-content" class="skip-link">Skip to content</a>
 
     <header class="site-header" role="banner">
-        <a href="/" class="site-brand" aria-label="{{.AppName}} — home">
-            <span aria-hidden="true">🍳</span> {{.AppName}}
+        <a href="/" class="site-brand" aria-label="{{.AppName}} - home">
+            <span aria-hidden="true">{{icon "chef-hat"}}</span> {{.AppName}}
         </a>
 
         {{if .User}}
@@ -58,7 +58,7 @@
             </form>
             {{end}}
             <button class="btn btn-icon theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode" id="themeToggle">
-                <span class="theme-icon" aria-hidden="true">🌙</span>
+                <span class="theme-icon" aria-hidden="true">{{icon "moon"}}</span>
             </button>
 
             {{if .User}}
@@ -78,8 +78,8 @@
     </header>
 
     <main class="site-main" id="main-content" tabindex="-1">
-        {{if .Flash}}
-        <div class="flash flash-danger" role="alert" aria-live="assertive">{{.Flash}}</div>
+        {{if .Notify}}
+        <script>window.__notify = { msg: "{{.Notify}}", kind: "{{.NotifyKind}}" };</script>
         {{end}}
 
         {{block "content" .}}{{end}}
@@ -87,6 +87,9 @@
 
     <footer class="site-footer" role="contentinfo">
         <span>{{.AppName}} &middot; v{{.Version}}</span>
+        {{if gt .PageLoadMs 0.0}}
+        <span class="site-footer__timing">Page: {{dur .PageLoadMs}} &middot; Template: {{dur .TemplateMs}}</span>
+        {{end}}
     </footer>
 
     <script src="/static/js/main.js" defer></script>

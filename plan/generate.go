@@ -11,6 +11,10 @@ import (
 	"goeat/llm"
 )
 
+// planGenMaxTokens caps the LLM response for a full week's plan. Bumped from
+// 8192 after real responses were getting cut off mid-JSON on busy weeks.
+const planGenMaxTokens = 16384
+
 var dayOffset = map[string]int{
 	"sunday":    0,
 	"monday":    1,
@@ -41,10 +45,15 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return 0, fmt.Errorf("resolve preferences: %w", err)
 	}
 
+	stores, err := store.ListStores(ctx, householdID)
+	if err != nil {
+		return 0, fmt.Errorf("list stores: %w", err)
+	}
+
 	weekStart := nextSunday(time.Now().In(mustLocation(hh.Timezone)))
 	weekEnd := weekStart.AddDate(0, 0, 6)
 
-	sysPmt, userPmt := BuildPrompt(hh, profile, weekStart, weekEnd)
+	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd)
 
 	aiRun, err := store.CreateAIRun(ctx, db.CreateAIRunParams{
 		HouseholdID: householdID,
@@ -58,10 +67,10 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	}
 
 	plan, err := store.CreatePlan(ctx, db.CreatePlanParams{
-		HouseholdID:  householdID,
-		WeekStart:    weekStart.Format("2006-01-02"),
-		WeekEnd:      weekEnd.Format("2006-01-02"),
-		BudgetCents:  hh.WeeklyBudgetCents,
+		HouseholdID: householdID,
+		WeekStart:   weekStart.Format("2006-01-02"),
+		WeekEnd:     weekEnd.Format("2006-01-02"),
+		BudgetCents: hh.WeeklyBudgetCents,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create plan: %w", err)
@@ -70,7 +79,7 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	resp, err := gen.Generate(ctx, llm.GenerateRequest{
 		System:    sysPmt,
 		Prompt:    userPmt,
-		MaxTokens: 8192,
+		MaxTokens: planGenMaxTokens,
 	})
 	if err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
@@ -81,6 +90,9 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	raw := stripFences(strings.TrimSpace(resp.Content))
 	if err := json.Unmarshal([]byte(raw), &gp); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
+		if !strings.HasSuffix(raw, "}") {
+			return plan.ID, fmt.Errorf("parse llm response: response was cut off before completing (used %d/%d output tokens) - raise the token limit or shorten the plan: %w", resp.OutputTokens, planGenMaxTokens, err)
+		}
 		return plan.ID, fmt.Errorf("parse llm response: %w", err)
 	}
 
@@ -105,7 +117,7 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 			fmt.Printf("warning: plan costing failed: %v\n", err)
 		}
 		// Budget repair loop (§7.6): attempt up to 3 swaps if over budget.
-		if _, err := Repair(ctx, store, gen, plan.ID, hh, profile, pricer, 3); err != nil {
+		if _, err := Repair(ctx, store, gen, plan.ID, hh, profile, stores, pricer, 3); err != nil {
 			fmt.Printf("warning: budget repair failed: %v\n", err)
 		}
 	}

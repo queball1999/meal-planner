@@ -1,15 +1,24 @@
-{{define "title"}}Generating Plan — {{.AppName}}{{end}}
+{{define "title"}}Generating Plan - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "chef-hat"}} Generating your plan</h1>
-    <p class="page-subtitle">The AI is building your weekly meal plan. This takes 15–30 seconds.</p>
+    <p class="page-subtitle">The AI is building your weekly meal plan. This takes 15-30 seconds.</p>
 </div>
 
 <div class="skeleton-card" id="gen-card">
-    <div class="skeleton-card__icon" aria-hidden="true" id="gen-icon">⏳</div>
+    <div class="skeleton-card__icon" aria-hidden="true" id="gen-icon">{{icon "autorenew"}}</div>
     <h2 class="skeleton-card__title" id="gen-title">Working…</h2>
     <p class="skeleton-card__body" id="gen-status">Connecting to generation service…</p>
 </div>
+<template id="gen-icon-check">{{icon "check"}}</template>
+<template id="gen-icon-close">{{icon "close"}}</template>
+
+<details class="card form-section" id="gen-debug" style="margin:0 auto">
+    <summary style="cursor:pointer;font-weight:var(--weight-semi)">{{icon "robot"}} Debug: AI activity</summary>
+    <div id="genDebugLog" style="margin-top:var(--sp-4)">
+        <p style="color:var(--text-muted);font-size:var(--text-sm)">Waiting for AI activity…</p>
+    </div>
+</details>
 
 <script>
 (function () {
@@ -24,7 +33,9 @@
 
     es.addEventListener('done', function (e) {
         es.close();
-        icon.textContent   = '✅';
+        stopDebugPoll();
+        refreshDebugLog();
+        icon.innerHTML     = document.getElementById('gen-icon-check').innerHTML;
         title.textContent  = 'Plan ready!';
         status.textContent = 'Redirecting to your plan…';
         setTimeout(function () { window.location.href = '/plan'; }, 800);
@@ -32,15 +43,87 @@
 
     es.addEventListener('error', function (e) {
         es.close();
-        icon.textContent   = '❌';
+        stopDebugPoll();
+        refreshDebugLog();
+        icon.innerHTML     = document.getElementById('gen-icon-close').innerHTML;
         title.textContent  = 'Generation failed';
         status.textContent = e.data || 'An error occurred. Check the server logs.';
     });
 
     es.onerror = function () {
         if (es.readyState === EventSource.CLOSED) return;
-        status.textContent = 'Connection lost — retrying…';
+        status.textContent = 'Connection lost - retrying…';
     };
+
+    /* ── Debug: AI activity ─────────────────────────────────────────── */
+    var debugLog = document.getElementById('genDebugLog');
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;');
+    }
+
+    function truncate(s, n) {
+        s = String(s || '');
+        return s.length > n ? s.slice(0, n) + '…' : s;
+    }
+
+    function refreshDebugLog() {
+        fetch('/admin/llm-debug')
+        .then(function (r) { return r.json(); })
+        .then(function (entries) {
+            if (!entries || entries.length === 0) {
+                debugLog.innerHTML = '<p style="color:var(--text-muted);font-size:var(--text-sm)">Waiting for AI activity…</p>';
+                return;
+            }
+
+            /* Remember which entries the user has opened/closed, and the
+             * scroll position, so a periodic refresh doesn't yank the view
+             * out from under someone reading a log entry. */
+            var openKeys = {};
+            var sawManualState = false;
+            debugLog.querySelectorAll('.llm-debug-entry').forEach(function (el) {
+                var key = el.getAttribute('data-key');
+                if (!key) return;
+                sawManualState = true;
+                openKeys[key] = el.open;
+            });
+            var scrollX = window.scrollX, scrollY = window.scrollY;
+
+            var html = entries.map(function (e, i) {
+                var isErr = !!e.error;
+                var time  = new Date(e.at).toLocaleTimeString();
+                var border = isErr ? 'var(--color-danger,#ef4444)' : 'var(--accent)';
+                var key = String(e.at) + '|' + i;
+                var isOpen = sawManualState ? !!openKeys[key] : (i === 0);
+                return '<details class="llm-debug-entry" data-key="' + esc(key) + '"' + (isOpen ? ' open' : '') + ' style="border-left-color:' + border + '">' +
+                    '<summary class="llm-debug-summary">' +
+                        '<span class="llm-debug-time">' + time + '</span>' +
+                        (isErr ? '<span class="badge badge-danger">error</span>' : '') +
+                        (e.provider ? '<span class="llm-debug-model">' + esc(e.provider) + '</span>' : '') +
+                        (e.model ? '<span class="llm-debug-model">' + esc(e.model) + '</span>' : '') +
+                        '<span class="llm-debug-dur">' + e.duration_ms + ' ms</span>' +
+                        (e.input_tokens ? '<span class="llm-debug-toks">' + e.input_tokens + '↑ ' + e.output_tokens + '↓</span>' : '') +
+                        '<span class="llm-debug-snippet">' + esc(truncate(e.prompt, 80)) + '</span>' +
+                    '</summary>' +
+                    (e.system ? '<div class="llm-debug-row"><span class="llm-debug-label">System</span><pre class="llm-debug-pre">' + esc(e.system) + '</pre></div>' : '') +
+                    '<div class="llm-debug-row"><span class="llm-debug-label">Prompt</span><pre class="llm-debug-pre">' + esc(e.prompt) + '</pre></div>' +
+                    (e.response ? '<div class="llm-debug-row"><span class="llm-debug-label">Response</span><pre class="llm-debug-pre">' + esc(e.response) + '</pre></div>' : '') +
+                    (e.error ? '<div class="llm-debug-row"><span class="llm-debug-label">Error</span><pre class="llm-debug-pre llm-debug-pre--error">' + esc(e.error) + '</pre></div>' : '') +
+                    '</details>';
+            }).join('');
+            debugLog.innerHTML = html;
+            window.scrollTo(scrollX, scrollY);
+        })
+        .catch(function () { /* keep last-rendered log on transient fetch errors */ });
+    }
+
+    var debugTimer = setInterval(refreshDebugLog, 1500);
+    function stopDebugPoll() { clearInterval(debugTimer); }
+    refreshDebugLog();
 })();
 </script>
 {{end}}

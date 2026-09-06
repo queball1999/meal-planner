@@ -16,6 +16,7 @@ type DebugEntry struct {
 	DurationMS int64
 	InputToks  int
 	OutputToks int
+	Provider   string
 	Model      string
 }
 
@@ -52,6 +53,8 @@ func (d *debugLogger) Generate(ctx context.Context, req GenerateRequest) (Genera
 		System:     req.System,
 		Prompt:     req.Prompt,
 		DurationMS: ms,
+		Provider:   d.inner.ProviderName(),
+		Model:      d.inner.ModelName(),
 	}
 	if err != nil {
 		e.Error = err.Error()
@@ -59,7 +62,9 @@ func (d *debugLogger) Generate(ctx context.Context, req GenerateRequest) (Genera
 		e.Response = resp.Content
 		e.InputToks = resp.InputTokens
 		e.OutputToks = resp.OutputTokens
-		e.Model = resp.ModelName
+		if resp.ModelName != "" {
+			e.Model = resp.ModelName
+		}
 	}
 
 	d.mu.Lock()

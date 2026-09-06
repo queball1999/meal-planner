@@ -1,4 +1,4 @@
-/* wizard.css — setup wizard, store picker, toast, LLM log page. */
+/* wizard.css - setup wizard, store picker, toast, LLM log page. */
 
 /* ══════════════════════════════════════════════════════════════════════════
    TOAST NOTIFICATIONS
@@ -6,54 +6,82 @@
 
 #toast-container {
     position: fixed;
-    bottom: var(--sp-4);
-    right: var(--sp-4);
+    top: var(--sp-6);
+    right: var(--sp-6);
     z-index: 9999;
     display: flex;
     flex-direction: column;
-    gap: var(--sp-2);
+    gap: var(--sp-3);
+    max-width: 420px;
     pointer-events: none;
 }
 
 .toast {
     display: flex;
     align-items: center;
-    gap: var(--sp-2);
+    gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
     border-radius: var(--radius);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    box-shadow: 0 4px 16px rgba(0,0,0,.18);
+    border: 1px solid rgba(0,0,0,.15);
+    box-shadow: 0 4px 12px rgba(0,0,0,.3);
     font-size: var(--text-sm);
-    pointer-events: all;
+    line-height: 1.4;
+    color: #fff;
+    pointer-events: auto;
+    user-select: none;
     opacity: 0;
-    transform: translateY(8px);
-    transition: opacity .2s, transform .2s;
-    max-width: 360px;
+    transform: translateX(40px);
+    transition: opacity .2s ease, transform .2s ease;
 }
 
 .toast--visible {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
 }
 
-.toast--success { border-left: 3px solid var(--success, #22c55e); }
-.toast--error   { border-left: 3px solid var(--danger, #ef4444); }
-.toast--info    { border-left: 3px solid var(--accent); }
+.toast--success { background: var(--success); }
+.toast--info    { background: var(--text-muted); }
+.toast--warning { background: var(--warning); }
+.toast--error   { background: var(--danger); }
 
-.toast__icon  { font-size: 1em; flex-shrink: 0; }
-.toast__msg   { flex: 1; line-height: 1.4; }
+.toast__icon {
+    flex-shrink: 0;
+    display: flex;
+}
+.toast__icon svg.icon { width: 18px; height: 18px; }
+
+.toast__msg   { flex: 1; cursor: pointer; }
+
 .toast__close {
-    background: none; border: none; cursor: pointer;
-    color: var(--text-muted); font-size: 1.1em;
-    padding: 0 var(--sp-1); flex-shrink: 0;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    opacity: .7;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity .15s;
+}
+.toast__close:hover { opacity: 1; }
+.toast__close svg.icon { width: 16px; height: 16px; }
+
+@media (max-width: 640px) {
+    #toast-container {
+        top: var(--sp-4);
+        right: var(--sp-4);
+        left: var(--sp-4);
+        max-width: none;
+    }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
    SETUP WIZARD PROGRESS BAR
    ══════════════════════════════════════════════════════════════════════════ */
 
-.setup-card { max-width: 640px; }
+.setup-card { max-width: 620px; padding: var(--sp-5) var(--sp-6); }
 
 .wizard-progress {
     display: flex;
@@ -91,13 +119,28 @@
     border-radius: 50%;
     background: var(--bg);
     border: 2px solid var(--border);
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: background .2s, border-color .2s;
+}
+
+.wizard-step-dot svg.icon {
+    width: 13px;
+    height: 13px;
+    color: var(--text-inverse);
+    opacity: 0;
+    transform: scale(.5);
+    transition: opacity .15s, transform .15s;
 }
 
 .wizard-progress__step--complete .wizard-step-dot {
     background: var(--accent);
     border-color: var(--accent);
+}
+.wizard-progress__step--complete .wizard-step-dot svg.icon {
+    opacity: 1;
+    transform: scale(1);
 }
 .wizard-progress__step--active .wizard-step-dot {
     border-color: var(--accent);
@@ -117,14 +160,23 @@
     to   { opacity: 1; transform: translateX(0); }
 }
 
+.wizard-step-count {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
 .wizard-nav {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     margin-top: var(--sp-6);
     padding-top: var(--sp-4);
     border-top: 1px solid var(--border);
 }
+.wizard-nav > :first-child { justify-self: start; }
+.wizard-nav > .wizard-step-count { justify-self: center; }
+.wizard-nav > :last-child { justify-self: end; }
 
 /* Review grid */
 .review-grid { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-4); }
@@ -334,3 +386,146 @@ details[open] > .llm-log-summary::before { transform: rotate(90deg); }
     margin-top: var(--sp-6);
 }
 .pagination__info { color: var(--text-muted); font-size: var(--text-sm); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   WIZARD MOTION
+   Steps slide in the direction of travel, fields stagger in behind them, and
+   the progress line fills as steps complete. Everything here is decorative:
+   the reduced-motion block at the end turns all of it off.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.wizard-step {
+    animation: wizardIn .28s cubic-bezier(.22, .61, .36, 1) both;
+}
+.wizard-step--back {
+    animation-name: wizardInBack;
+}
+
+@keyframes wizardIn {
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes wizardInBack {
+    from { opacity: 0; transform: translateX(-24px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Fields cascade in behind the step. --i is set per child in JS. */
+.wizard-step .field,
+.wizard-step .store-picker-grid,
+.wizard-step .review-grid,
+.wizard-step .store-api-banner,
+.wizard-step .wizard-nav {
+    animation: wizardFieldIn .3s ease both;
+    animation-delay: calc(var(--i, 0) * 45ms + 60ms);
+}
+
+@keyframes wizardFieldIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Progress line: a filled bar grows over the grey track as steps complete. */
+.wizard-progress::after {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: calc(10% + 10px);
+    height: 2px;
+    width: calc((100% - 20% - 20px) * var(--wizard-fill, 0));
+    background: var(--accent);
+    z-index: 0;
+    transition: width .35s cubic-bezier(.22, .61, .36, 1);
+}
+
+.wizard-step-dot {
+    position: relative;
+    transition: background .25s, border-color .25s, box-shadow .25s, transform .25s;
+}
+.wizard-progress__step--active .wizard-step-dot {
+    transform: scale(1.15);
+}
+/* The dot carries a checkmark icon that only shows once the step is done. */
+.wizard-step-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wizard-step-dot svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0;
+    transform: scale(.4);
+    transition: opacity .2s ease, transform .2s ease;
+}
+.wizard-progress__step--complete .wizard-step-dot svg {
+    opacity: 1;
+    transform: scale(1);
+    color: var(--bg);
+}
+
+.wizard-progress__step--active .wizard-step-label {
+    animation: wizardFieldIn .25s ease both;
+}
+
+/* Store chips pop when picked and dim when unavailable near the ZIP. */
+.store-chip { transition: border-color .15s, box-shadow .15s, background .15s, transform .15s; }
+.store-chip:hover { transform: translateY(-2px); }
+.store-chip:has(input:checked) { animation: chipPop .22s ease; }
+
+@keyframes chipPop {
+    0%   { transform: scale(1); }
+    45%  { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+.store-chip--unavailable {
+    opacity: .38;
+    filter: grayscale(1);
+}
+.store-chip--unavailable:hover { transform: none; }
+.store-chip--hidden { display: none; }
+
+.store-chip__away {
+    display: block;
+    font-size: .6rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.store-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+    margin-bottom: var(--sp-2);
+    font-size: var(--text-sm);
+}
+.store-filter-bar__zip { max-width: 110px; }
+
+/* Field errors get a shake so a failed Next is felt, not just seen. */
+.field-input--error {
+    animation: fieldShake .3s ease;
+    border-color: var(--danger, #ef4444);
+}
+@keyframes fieldShake {
+    0%, 100% { transform: translateX(0); }
+    25%      { transform: translateX(-4px); }
+    75%      { transform: translateX(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wizard-step,
+    .wizard-step .field,
+    .wizard-step .store-picker-grid,
+    .wizard-step .review-grid,
+    .wizard-step .store-api-banner,
+    .wizard-step .wizard-nav,
+    .wizard-progress__step--active .wizard-step-label,
+    .store-chip:has(input:checked),
+    .field-input--error {
+        animation: none !important;
+    }
+    .wizard-progress::after { transition: none; }
+    .store-chip:hover { transform: none; }
+}

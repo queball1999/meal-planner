@@ -1,4 +1,4 @@
-{{define "title"}}AI Call Log — {{.AppName}}{{end}}
+{{define "title"}}AI Call Log - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "cpu"}} AI Call Log</h1>
@@ -31,6 +31,7 @@
     <details class="llm-log-entry{{if .Error}} llm-log-entry--error{{end}}">
         <summary class="llm-log-summary">
             <span class="llm-log-time">{{.At}}</span>
+            {{if .Provider}}<span class="badge">{{.Provider}}</span>{{end}}
             {{if .Model}}<span class="badge">{{.Model}}</span>{{end}}
             {{if .Error}}
             <span class="badge badge--danger">Error</span>
@@ -69,24 +70,11 @@
     {{end}}
 </div>
 
-<!-- ── Pagination ─────────────────────────────────────────────────────────── -->
-{{if gt .Data.TotalPages 1}}
-<nav class="pagination" aria-label="Log pages">
-    {{if gt .Data.PrevPage 0}}
-    <a href="?q={{.Data.Query}}&status={{.Data.Status}}&page={{.Data.PrevPage}}"
-       class="btn btn-secondary btn--sm">&laquo; Prev</a>
-    {{end}}
-    <span class="pagination__info">Page {{.Data.Page}} of {{.Data.TotalPages}}</span>
-    {{if gt .Data.NextPage 0}}
-    <a href="?q={{.Data.Query}}&status={{.Data.Status}}&page={{.Data.NextPage}}"
-       class="btn btn-secondary btn--sm">Next &raquo;</a>
-    {{end}}
-</nav>
-{{end}}
+{{template "pagination" .Data.Page}}
 
 {{else}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🤖</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "robot"}}</div>
     <h2 class="skeleton-card__title">No AI calls recorded yet</h2>
     <p class="skeleton-card__body">
         Generate a meal plan or use the AI test button in Settings to produce log entries.
