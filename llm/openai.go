@@ -30,7 +30,7 @@ func newOpenAIClient(baseURL, apiKey, model, provider string, maxToks int, temp 
 		maxToks:  maxToks,
 		temp:     temp,
 		provider: provider,
-		httpCli:  &http.Client{Timeout: 120 * time.Second},
+		httpCli:  &http.Client{Timeout: 300 * time.Second}, // 5 min — large local models are slow
 	}
 }
 

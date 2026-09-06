@@ -32,6 +32,9 @@ type Server struct {
 // returns a ready-to-run Server.
 func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string) *Server {
 	chain := buildChain(cfg, store, gen)
+	if gen != nil {
+		gen = llm.NewDebugLogger(gen) // captures every call into llm.GlobalDebugLog
+	}
 	s := &Server{
 		cfg:      cfg,
 		store:    store,

@@ -16,12 +16,13 @@ import (
 type pageData struct {
 	AppName   string
 	Version   string
-	Page      string       // active page slug for nav highlighting
-	User      *db.User     // nil when not logged in
+	Page      string        // active page slug for nav highlighting
+	User      *db.User      // nil when not logged in
 	Household *db.Household // nil when setup not yet completed
 	CSRFField template.HTML // <input type="hidden"> for forms
-	Flash     string       // one-shot flash message (cleared after display)
-	Data      any          // page-specific data
+	CSRFToken string        // raw token for JS fetch calls
+	Flash     string        // one-shot flash message (cleared after display)
+	Data      any           // page-specific data
 }
 
 // render parses layout.html + the named page template and executes them.
@@ -35,6 +36,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		User:      middleware.UserFromCtx(r),
 		Household: middleware.HouseholdFromCtx(r),
 		CSRFField: csrf.TemplateField(r),
+		CSRFToken: csrf.Token(r),
 		Flash:     s.popFlash(w, r),
 		Data:      data,
 	}

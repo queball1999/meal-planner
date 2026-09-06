@@ -61,7 +61,17 @@ pre {
 
 /* ── Media ──────────────────────────────────────────────────────────────── */
 
-img, video, svg { display: block; max-width: 100%; }
+img, video { display: block; max-width: 100%; }
+svg { display: block; max-width: 100%; }
+
+/* Inline icon SVGs produced by {{icon "name"}} — scale with text. */
+svg.icon {
+    display: inline;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    flex-shrink: 0;
+}
 
 /* ── Forms ──────────────────────────────────────────────────────────────── */
 

@@ -1,5 +1,8 @@
 {{define "title"}}Settings — {{.AppName}}{{end}}
 {{define "content"}}
+{{/* Hidden CSRF token so JS fetch calls can attach X-CSRF-Token header */}}
+<input type="hidden" id="csrf-token" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+
 <div class="page-header">
     <h1 class="page-title">{{icon "cog"}} Settings</h1>
     <p class="page-subtitle">Application configuration overview.</p>
@@ -31,7 +34,50 @@
         <code>LLM_API_KEY</code> (or <code>ANTHROPIC_API_KEY</code>) in your <code>.env</code>
         file and restart the server to change the AI provider.
     </p>
+
+    {{if .Data.HasLLM}}
+    {{/* ── Test AI ─────────────────────────────────────────────────── */}}
+    <div style="margin-top:var(--sp-5);border-top:1px solid var(--border);padding-top:var(--sp-5)">
+        <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
+            <button id="testAIBtn" class="btn btn--ghost btn--sm" type="button">
+                {{icon "refresh"}} Test connection
+            </button>
+            <span id="testAIStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
+        </div>
+        <div id="testAIResult" hidden style="margin-top:var(--sp-4)">
+            <div class="llm-debug-entry">
+                <div class="llm-debug-row">
+                    <span class="llm-debug-label">Prompt</span>
+                    <pre class="llm-debug-pre" id="testAIPrompt"></pre>
+                </div>
+                <div class="llm-debug-row" id="testAIResponseRow">
+                    <span class="llm-debug-label">Response</span>
+                    <pre class="llm-debug-pre" id="testAIResponse"></pre>
+                </div>
+                <div class="llm-debug-row" id="testAIErrorRow" hidden>
+                    <span class="llm-debug-label">Error</span>
+                    <pre class="llm-debug-pre llm-debug-pre--error" id="testAIError"></pre>
+                </div>
+                <div class="llm-debug-meta" id="testAIMeta"></div>
+            </div>
+        </div>
+    </div>
+    {{end}}
 </div>
+
+{{/* ── LLM Debug Log ────────────────────────────────────────────────────── */}}
+{{if .Data.HasLLM}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-2)">
+        <h2 class="form-section__title" style="margin:0">{{icon "code"}} LLM Call Log</h2>
+        <button id="llmLogRefresh" class="btn btn--ghost btn--sm" type="button">{{icon "refresh"}} Refresh</button>
+    </div>
+    <p class="field-hint" style="margin-bottom:var(--sp-4)">Last {{`30`}} calls — newest first. Captured in memory; cleared on restart.</p>
+    <div id="llmLogContainer">
+        <p style="color:var(--text-muted);font-size:var(--text-sm)">Loading…</p>
+    </div>
+</div>
+{{end}}
 
 {{/* ── Calendar ─────────────────────────────────────────────────────────── */}}
 <div class="card form-section" style="margin-bottom:1.5rem">
@@ -69,4 +115,121 @@
         <a href="/stores">{{icon "store"}} Grocery stores</a>
     </div>
 </div>
+
+{{if .Data.HasLLM}}
+<script>
+(function () {
+    /* ── Test AI ─────────────────────────────────────────────────────── */
+    var btn = document.getElementById('testAIBtn');
+    var status = document.getElementById('testAIStatus');
+    var result = document.getElementById('testAIResult');
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+
+    function csrfToken() {
+        var f = document.getElementById('csrf-token');
+        return f ? f.value : '';
+    }
+
+    if (btn) {
+        btn.addEventListener('click', function () {
+            btn.disabled = true;
+            status.textContent = 'Calling LLM…';
+            result.hidden = true;
+
+            fetch('/settings/test-ai', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrfToken(),
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                document.getElementById('testAIPrompt').textContent = d.prompt || '';
+                var respRow = document.getElementById('testAIResponseRow');
+                var errRow  = document.getElementById('testAIErrorRow');
+                if (d.ok) {
+                    document.getElementById('testAIResponse').textContent = d.response || '';
+                    respRow.hidden = false;
+                    errRow.hidden  = true;
+                    status.textContent = '✓ ' + d.duration_ms + ' ms';
+                    status.style.color = 'var(--color-success, #22c55e)';
+                } else {
+                    document.getElementById('testAIError').textContent = d.error || 'Unknown error';
+                    respRow.hidden = true;
+                    errRow.hidden  = false;
+                    status.textContent = '✗ Failed';
+                    status.style.color = 'var(--color-danger, #ef4444)';
+                }
+                document.getElementById('testAIMeta').textContent =
+                    (d.model ? 'Model: ' + d.model + '  ' : '') +
+                    'Latency: ' + d.duration_ms + ' ms';
+                result.hidden = false;
+            })
+            .catch(function(err){
+                status.textContent = '✗ ' + err;
+                status.style.color = 'var(--color-danger, #ef4444)';
+            })
+            .finally(function(){ btn.disabled = false; });
+        });
+    }
+
+    /* ── LLM Debug Log ───────────────────────────────────────────────── */
+    var logContainer = document.getElementById('llmLogContainer');
+    var logRefresh   = document.getElementById('llmLogRefresh');
+
+    function truncate(s, n) {
+        return s && s.length > n ? s.slice(0, n) + '…' : (s || '');
+    }
+
+    function renderLog() {
+        if (!logContainer) return;
+        fetch('/admin/llm-debug')
+        .then(function(r){ return r.json(); })
+        .then(function(entries){
+            if (!entries || entries.length === 0) {
+                logContainer.innerHTML = '<p style="color:var(--text-muted);font-size:var(--text-sm)">No calls yet.</p>';
+                return;
+            }
+            var html = entries.map(function(e, i){
+                var isErr = !!e.error;
+                var time  = new Date(e.at).toLocaleTimeString();
+                var border = isErr ? 'var(--color-danger,#ef4444)' : 'var(--accent)';
+                var collapsed = i !== 0; // only first entry expanded by default
+                var detailsAttr = collapsed ? '' : ' open';
+                return '<details class="llm-debug-entry"' + detailsAttr + ' style="border-left-color:' + border + '">' +
+                    '<summary class="llm-debug-summary">' +
+                        '<span class="llm-debug-time">' + time + '</span>' +
+                        (isErr ? '<span class="badge badge-danger">error</span>' : '') +
+                        '<span class="llm-debug-model">' + (e.model || '') + '</span>' +
+                        '<span class="llm-debug-dur">' + e.duration_ms + ' ms</span>' +
+                        (e.input_tokens ? '<span class="llm-debug-toks">' + e.input_tokens + '↑ ' + e.output_tokens + '↓</span>' : '') +
+                        '<span class="llm-debug-snippet">' + truncate(e.prompt, 80) + '</span>' +
+                    '</summary>' +
+                    (e.system ? '<div class="llm-debug-row"><span class="llm-debug-label">System</span><pre class="llm-debug-pre">' + esc(e.system) + '</pre></div>' : '') +
+                    '<div class="llm-debug-row"><span class="llm-debug-label">Prompt</span><pre class="llm-debug-pre">' + esc(e.prompt) + '</pre></div>' +
+                    (e.response ? '<div class="llm-debug-row"><span class="llm-debug-label">Response</span><pre class="llm-debug-pre">' + esc(e.response) + '</pre></div>' : '') +
+                    (e.error ? '<div class="llm-debug-row"><span class="llm-debug-label">Error</span><pre class="llm-debug-pre llm-debug-pre--error">' + esc(e.error) + '</pre></div>' : '') +
+                    '</details>';
+            }).join('');
+            logContainer.innerHTML = html;
+        })
+        .catch(function(err){
+            logContainer.innerHTML = '<p style="color:var(--color-danger)">Failed to load log: ' + esc(String(err)) + '</p>';
+        });
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;');
+    }
+
+    if (logRefresh) logRefresh.addEventListener('click', renderLog);
+    renderLog(); // load on page open
+}());
+</script>
+{{end}}
 {{end}}

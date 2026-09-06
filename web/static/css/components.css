@@ -452,3 +452,94 @@
     .user-menu__name { display: none; }
     .auth-wrap { padding: var(--sp-6) var(--sp-4); align-items: flex-start; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LLM DEBUG LOG
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.llm-debug-entry {
+    border-left: 3px solid var(--accent);
+    margin-bottom: var(--sp-3);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.llm-debug-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+    padding: var(--sp-3) var(--sp-4);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    list-style: none;
+    user-select: none;
+}
+.llm-debug-summary::-webkit-details-marker { display: none; }
+.llm-debug-summary::before {
+    content: '▶';
+    font-size: 0.65em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: transform 0.15s;
+}
+details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
+
+.llm-debug-time  { color: var(--text-muted); white-space: nowrap; }
+.llm-debug-model { color: var(--accent); font-family: var(--font-mono); font-size: 0.85em; }
+.llm-debug-dur   { color: var(--text-muted); white-space: nowrap; }
+.llm-debug-toks  { color: var(--text-muted); font-size: 0.8em; }
+.llm-debug-snippet {
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+}
+
+.llm-debug-row {
+    padding: var(--sp-2) var(--sp-4);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+.llm-debug-label {
+    font-size: 0.7em;
+    font-weight: var(--weight-semi);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.llm-debug-pre {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--sp-2) var(--sp-3);
+    margin: 0;
+}
+
+.llm-debug-pre--error {
+    border-color: var(--color-danger, #ef4444);
+    color: var(--color-danger, #ef4444);
+}
+
+.llm-debug-meta {
+    padding: var(--sp-2) var(--sp-4);
+    font-size: 0.75em;
+    color: var(--text-muted);
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+}

@@ -13,7 +13,7 @@ func iconFunc(name string) template.HTML {
 		return template.HTML(`<!-- icon not found: ` + name + ` -->`)
 	}
 	return template.HTML(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">` +
+		`<svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">` +
 			`<path d="` + path + `"/>` +
 			`</svg>`,
 	)
@@ -87,4 +87,25 @@ var mdiPaths = map[string]string{
 
 	// mdi-chef-hat (plan / AI generation)
 	"chef-hat": "M16,14L18,8.5A6,6 0 0,0 12,3A6,6 0 0,0 6,8.5L8,14H16M12,1A8,8 0 0,1 20,9C20,11.38 18.81,13.47 17,14.74V17A1,1 0 0,1 16,18H8A1,1 0 0,1 7,17V14.74C5.19,13.47 4,11.38 4,9A8,8 0 0,1 12,1M8,20H16V22H8V20Z",
+
+	// mdi-cpu-64-bit (AI/LLM provider)
+	"cpu": "M9,3V4H4V9H3V4A1,1 0 0,1 4,3H9M15,3H20A1,1 0 0,1 21,4V9H20V4H15V3M21,15V20A1,1 0 0,1 20,21H15V20H20V15H21M9,21H4A1,1 0 0,1 3,20V15H4V20H9V21M7,7H17V17H7V7M9,9V15H15V9H9M11,11H13V13H11V11Z",
+
+	// mdi-code-tags (scraper/code)
+	"code": "M14.6,16.6L19.2,12L14.6,7.4L16,6L22,12L16,18L14.6,16.6M9.4,16.6L4.8,12L9.4,7.4L8,6L2,12L8,18L9.4,16.6Z",
+
+	// mdi-barcode (barcode scan)
+	"barcode": "M2,6H4V18H2V6M5,6H6V18H5V6M7,6H10V18H7V6M11,6H12V18H11V6M13,6H16V18H13V6M17,6H18V18H17V6M19,6H22V18H19V6Z",
+
+	// mdi-fridge-outline (pantry)
+	"fridge-outline": "M18,18H6V6H18V18M18,4H6A2,2 0 0,0 4,6V18A2,2 0 0,0 6,20H18A2,2 0 0,0 20,18V6A2,2 0 0,0 18,4M8,10H10V14H8V10M8,6H10V9H8V6Z",
+
+	// mdi-filter-outline
+	"filter": "M15,19.88C15.04,20.18 14.94,20.5 14.71,20.71C14.32,21.1 13.69,21.1 13.3,20.71L9.29,16.7C9.06,16.47 8.96,16.16 9,15.87V10.75L4.21,4.62C3.87,4.19 3.95,3.56 4.38,3.22C4.57,3.08 4.78,3 5,3V3H19V3C19.22,3 19.43,3.08 19.62,3.22C20.05,3.56 20.13,4.19 19.79,4.62L15,10.75V19.88M7.04,5L11,10.06V15.58L13,17.58V10.05L16.96,5H7.04Z",
+
+	// mdi-eye-outline (view/detail)
+	"eye": "M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,19.5 12,4.5Z",
+
+	// mdi-tag-outline (prices / tags)
+	"tag": "M21.41,11.58L12.41,2.58C12.05,2.22 11.55,2 11,2H4C2.89,2 2,2.89 2,4V11C2,11.55 2.22,12.05 2.59,12.42L11.59,21.42C11.95,21.78 12.45,22 13,22C13.55,22 14.05,21.78 14.41,21.41L21.41,14.41C21.78,14.05 22,13.55 22,13C22,12.45 21.77,11.94 21.41,11.58M13,20L4,11V4H11L20,13M6.5,5A1.5,1.5 0 0,1 8,6.5A1.5,1.5 0 0,1 6.5,8A1.5,1.5 0 0,1 5,6.5A1.5,1.5 0 0,1 6.5,5Z",
 }
