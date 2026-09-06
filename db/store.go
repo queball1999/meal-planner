@@ -174,4 +174,15 @@ type Store interface {
 	// ── Shopping list — pantry flag (§5.4) ───────────────────────────────────
 
 	MarkShoppingListItemInPantry(ctx context.Context, id int64, inPantry bool) error
+
+	// ── Recipe catalog (§5.7) ─────────────────────────────────────────────────
+
+	CreateCatalogRecipe(ctx context.Context, p CreateCatalogRecipeParams) (*CatalogRecipe, error)
+	GetCatalogRecipe(ctx context.Context, id int64) (*CatalogRecipe, error)
+	ListCatalogRecipes(ctx context.Context, householdID int64) ([]*CatalogRecipe, error)
+	DeleteCatalogRecipe(ctx context.Context, id int64) error
+	AddCatalogRecipeIngredient(ctx context.Context, catalogRecipeID int64, name, quantity, unit string, position int) error
+	ListCatalogRecipeIngredients(ctx context.Context, catalogRecipeID int64) ([]*CatalogRecipeIngredient, error)
+	AddCatalogRecipeStep(ctx context.Context, catalogRecipeID int64, position int, text string) error
+	ListCatalogRecipeSteps(ctx context.Context, catalogRecipeID int64) ([]*CatalogRecipeStep, error)
 }

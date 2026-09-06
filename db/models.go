@@ -392,6 +392,57 @@ type CreateShoppingListItemParams struct {
 	Confidence         string
 }
 
+// ── Phase 5.7 — Recipe catalog (§5.7, §10.1) ─────────────────────────────────
+
+// CatalogRecipe is one entry in the household's recipe catalog (§5.7).
+type CatalogRecipe struct {
+	ID          int64
+	HouseholdID int64
+	Title       string
+	SourceKind  string // "ai" | "imported" | "manual"
+	SourceURL   string
+	SourceSite  string
+	ImagePath   string // relative path under RECIPE_IMAGE_DIR; "" = no image
+	Servings    int
+	PrepMinutes int
+	CookMinutes int
+	Tags        []string
+	CreatedAt   time.Time
+}
+
+// CatalogRecipeIngredient is one ingredient line in a catalog recipe.
+type CatalogRecipeIngredient struct {
+	ID               int64
+	CatalogRecipeID  int64
+	Name             string
+	Quantity         string
+	Unit             string
+	NormalizedTerm   string
+	Position         int
+}
+
+// CatalogRecipeStep is one instruction step in a catalog recipe.
+type CatalogRecipeStep struct {
+	ID              int64
+	CatalogRecipeID int64
+	Position        int
+	Text            string
+}
+
+// CreateCatalogRecipeParams bundles inputs for creating a catalog recipe.
+type CreateCatalogRecipeParams struct {
+	HouseholdID int64
+	Title       string
+	SourceKind  string
+	SourceURL   string
+	SourceSite  string
+	ImagePath   string
+	Servings    int
+	PrepMinutes int
+	CookMinutes int
+	Tags        []string
+}
+
 // ── Phase 5.5 — Spend stats (§5.5) ───────────────────────────────────────────
 
 // SpendStats aggregates spend and usage numbers over a date range (§5.5).
