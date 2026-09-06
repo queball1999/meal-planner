@@ -1,4 +1,4 @@
-{{define "title"}}Manual Prices — {{.AppName}}{{end}}
+{{define "title"}}Manual Prices - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "tag-multiple"}} Manual Prices</h1>
@@ -7,11 +7,11 @@
         (§6.2 ManualProvider). Prices are scoped to your household's ZIP code.
     </p>
 </div>
+{{template "settingsTabs" .}}
 
-{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
-
-<div class="card form-section">
-    <h2 class="form-section__title">Getting started</h2>
+<div class="page-stack">
+<div class="card">
+    <h2 class="form-section__title" style="margin-top:0">Getting started</h2>
     <ol class="help-steps">
         <li>Pick a store from the list below.</li>
         <li>Enter the ingredient name as it appears in a recipe (e.g. "chicken breast").</li>
@@ -89,17 +89,19 @@
             {{end}}
         </tbody>
     </table>
+    {{template "pagination" .Page}}
     {{else}}
-    <p class="form-section__desc">No manual prices yet for this store.</p>
+    <p class="empty-note">No manual prices yet for this store.</p>
     {{end}}
 </section>
 {{else}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🏪</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "store"}}</div>
     <h2 class="skeleton-card__title">No stores configured</h2>
     <p class="skeleton-card__body">
         <a href="/stores">Add grocery stores</a> first, then come back to enter manual prices.
     </p>
 </div>
 {{end}}
+</div>
 {{end}}

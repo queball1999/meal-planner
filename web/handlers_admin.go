@@ -23,6 +23,9 @@ type manualPriceRow struct {
 type storeWithPrices struct {
 	Store  *db.GroceryStore
 	Prices []manualPriceRow
+	// Page scopes its parameter to this store (page_<id>), so paging one
+	// store's prices leaves every other table on the page where it was.
+	Page Pagination
 }
 
 func (s *Server) handleAdminPricesPage(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +47,8 @@ func (s *Server) handleAdminPricesPage(w http.ResponseWriter, r *http.Request) {
 				PriceLabel:  fmt.Sprintf("$%.2f", float64(p.PriceCents)/100),
 			})
 		}
-		rows = append(rows, storeWithPrices{Store: gs, Prices: priceRows})
+		priceRows, page := paginateNamed(r, priceRows, fmt.Sprintf("page_%d", gs.ID))
+		rows = append(rows, storeWithPrices{Store: gs, Prices: priceRows, Page: page})
 	}
 	s.render(w, r, "admin_prices", adminPricesPageData{Stores: rows})
 }
@@ -58,14 +62,14 @@ func (s *Server) handleAdminPriceCreate(w http.ResponseWriter, r *http.Request) 
 
 	storeID, err := strconv.ParseInt(r.FormValue("store_id"), 10, 64)
 	if err != nil {
-		s.setFlash(w,"Invalid store.")
+		s.setNotify(w, NotifyDanger, "Invalid store.")
 		http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
 		return
 	}
 
 	rawName := strings.TrimSpace(r.FormValue("name"))
 	if rawName == "" {
-		s.setFlash(w,"Ingredient name is required.")
+		s.setNotify(w, NotifyDanger, "Ingredient name is required.")
 		http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
 		return
 	}
@@ -73,7 +77,7 @@ func (s *Server) handleAdminPriceCreate(w http.ResponseWriter, r *http.Request) 
 	dollarStr := strings.TrimSpace(r.FormValue("price_dollars"))
 	dollars, err := strconv.ParseFloat(dollarStr, 64)
 	if err != nil || dollars <= 0 {
-		s.setFlash(w,"Invalid price — enter a positive dollar amount.")
+		s.setNotify(w, NotifyDanger, "Invalid price - enter a positive dollar amount.")
 		http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
 		return
 	}
@@ -95,9 +99,9 @@ func (s *Server) handleAdminPriceCreate(w http.ResponseWriter, r *http.Request) 
 		UpdatedBy:      middleware.UserFromCtx(r).Username,
 	})
 	if err != nil {
-		s.setFlash(w,fmt.Sprintf("Error saving price: %v", err))
+		s.setNotify(w, NotifyDanger, fmt.Sprintf("Error saving price: %v", err))
 	} else {
-		s.setFlash(w,fmt.Sprintf("Price for %q saved.", rawName))
+		s.setNotify(w, NotifySuccess, fmt.Sprintf("Price for %q saved.", rawName))
 	}
 	http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
 }

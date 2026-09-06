@@ -84,7 +84,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 
 	if p == nil || p.Status == "generating" || p.Status == "error" {
 		if p != nil && p.Status == "error" {
-			s.setFlash(w, "The last plan generation failed. Check Settings → AI Logs for details, then regenerate.")
+			s.setNotify(w, NotifyDanger, "The last plan generation failed. Check Settings → AI Logs for details, then regenerate.")
 		}
 		s.render(w, r, "plan", planPageData{HasPlan: false, HasLLM: s.gen != nil})
 		return
@@ -183,8 +183,10 @@ func (s *Server) handlePlanHistory(w http.ResponseWriter, r *http.Request) {
 		Plans []*db.Plan
 		From  string
 		To    string
+		Page  Pagination
 	}
-	s.render(w, r, "history", historyPageData{Plans: plans, From: from, To: to})
+	plans, page := paginate(r, plans)
+	s.render(w, r, "history", historyPageData{Plans: plans, From: from, To: to, Page: page})
 }
 
 // handlePlanGenerate starts a background generation job, then redirects to
@@ -225,7 +227,7 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if !started {
-		// Already running — just redirect to the progress page.
+		// Already running - just redirect to the progress page.
 	}
 	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 }
@@ -254,7 +256,7 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	hcStr := r.FormValue("headcount")
 	headcount, err := strconv.Atoi(hcStr)
 	if err != nil || headcount < 1 {
-		s.setFlash(w, "Headcount must be at least 1.")
+		s.setNotify(w, NotifyDanger, "Headcount must be at least 1.")
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
 		return
 	}
@@ -283,7 +285,7 @@ func (s *Server) handlePlanGenerateStatus(w http.ResponseWriter, r *http.Request
 
 	job := s.jobs.Get(hh.ID)
 	if job == nil {
-		// No active job — send a synthetic done so the client can redirect.
+		// No active job - send a synthetic done so the client can redirect.
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
