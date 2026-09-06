@@ -65,6 +65,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /recipes/import", requireAuth(http.HandlerFunc(s.handleRecipeImportPage)))
 	mux.Handle("POST /recipes/import", requireAuth(http.HandlerFunc(s.handleRecipeImport)))
 	mux.Handle("POST /recipes/import/manual", requireAuth(http.HandlerFunc(s.handleRecipeImportManual)))
+	mux.Handle("GET /recipes", requireAuth(http.HandlerFunc(s.handleRecipesPage)))
+	mux.Handle("GET /recipes/{id}", requireAuth(http.HandlerFunc(s.handleRecipeDetail)))
+	mux.Handle("POST /recipes/{id}/delete", requireAuth(http.HandlerFunc(s.handleRecipeDelete)))
+	mux.Handle("GET /recipe-images/{name}", requireAuth(http.HandlerFunc(s.handleRecipeImageServe)))
 
 	mux.Handle("GET /admin/scrape", requireAuth(http.HandlerFunc(s.handleScrapeConfigPage)))
 	mux.Handle("POST /admin/scrape/{storeID}/save", requireAuth(http.HandlerFunc(s.handleScrapeConfigSave)))

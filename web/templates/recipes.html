@@ -1,0 +1,72 @@
+{{define "title"}}Recipes — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+        <h1 class="page-title">{{icon "fork"}} Recipes</h1>
+        <a href="/recipes/import" class="btn btn--primary">{{icon "plus"}} Add recipe</a>
+    </div>
+    <p class="page-subtitle">Your saved recipe catalog.</p>
+</div>
+
+{{if .Flash}}<div class="alert alert--info" role="alert">{{.Flash}}</div>{{end}}
+
+{{if .Data.Recipes}}
+<div class="card">
+    <table class="data-table" aria-label="Recipe catalog">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Source</th>
+                <th>Servings</th>
+                <th>Time</th>
+                <th>Tags</th>
+                <th>Added</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Data.Recipes}}
+            <tr>
+                <td><a href="/recipes/{{.ID}}">{{.Title}}</a></td>
+                <td>
+                    {{if eq .SourceKind "imported"}}
+                        {{if .SourceSite}}<span title="{{.SourceURL}}">{{.SourceSite}}</span>{{else}}Web import{{end}}
+                    {{else if eq .SourceKind "manual"}}
+                        Hand-entered
+                    {{else}}
+                        AI-generated
+                    {{end}}
+                </td>
+                <td>{{if .Servings}}{{.Servings}}{{else}}—{{end}}</td>
+                <td>
+                    {{if or .PrepMinutes .CookMinutes}}
+                        {{if .PrepMinutes}}{{.PrepMinutes}}m prep{{end}}
+                        {{if and .PrepMinutes .CookMinutes}} + {{end}}
+                        {{if .CookMinutes}}{{.CookMinutes}}m cook{{end}}
+                    {{else}}—{{end}}
+                </td>
+                <td>
+                    {{range .Tags}}<span class="badge">{{.}}</span> {{end}}
+                </td>
+                <td>{{.CreatedAt.Format "Jan 2"}}</td>
+                <td>
+                    <a href="/recipes/{{.ID}}" class="btn btn--ghost btn--sm" aria-label="View {{.Title}}">
+                        {{icon "eye"}}
+                    </a>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{else}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">📖</div>
+    <h2 class="skeleton-card__title">No recipes yet</h2>
+    <p class="skeleton-card__body">
+        Import a recipe from the web or enter one by hand.
+    </p>
+    <a href="/recipes/import" class="btn btn--primary" style="margin-top:1rem">{{icon "plus"}} Add recipe</a>
+</div>
+{{end}}
+{{end}}

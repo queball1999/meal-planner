@@ -1,0 +1,74 @@
+{{define "title"}}{{.Data.Recipe.Title}} — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+        <div>
+            <nav aria-label="Breadcrumb" style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.25rem">
+                <a href="/recipes">Recipes</a> &rsaquo; {{.Data.Recipe.Title}}
+            </nav>
+            <h1 class="page-title" style="margin-bottom:0.25rem">{{.Data.Recipe.Title}}</h1>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;font-size:0.85rem;color:var(--color-text-muted)">
+                {{if .Data.Recipe.Servings}}<span>{{.Data.Recipe.Servings}} servings</span>{{end}}
+                {{if .Data.Recipe.PrepMinutes}}<span>· {{.Data.Recipe.PrepMinutes}}m prep</span>{{end}}
+                {{if .Data.Recipe.CookMinutes}}<span>· {{.Data.Recipe.CookMinutes}}m cook</span>{{end}}
+                {{if .Data.Recipe.SourceSite}}<span>· from <a href="{{.Data.Recipe.SourceURL}}" target="_blank" rel="noopener noreferrer">{{.Data.Recipe.SourceSite}}</a></span>{{end}}
+            </div>
+            {{if .Data.Recipe.Tags}}
+            <div style="margin-top:0.5rem">
+                {{range .Data.Recipe.Tags}}<span class="badge">{{.}}</span> {{end}}
+            </div>
+            {{end}}
+        </div>
+        {{if .Data.Recipe.ImagePath}}
+        <img src="/recipe-images/{{.Data.Recipe.ImagePath}}"
+             alt="{{.Data.Recipe.Title}}"
+             style="width:180px;height:120px;object-fit:cover;border-radius:var(--radius-md);flex-shrink:0">
+        {{end}}
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 2fr;gap:1.5rem;align-items:start">
+
+    <div class="card" style="padding:1rem">
+        <h2 style="font-size:1rem;margin-bottom:0.75rem">Ingredients</h2>
+        {{if .Data.Ingredients}}
+        <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem">
+            {{range .Data.Ingredients}}
+            <li style="display:flex;gap:0.4rem">
+                <span style="color:var(--color-text-muted);min-width:4rem;text-align:right;flex-shrink:0">
+                    {{if .Quantity}}{{.Quantity}}{{end}}{{if .Unit}} {{.Unit}}{{end}}
+                </span>
+                <span>{{.Name}}</span>
+            </li>
+            {{end}}
+        </ul>
+        {{else}}
+        <p style="color:var(--color-text-muted);font-size:0.875rem">No ingredients recorded.</p>
+        {{end}}
+    </div>
+
+    <div class="card" style="padding:1rem">
+        <h2 style="font-size:1rem;margin-bottom:0.75rem">Instructions</h2>
+        {{if .Data.Steps}}
+        <ol style="padding-left:1.25rem;margin:0;display:flex;flex-direction:column;gap:0.75rem">
+            {{range .Data.Steps}}
+            <li>{{.Text}}</li>
+            {{end}}
+        </ol>
+        {{else}}
+        <p style="color:var(--color-text-muted);font-size:0.875rem">No instructions recorded.</p>
+        {{end}}
+    </div>
+
+</div>
+
+<div style="margin-top:1.5rem;display:flex;gap:0.75rem;align-items:center">
+    <a href="/recipes" class="btn btn--ghost">{{icon "arrow-left"}} Back</a>
+
+    <form method="POST" action="/recipes/{{.Data.Recipe.ID}}/delete"
+          onsubmit="return confirm('Delete this recipe? This cannot be undone.')">
+        {{.CSRFField}}
+        <button type="submit" class="btn btn--ghost btn--danger">{{icon "delete"}} Delete</button>
+    </form>
+</div>
+{{end}}
