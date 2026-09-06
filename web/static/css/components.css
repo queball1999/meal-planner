@@ -285,6 +285,24 @@
     justify-content: center;
 }
 
+/* Shimmer loading rows — used where async content is pending */
+.skeleton-row {
+    height: 20px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg,
+        var(--border) 25%,
+        var(--surface-raised) 50%,
+        var(--border) 75%
+    );
+    background-size: 800px 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .skeleton-row {
+        animation: shimmer 1.4s infinite linear;
+    }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    FORM FIELDS
    ══════════════════════════════════════════════════════════════════════════ */
