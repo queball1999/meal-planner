@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/csrf"
 
@@ -39,7 +40,15 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	}
 
 	tmpl, err := template.New("").
-		Funcs(template.FuncMap{"icon": iconFunc}).
+		Funcs(template.FuncMap{
+			"icon": iconFunc,
+			"divf": func(a int64, b float64) float64 { return float64(a) / b },
+			"fmtWeekRange": func(start, end string) string {
+				s, _ := time.Parse("2006-01-02", start)
+				e, _ := time.Parse("2006-01-02", end)
+				return s.Format("Jan 2") + " – " + e.Format("Jan 2")
+			},
+		}).
 		ParseFS(templateFS,
 			"templates/layout.html",
 			"templates/"+name+".html",

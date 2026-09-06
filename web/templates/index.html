@@ -1,25 +1,138 @@
+{{define "title"}}Dashboard — {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
-    <h1 class="page-title">Dashboard</h1>
+    <h1 class="page-title">{{icon "view-dashboard"}} Dashboard</h1>
     <p class="page-subtitle">Your weekly meal plan at a glance.</p>
 </div>
 
-<div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🍳</div>
-    <h2 class="skeleton-card__title">Go Eat is ready.</h2>
-    <p class="skeleton-card__body">
-        Auth, preferences, and the LLM layer are in place.<br>
-        Set your <a href="/preferences">dietary preferences</a> and
-        <a href="/stores">grocery stores</a> to get started.
-        Meal generation, pricing, and outputs come next.
-    </p>
-    <div class="skeleton-card__phases" aria-label="Build progress">
-        <span class="badge badge-success">Phase 0 ✓ Skeleton</span>
-        <span class="badge badge-success">Phase 1 ✓ Auth &amp; household</span>
-        <span class="badge badge-success">Phase 2 ✓ Preferences</span>
-        <span class="badge badge-muted">Phase 3 AI generation</span>
-        <span class="badge badge-muted">Phase 4 Pricing engine</span>
-        <span class="badge badge-muted">Phase 5 Outputs</span>
+{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
+
+{{$d := .Data}}
+
+{{/* ── Plan status card ─────────────────────────────────────────────────── */}}
+<div class="card" style="margin-bottom:1.5rem">
+    {{if $d.HasPlan}}
+        {{if eq $d.PlanStatus "generating"}}
+        <div class="plan-status plan-status--generating">
+            <span class="plan-status__icon" aria-hidden="true">{{icon "autorenew"}}</span>
+            <div>
+                <strong>Generating your plan…</strong>
+                <p class="plan-status__sub">This usually takes under a minute.</p>
+            </div>
+            <a href="/plan/generate" class="btn btn--outline btn--sm">View progress</a>
+        </div>
+        {{else}}
+        <div class="plan-status">
+            <div class="plan-status__info">
+                <strong>This week: {{$d.WeekLabel}}</strong>
+                {{if $d.TotalLabel}}
+                <div class="plan-budget-meter{{if $d.OverBudget}} plan-budget-meter--over{{end}}"
+                     style="margin-top:.5rem">
+                    <span class="plan-budget-meter__total">
+                        {{if $d.OverBudget}}{{icon "alert"}}{{end}}
+                        {{$d.TotalLabel}} estimated
+                    </span>
+                    <span class="plan-budget-meter__budget">of {{$d.BudgetLabel}} budget</span>
+                </div>
+                {{else}}
+                <p class="plan-status__sub">Plan ready — not yet priced.</p>
+                {{end}}
+            </div>
+            <div class="plan-status__actions">
+                <a href="/plan" class="btn btn--primary btn--sm">{{icon "calendar-week"}} View plan</a>
+                {{if $d.HasLLM}}
+                <form method="POST" action="/plan/generate" style="display:inline">
+                    {{$.CSRFField}}
+                    <button type="submit" class="btn btn--outline btn--sm">
+                        {{icon "autorenew"}} Regenerate
+                    </button>
+                </form>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+    {{else}}
+    <div class="skeleton-card">
+        <div class="skeleton-card__icon" aria-hidden="true">🍳</div>
+        <h2 class="skeleton-card__title">No plan yet this week</h2>
+        <p class="skeleton-card__body">
+            Set your <a href="/preferences">dietary preferences</a> and
+            <a href="/stores">grocery stores</a>, then generate your first plan.
+        </p>
+        {{if $d.HasLLM}}
+        <form method="POST" action="/plan/generate">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn--primary">
+                {{icon "chef-hat"}} Plan my week
+            </button>
+        </form>
+        {{else}}
+        <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
+        {{end}}
     </div>
+    {{end}}
+</div>
+
+{{/* ── This-week stats strip ────────────────────────────────────────────── */}}
+<div class="stats-strip" style="margin-bottom:1.5rem">
+    <div class="stats-chip">
+        <span class="stats-chip__label">This week spent</span>
+        {{if $d.StatsSpent}}
+        <span class="stats-chip__value {{if $d.StatsOverBudget}}badge--danger{{else}}badge--success{{end}}">
+            {{$d.StatsSpent}}
+        </span>
+        {{else}}
+        <span class="stats-chip__value">—</span>
+        {{end}}
+    </div>
+    <div class="stats-chip">
+        <span class="stats-chip__label">Meals this week</span>
+        <span class="stats-chip__value">{{$d.StatsMeals}}</span>
+    </div>
+    <div class="stats-chip">
+        <span class="stats-chip__label">Plans generated</span>
+        <span class="stats-chip__value">{{$d.StatsPlans}}</span>
+    </div>
+</div>
+
+{{/* ── Plan history table ───────────────────────────────────────────────── */}}
+<div class="card">
+    <div class="card__header" style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem .5rem">
+        <h2 class="card__title" style="margin:0;font-size:1rem">{{icon "history"}} Plan history</h2>
+        <a href="/plan/history" class="btn btn--ghost btn--sm">View all</a>
+    </div>
+
+    {{if $d.RecentPlans}}
+    <table class="data-table" aria-label="Recent meal plans">
+        <thead>
+            <tr>
+                <th>Week</th>
+                <th>Status</th>
+                <th>Spent</th>
+                <th>Budget</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range $d.RecentPlans}}
+            <tr>
+                <td>{{fmtWeekRange .WeekStart .WeekEnd}}</td>
+                <td>
+                    {{if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
+                    {{else if eq .Status "generating"}}<span class="badge badge--muted">Generating</span>
+                    {{else}}<span class="badge badge--muted">{{.Status}}</span>{{end}}
+                </td>
+                <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}}—{{end}}</td>
+                <td>${{printf "%.0f" (divf .BudgetCents 100.0)}}</td>
+                <td><a href="/plan?week={{.WeekStart}}" class="btn btn--ghost btn--sm">View</a></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="form-section__desc" style="padding:1rem">
+        No past plans yet — generate your first plan above.
+    </p>
+    {{end}}
 </div>
 {{end}}
