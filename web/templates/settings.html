@@ -1,0 +1,72 @@
+{{define "title"}}Settings — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "cog"}} Settings</h1>
+    <p class="page-subtitle">Application configuration overview.</p>
+</div>
+
+{{if .Flash}}<div class="flash flash-info" role="alert">{{.Flash}}</div>{{end}}
+
+{{/* ── AI Provider ──────────────────────────────────────────────────────── */}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "cpu"}} AI Provider</h2>
+    <div style="display:grid;grid-template-columns:max-content 1fr;gap:var(--sp-2) var(--sp-6);align-items:center;font-size:var(--text-sm)">
+        <span style="color:var(--text-muted)">Status</span>
+        <span>
+            {{if .Data.HasLLM}}
+            <span class="badge badge-success">Connected</span>
+            {{else}}
+            <span class="badge badge-muted">Not configured</span>
+            {{end}}
+        </span>
+
+        <span style="color:var(--text-muted)">Provider</span>
+        <code>{{if .Data.Provider}}{{.Data.Provider}}{{else}}—{{end}}</code>
+
+        <span style="color:var(--text-muted)">Model</span>
+        <code>{{if .Data.Model}}{{.Data.Model}}{{else}}—{{end}}</code>
+    </div>
+    <p class="field-hint" style="margin-top:var(--sp-4)">
+        Set <code>PROVIDER</code>, <code>LLM_API_URL</code>, <code>LLM_MODEL</code>, and
+        <code>LLM_API_KEY</code> (or <code>ANTHROPIC_API_KEY</code>) in your <code>.env</code>
+        file and restart the server to change the AI provider.
+    </p>
+</div>
+
+{{/* ── Calendar ─────────────────────────────────────────────────────────── */}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "calendar"}} Calendar</h2>
+    <div style="display:grid;grid-template-columns:max-content 1fr;gap:var(--sp-2) var(--sp-6);align-items:center;font-size:var(--text-sm)">
+        <span style="color:var(--text-muted)">Week starts on</span>
+        <span style="text-transform:capitalize">{{.Data.WeekStartDay}}</span>
+    </div>
+    <p class="field-hint" style="margin-top:var(--sp-4)">
+        Set <code>WEEK_START_DAY=monday</code> or <code>WEEK_START_DAY=sunday</code> in
+        <code>.env</code> and restart to change.
+    </p>
+</div>
+
+{{/* ── Storage ──────────────────────────────────────────────────────────── */}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "archive"}} Storage</h2>
+    <div style="display:grid;grid-template-columns:max-content 1fr;gap:var(--sp-2) var(--sp-6);align-items:center;font-size:var(--text-sm)">
+        <span style="color:var(--text-muted)">Recipe images</span>
+        <code>{{if .Data.ImageDir}}{{.Data.ImageDir}}{{else}}not configured{{end}}</code>
+    </div>
+    <p class="field-hint" style="margin-top:var(--sp-4)">
+        Set <code>RECIPE_IMAGE_DIR</code> in <code>.env</code>. The directory must be
+        writable and is served at <code>/recipe-images/</code>.
+    </p>
+</div>
+
+{{/* ── Quick links ──────────────────────────────────────────────────────── */}}
+<div class="card form-section">
+    <h2 class="form-section__title">Quick links</h2>
+    <div style="display:flex;flex-direction:column;gap:var(--sp-2);font-size:var(--text-sm)">
+        <a href="/preferences">{{icon "cog"}} Diet preferences, cuisines &amp; slot hints</a>
+        <a href="/admin/prices">{{icon "tag"}} Manual price management</a>
+        <a href="/admin/scrape">{{icon "code"}} Scraper configuration</a>
+        <a href="/stores">{{icon "store"}} Grocery stores</a>
+    </div>
+</div>
+{{end}}
