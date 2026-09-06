@@ -46,7 +46,7 @@ so the scrape-config tool and pricing scraper also benefit.
 ```
 safefetch: add SSRF-guarded HTTP fetch helper
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -83,7 +83,7 @@ type RecipeIngredient struct { Name, Quantity, Unit string }
 ```
 scrape: add Recipe parser (JSON-LD, microdata, OpenGraph)
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS catalog_recipe_steps (
 ```
 db: add catalog recipe migration
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -171,7 +171,7 @@ Store interface additions:
 ```
 db: add catalog recipe models, store interface, and query implementations
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -200,7 +200,7 @@ Image licensing note (§16.6): images are stored with `source_url` and
 ```
 recipes: add web import orchestration with image download
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -223,7 +223,7 @@ showing the parsed fields after a failed/partial parse.
 ```
 web: add recipe import page
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -266,7 +266,7 @@ GET  /recipe-images/{path...}
 ```
 web: add recipe catalog and detail pages
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -276,7 +276,7 @@ Files: `spec/commit-plan-phase5.7-09-05-26.md` (this file, all ✅)
 ```
 spec: mark all Phase 5.7 commits complete
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
