@@ -25,7 +25,7 @@ Add to `Store` interface and implement:
 ```
 db: add plan history and range queries
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -50,7 +50,7 @@ New interface method + implementation:
 ```
 db: add spend stats query
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -70,7 +70,7 @@ Files: `config/config.go`, `plan/week.go` (new)
 ```
 config: add WEEK_START_DAY setting and canonical WeekBounds helper
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -100,7 +100,7 @@ renders the empty state instead of a 500.
 ```
 web: dashboard handler with spend stats and plan history
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -129,7 +129,7 @@ Replace the build-progress placeholder with a real dashboard layout:
 ```
 web: dashboard template — stats, history, plan CTA
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -159,7 +159,7 @@ GET /plan/history
 ```
 web: plan history page and read-only past-plan calendar view
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -169,7 +169,7 @@ Files: `spec/commit-plan-phase5.5-09-05-26.md` (this file, all ✅)
 ```
 spec: mark all Phase 5.5 commits complete
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
