@@ -63,7 +63,7 @@ Implementations in `db/search.go` (new) using parameterized LIKE.
 ```
 search: add unified search package with exact/partial/fuzzy matching
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -93,7 +93,7 @@ Also add the header search bar to `layout.html`: a collapsible `<input>` with
 ```
 web: add /search handler, results template, and header search bar
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -136,7 +136,7 @@ FilterPantryItems(ctx context.Context, householdID int64, q string) ([]*PantryIt
 ```
 web: add server-side filters for recipe catalog and pantry pages
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -189,7 +189,7 @@ Implementations in `db/pantry.go` (extend) and `db/prices.go` (extend).
 ```
 barcode: add Lookup package and /scan/{code} resolve-and-redirect handler
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -240,7 +240,7 @@ Route: `POST /pantry/scan`
 ```
 web: add barcode intake to pantry page (HID keystroke + camera scanning)
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -250,7 +250,7 @@ Files: `spec/commit-plan-phase5.8-09-05-26.md` (this file, all ✅)
 ```
 spec: mark all Phase 5.8 commits complete
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
