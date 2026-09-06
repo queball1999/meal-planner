@@ -94,6 +94,11 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return plan.ID, fmt.Errorf("persist plan: %w", err)
 	}
 
+	// Mark leftover slots based on cooked-portions surplus (§5.6).
+	if err := PlanLeftovers(ctx, store, plan.ID, profile.LeftoverTolerance); err != nil {
+		fmt.Printf("warning: leftover planning failed: %v\n", err)
+	}
+
 	// Price the plan when a pricer is provided. Failure is non-fatal.
 	if pricer != nil {
 		if err := pricer(ctx, plan.ID, hh); err != nil {
