@@ -1,0 +1,107 @@
+{{define "title"}}{{.Data.Meal.Title}} — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+        <a href="/plan" class="btn btn--ghost btn--sm">{{icon "arrow-left"}} Plan</a>
+        <h1 class="page-title" style="margin:0">{{.Data.Meal.Title}}</h1>
+        {{if .Data.Meal.IsLeftover}}
+        <span class="badge badge--dim">♻ Leftovers</span>
+        {{end}}
+        {{if .Data.Meal.Locked}}
+        <span class="badge badge--live">{{icon "lock"}} Locked</span>
+        {{end}}
+    </div>
+    <p class="page-subtitle">
+        {{.Data.Meal.Slot}} · {{.Data.Meal.Day}}
+        {{if .Data.WeekStart}} · Week of {{.Data.WeekStart}}{{end}}
+        · {{.Data.Meal.Effort}} · {{.Data.Meal.Servings}} servings
+    </p>
+</div>
+
+{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
+
+{{if .Data.Meal.IsLeftover}}
+<div class="card" style="margin-bottom:1.5rem;background:var(--surface-2)">
+    {{icon "information"}}
+    {{if .Data.SourceMeal}}
+    This slot is covered by leftovers from <strong>{{.Data.SourceMeal.Title}}</strong>
+    ({{.Data.SourceMeal.Day}} {{.Data.SourceMeal.Slot}}) — no new shopping needed.
+    {{else}}
+    This slot is covered by leftovers from an earlier meal — no new shopping needed.
+    {{end}}
+</div>
+{{end}}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem">
+
+<!-- Ingredients -->
+<section class="card" aria-labelledby="ingredients-heading">
+    <h2 class="form-section__title" id="ingredients-heading">{{icon "food-variant"}} Ingredients</h2>
+    {{if .Data.Ingredients}}
+    <ul class="ingredient-list">
+        {{range .Data.Ingredients}}
+        <li class="ingredient-item">
+            <span class="ingredient-name">{{.Name}}</span>
+            <span class="ingredient-qty">{{.Quantity}} {{.Unit}}</span>
+        </li>
+        {{end}}
+    </ul>
+    {{else}}
+    <p class="form-section__desc">No ingredients recorded.</p>
+    {{end}}
+</section>
+
+<!-- Actions -->
+<section class="card" aria-labelledby="actions-heading">
+    <h2 class="form-section__title" id="actions-heading">{{icon "gesture-tap"}} Actions</h2>
+
+    <div class="pref-form" style="gap:.75rem">
+        <!-- Feedback -->
+        <p class="field-label">Rate this meal</p>
+        <div style="display:flex;gap:.5rem">
+            <form method="POST" action="/meals/{{.Data.Meal.ID}}/feedback">
+                {{.CSRFField}}
+                <input type="hidden" name="rating" value="1">
+                <button type="submit" class="btn btn--secondary">{{icon "thumb-up"}} Like</button>
+            </form>
+            <form method="POST" action="/meals/{{.Data.Meal.ID}}/feedback">
+                {{.CSRFField}}
+                <input type="hidden" name="rating" value="-1">
+                <button type="submit" class="btn btn--secondary">{{icon "thumb-down"}} Dislike</button>
+            </form>
+        </div>
+
+        <!-- Lock toggle -->
+        <p class="field-label" style="margin-top:.75rem">Lock this meal</p>
+        <p class="form-section__desc">Locked meals survive a full-week regeneration.</p>
+        {{if .Data.Meal.Locked}}
+        <form method="POST" action="/meals/{{.Data.Meal.ID}}/lock">
+            {{.CSRFField}}
+            <input type="hidden" name="locked" value="0">
+            <button type="submit" class="btn btn--secondary">{{icon "lock-open"}} Unlock</button>
+        </form>
+        {{else}}
+        <form method="POST" action="/meals/{{.Data.Meal.ID}}/lock">
+            {{.CSRFField}}
+            <input type="hidden" name="locked" value="1">
+            <button type="submit" class="btn btn--secondary">{{icon "lock"}} Lock meal</button>
+        </form>
+        {{end}}
+    </div>
+</section>
+
+</div>
+
+<!-- Steps -->
+{{if .Data.Steps}}
+<section class="card" aria-labelledby="steps-heading">
+    <h2 class="form-section__title" id="steps-heading">{{icon "chef-hat"}} Instructions</h2>
+    <ol class="step-list">
+        {{range .Data.Steps}}
+        <li class="step-item">{{.}}</li>
+        {{end}}
+    </ol>
+</section>
+{{end}}
+
+{{end}}

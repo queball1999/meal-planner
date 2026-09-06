@@ -50,6 +50,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/prices", requireAuth(http.HandlerFunc(s.handleAdminPriceCreate)))
 	mux.Handle("POST /admin/prices/{id}/delete", requireAuth(http.HandlerFunc(s.handleAdminPriceDelete)))
 
+	mux.Handle("GET /meals/{id}", requireAuth(http.HandlerFunc(s.handleMealDetail)))
+	mux.Handle("POST /meals/{id}/feedback", requireAuth(http.HandlerFunc(s.handleMealFeedback)))
+	mux.Handle("POST /meals/{id}/lock", requireAuth(http.HandlerFunc(s.handleMealLock)))
+
 	mux.Handle("GET /admin/scrape", requireAuth(http.HandlerFunc(s.handleScrapeConfigPage)))
 	mux.Handle("POST /admin/scrape/{storeID}/save", requireAuth(http.HandlerFunc(s.handleScrapeConfigSave)))
 	mux.Handle("POST /admin/scrape/{storeID}/test", requireAuth(http.HandlerFunc(s.handleScrapeConfigTest)))
