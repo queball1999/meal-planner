@@ -3,6 +3,8 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"goeat/llm"
@@ -77,35 +79,119 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleLLMDebugLog returns the last N captured LLM calls as JSON.
+// handleLLMDebugLog returns the 10 most recent LLM calls as JSON (used by the
+// settings page inline preview). The full log is at GET /admin/llm-log.
 //
 //	GET /admin/llm-debug
 func (s *Server) handleLLMDebugLog(w http.ResponseWriter, r *http.Request) {
-	type entry struct {
-		At         string `json:"at"`
-		System     string `json:"system"`
-		Prompt     string `json:"prompt"`
-		Response   string `json:"response,omitempty"`
-		Error      string `json:"error,omitempty"`
-		DurationMS int64  `json:"duration_ms"`
-		InputToks  int    `json:"input_tokens,omitempty"`
-		OutputToks int    `json:"output_tokens,omitempty"`
-		Model      string `json:"model,omitempty"`
-	}
-
 	w.Header().Set("Content-Type", "application/json")
+	entries := llmDebugEntries()
+	if len(entries) > 10 {
+		entries = entries[:10]
+	}
+	json.NewEncoder(w).Encode(entries)
+}
 
-	if llm.GlobalDebugLog == nil {
-		json.NewEncoder(w).Encode([]entry{})
-		return
+// handleLLMLogPage renders the full paginated AI call log with search + filters.
+//
+//	GET /admin/llm-log
+func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
+	all := llmDebugEntries()
+
+	q := r.URL.Query().Get("q")
+	status := r.URL.Query().Get("status") // "ok" | "error" | ""
+
+	// Filter in-memory (ring buffer is small — at most 30 entries)
+	filtered := all[:0:len(all)]
+	for _, e := range all {
+		if status == "ok" && e.Error != "" {
+			continue
+		}
+		if status == "error" && e.Error == "" {
+			continue
+		}
+		if q != "" {
+			qLow := strings.ToLower(q)
+			if !strings.Contains(strings.ToLower(e.Prompt), qLow) &&
+				!strings.Contains(strings.ToLower(e.Response), qLow) &&
+				!strings.Contains(strings.ToLower(e.System), qLow) {
+				continue
+			}
+		}
+		filtered = append(filtered, e)
 	}
 
+	const perPage = 10
+	page := 1
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 1 {
+		page = p
+	}
+	total := len(filtered)
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	start := (page - 1) * perPage
+	end := start + perPage
+	if end > total {
+		end = total
+	}
+	pageEntries := filtered[start:end]
+
+	prevPage := page - 1
+	nextPage := 0
+	if page < totalPages {
+		nextPage = page + 1
+	}
+
+	type llmLogPageData struct {
+		Entries    []llmDebugEntry
+		Query      string
+		Status     string
+		Page       int
+		PrevPage   int
+		NextPage   int
+		TotalPages int
+		Total      int
+	}
+
+	s.render(w, r, "llm_log", llmLogPageData{
+		Entries:    pageEntries,
+		Query:      q,
+		Status:     status,
+		Page:       page,
+		PrevPage:   prevPage,
+		NextPage:   nextPage,
+		TotalPages: totalPages,
+		Total:      total,
+	})
+}
+
+type llmDebugEntry struct {
+	At         string
+	System     string
+	Prompt     string
+	Response   string
+	Error      string
+	DurationMS int64
+	InputToks  int
+	OutputToks int
+	Model      string
+}
+
+func llmDebugEntries() []llmDebugEntry {
+	if llm.GlobalDebugLog == nil {
+		return nil
+	}
 	raw := llm.GlobalDebugLog.Entries()
-	// Reverse so newest is first.
-	out := make([]entry, len(raw))
+	out := make([]llmDebugEntry, len(raw))
 	for i, e := range raw {
-		out[len(raw)-1-i] = entry{
-			At:         e.At.Format(time.RFC3339),
+		// Reverse so newest is first
+		out[len(raw)-1-i] = llmDebugEntry{
+			At:         e.At.Format("2006-01-02 15:04:05"),
 			System:     e.System,
 			Prompt:     e.Prompt,
 			Response:   e.Response,
@@ -116,6 +202,5 @@ func (s *Server) handleLLMDebugLog(w http.ResponseWriter, r *http.Request) {
 			Model:      e.Model,
 		}
 	}
-
-	json.NewEncoder(w).Encode(out)
+	return out
 }

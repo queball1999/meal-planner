@@ -1,0 +1,96 @@
+{{define "title"}}AI Call Log — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "cpu"}} AI Call Log</h1>
+    <p class="page-subtitle">{{.Data.Total}} entries in memory &middot; newest first</p>
+</div>
+
+<!-- ── Filters ───────────────────────────────────────────────────────────── -->
+<form method="GET" action="/admin/llm-log" class="llm-log-filters">
+    <input class="field-input llm-log-search"
+           type="search"
+           name="q"
+           value="{{.Data.Query}}"
+           placeholder="Search prompt, response, system…"
+           autofocus>
+
+    <select class="field-input llm-log-status" name="status">
+        <option value=""  {{if eq .Data.Status ""     }}selected{{end}}>All</option>
+        <option value="ok"    {{if eq .Data.Status "ok"   }}selected{{end}}>Success only</option>
+        <option value="error" {{if eq .Data.Status "error"}}selected{{end}}>Errors only</option>
+    </select>
+
+    <button type="submit" class="btn btn-secondary">Filter</button>
+    <a href="/admin/llm-log" class="btn btn-secondary">Clear</a>
+</form>
+
+<!-- ── Entry list ────────────────────────────────────────────────────────── -->
+{{if .Data.Entries}}
+<div class="llm-log-list">
+    {{range .Data.Entries}}
+    <details class="llm-log-entry{{if .Error}} llm-log-entry--error{{end}}">
+        <summary class="llm-log-summary">
+            <span class="llm-log-time">{{.At}}</span>
+            {{if .Model}}<span class="badge">{{.Model}}</span>{{end}}
+            {{if .Error}}
+            <span class="badge badge--danger">Error</span>
+            {{else}}
+            <span class="badge badge--success">{{.DurationMS}}ms</span>
+            {{end}}
+            {{if or .InputToks .OutputToks}}
+            <span class="llm-log-toks">{{.InputToks}}↑ {{.OutputToks}}↓ tok</span>
+            {{end}}
+            <span class="llm-log-preview">{{truncate .Prompt 80}}</span>
+        </summary>
+        <div class="llm-log-body">
+            {{if .System}}
+            <div class="llm-log-section">
+                <div class="llm-log-section__label">System</div>
+                <pre class="llm-log-pre">{{.System}}</pre>
+            </div>
+            {{end}}
+            <div class="llm-log-section">
+                <div class="llm-log-section__label">Prompt</div>
+                <pre class="llm-log-pre">{{.Prompt}}</pre>
+            </div>
+            {{if .Error}}
+            <div class="llm-log-section">
+                <div class="llm-log-section__label llm-log-section__label--error">Error</div>
+                <pre class="llm-log-pre llm-log-pre--error">{{.Error}}</pre>
+            </div>
+            {{else}}
+            <div class="llm-log-section">
+                <div class="llm-log-section__label">Response</div>
+                <pre class="llm-log-pre">{{.Response}}</pre>
+            </div>
+            {{end}}
+        </div>
+    </details>
+    {{end}}
+</div>
+
+<!-- ── Pagination ─────────────────────────────────────────────────────────── -->
+{{if gt .Data.TotalPages 1}}
+<nav class="pagination" aria-label="Log pages">
+    {{if gt .Data.PrevPage 0}}
+    <a href="?q={{.Data.Query}}&status={{.Data.Status}}&page={{.Data.PrevPage}}"
+       class="btn btn-secondary btn--sm">&laquo; Prev</a>
+    {{end}}
+    <span class="pagination__info">Page {{.Data.Page}} of {{.Data.TotalPages}}</span>
+    {{if gt .Data.NextPage 0}}
+    <a href="?q={{.Data.Query}}&status={{.Data.Status}}&page={{.Data.NextPage}}"
+       class="btn btn-secondary btn--sm">Next &raquo;</a>
+    {{end}}
+</nav>
+{{end}}
+
+{{else}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🤖</div>
+    <h2 class="skeleton-card__title">No AI calls recorded yet</h2>
+    <p class="skeleton-card__body">
+        Generate a meal plan or use the AI test button in Settings to produce log entries.
+    </p>
+</div>
+{{end}}
+{{end}}

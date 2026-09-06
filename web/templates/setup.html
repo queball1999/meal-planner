@@ -1,131 +1,371 @@
+{{define "title"}}Setup — {{.AppName}}{{end}}
 {{define "content"}}
 <div class="auth-wrap">
     <div class="card card--wide setup-card">
         <div class="auth-logo" aria-hidden="true">🍳</div>
         <h1 class="card-title">Welcome to {{.AppName}}</h1>
-        <p class="card-body">
-            Let's get your household set up. This only happens once — you can
-            change everything later in Settings.
-        </p>
 
-        <form method="POST" action="/setup" class="auth-form" novalidate>
+        <!-- ── Wizard progress bar ───────────────────────────────────────── -->
+        <div class="wizard-progress" role="progressbar" aria-label="Setup progress">
+            <div class="wizard-progress__step" data-step-indicator="1">
+                <span class="wizard-step-dot"></span><span class="wizard-step-label">Account</span>
+            </div>
+            <div class="wizard-progress__step" data-step-indicator="2">
+                <span class="wizard-step-dot"></span><span class="wizard-step-label">Household</span>
+            </div>
+            <div class="wizard-progress__step" data-step-indicator="3">
+                <span class="wizard-step-dot"></span><span class="wizard-step-label">Diet</span>
+            </div>
+            <div class="wizard-progress__step" data-step-indicator="4">
+                <span class="wizard-step-dot"></span><span class="wizard-step-label">Stores</span>
+            </div>
+            <div class="wizard-progress__step" data-step-indicator="5">
+                <span class="wizard-step-dot"></span><span class="wizard-step-label">Review</span>
+            </div>
+        </div>
+
+        <form id="setup-form" method="POST" action="/setup" class="auth-form" novalidate>
             {{.CSRFField}}
 
-            <!-- ── Account ────────────────────────────────────────────────── -->
-            <div class="form-section">
+            <!-- ═══════════════════════════════════════════════════════════════
+                 STEP 1 — Account
+                 ═══════════════════════════════════════════════════════════════ -->
+            <div class="wizard-step" data-step="1">
                 <h2 class="form-section__title">Your account</h2>
+                <p class="form-section__desc">Create admin credentials for this Go Eat instance.</p>
 
                 <div class="field">
                     <label class="field-label" for="username">Username</label>
-                    <input class="field-input"
-                           type="text"
-                           id="username"
-                           name="username"
-                           autocomplete="username"
-                           minlength="3"
-                           autofocus
-                           required>
+                    <input class="field-input" type="text" id="username" name="username"
+                           autocomplete="username" minlength="3" autofocus required>
                     <span class="field-hint">At least 3 characters. Used to sign in.</span>
                 </div>
 
                 <div class="field">
                     <label class="field-label" for="password">Password</label>
-                    <input class="field-input"
-                           type="password"
-                           id="password"
-                           name="password"
-                           autocomplete="new-password"
-                           minlength="8"
-                           required>
+                    <input class="field-input" type="password" id="password" name="password"
+                           autocomplete="new-password" minlength="8" required>
                     <span class="field-hint">At least 8 characters.</span>
                 </div>
 
                 <div class="field">
                     <label class="field-label" for="password_confirm">Confirm password</label>
-                    <input class="field-input"
-                           type="password"
-                           id="password_confirm"
-                           name="password_confirm"
-                           autocomplete="new-password"
-                           required>
+                    <input class="field-input" type="password" id="password_confirm"
+                           name="password_confirm" autocomplete="new-password" required>
+                </div>
+
+                <div class="wizard-nav">
+                    <span></span>
+                    <button type="button" class="btn btn-primary" data-next="2">
+                        Next → Household
+                    </button>
                 </div>
             </div>
 
-            <!-- ── Household ──────────────────────────────────────────────── -->
-            <div class="form-section">
+            <!-- ═══════════════════════════════════════════════════════════════
+                 STEP 2 — Household
+                 ═══════════════════════════════════════════════════════════════ -->
+            <div class="wizard-step" data-step="2" hidden>
                 <h2 class="form-section__title">Your household</h2>
 
                 <div class="field">
                     <label class="field-label" for="household_name">Household name</label>
-                    <input class="field-input"
-                           type="text"
-                           id="household_name"
-                           name="household_name"
-                           value="My Household"
-                           required>
+                    <input class="field-input" type="text" id="household_name"
+                           name="household_name" value="My Household" required>
                 </div>
 
                 <div class="field">
                     <label class="field-label" for="household_size">Number of people</label>
-                    <input class="field-input"
-                           type="number"
-                           id="household_size"
-                           name="household_size"
-                           min="1" max="20"
-                           value="2"
-                           required>
+                    <input class="field-input" type="number" id="household_size"
+                           name="household_size" min="1" max="20" value="2" required>
                     <span class="field-hint">How many people are you planning meals for?</span>
                 </div>
-            </div>
-
-            <!-- ── Budget & location ──────────────────────────────────────── -->
-            <div class="form-section">
-                <h2 class="form-section__title">Budget &amp; location</h2>
 
                 <div class="field">
                     <label class="field-label" for="budget">Weekly food budget ($)</label>
-                    <input class="field-input"
-                           type="number"
-                           id="budget"
-                           name="budget"
-                           min="1" max="99999"
-                           step="1"
-                           value="150"
-                           required>
+                    <input class="field-input" type="number" id="budget" name="budget"
+                           min="1" max="99999" step="1" value="150" required>
                     <span class="field-hint">The planner keeps your shopping list at or under this amount.</span>
                 </div>
 
                 <div class="field">
                     <label class="field-label" for="zip_code">ZIP code</label>
-                    <input class="field-input"
-                           type="text"
-                           id="zip_code"
-                           name="zip_code"
-                           pattern="[0-9]{5}"
-                           maxlength="5"
-                           inputmode="numeric"
-                           placeholder="90210"
-                           required>
+                    <input class="field-input" type="text" id="zip_code" name="zip_code"
+                           pattern="[0-9]{5}" maxlength="5" inputmode="numeric" placeholder="90210" required>
                     <span class="field-hint">Used to look up local store prices. US only in v1.</span>
                 </div>
 
                 <div class="field">
                     <label class="field-label" for="timezone">Timezone</label>
                     <select class="field-input" id="timezone" name="timezone" required>
-                        {{range .Data}}
+                        {{range .Data.Timezones}}
                         <option value="{{.Value}}">{{.Label}}</option>
                         {{end}}
                     </select>
                     <span class="field-hint">Week boundaries and the shopping calendar use this timezone.</span>
                 </div>
+
+                <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" data-prev="1">
+                        ← Back
+                    </button>
+                    <button type="button" class="btn btn-primary" data-next="3">
+                        Next → Diet &amp; Cuisine
+                    </button>
+                </div>
             </div>
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary btn-lg">
-                    Get started →
-                </button>
+            <!-- ═══════════════════════════════════════════════════════════════
+                 STEP 3 — Diet & Cuisine
+                 ═══════════════════════════════════════════════════════════════ -->
+            <div class="wizard-step" data-step="3" hidden>
+                <h2 class="form-section__title">Diet &amp; cuisine</h2>
+                <p class="form-section__desc">
+                    All fields are optional — skip anything that doesn't apply.
+                </p>
+
+                <div class="field">
+                    <span class="field-label">Diet restrictions</span>
+                    <div class="checkbox-grid">
+                        {{range .Data.DietTagOptions}}
+                        <label class="checkbox-chip">
+                            <input type="checkbox" name="diet_tags" value="{{.Value}}">
+                            {{.Label}}
+                        </label>
+                        {{end}}
+                    </div>
+                </div>
+
+                <div class="field">
+                    <span class="field-label">Favourite cuisines</span>
+                    <div class="checkbox-grid">
+                        {{range .Data.CuisineOptions}}
+                        <label class="checkbox-chip">
+                            <input type="checkbox" name="cuisines" value="{{.Value}}">
+                            {{.Label}}
+                        </label>
+                        {{end}}
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="allergies">Allergies</label>
+                    <input class="field-input" type="text" id="allergies" name="allergies"
+                           placeholder="peanuts, shellfish, dairy…">
+                    <span class="field-hint">Comma-separated. The AI will never suggest these ingredients.</span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="dislikes">Dislikes</label>
+                    <input class="field-input" type="text" id="dislikes" name="dislikes"
+                           placeholder="anchovies, liver…">
+                    <span class="field-hint">Comma-separated. The AI will try to avoid these.</span>
+                </div>
+
+                <div class="field">
+                    <label class="checkbox-chip checkbox-chip--standalone">
+                        <input type="checkbox" name="leftover_tolerance" value="1" checked>
+                        We're happy eating leftovers
+                    </label>
+                    <span class="field-hint">Enables the AI to plan leftover nights, reducing food waste.</span>
+                </div>
+
+                <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" data-prev="2">
+                        ← Back
+                    </button>
+                    <button type="button" class="btn btn-primary" data-next="4">
+                        Next → Stores
+                    </button>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 STEP 4 — Grocery Stores
+                 ═══════════════════════════════════════════════════════════════ -->
+            <div class="wizard-step" data-step="4" hidden>
+                <h2 class="form-section__title">Where do you shop?</h2>
+                <p class="form-section__desc">
+                    Select the stores you shop at. You can add more later in
+                    <strong>Settings → Stores</strong>.
+                </p>
+
+                {{if .Data.KrogerReady}}
+                <div class="store-api-banner">
+                    {{icon "tag"}} <strong>Kroger</strong> is connected via the official API — live prices enabled automatically.
+                </div>
+                {{end}}
+
+                <div class="store-picker-grid" role="group" aria-label="Select your grocery stores">
+                    {{range .Data.Stores}}
+                    <label class="store-chip">
+                        <input type="checkbox" name="stores" value="{{.Name}}"
+                               {{if .HasAPI}}checked{{end}}
+                               class="store-chip__check">
+                        <span class="store-chip__inner">
+                            {{$logo := storeLogo .Name}}
+                            {{if $logo}}
+                            <img class="store-chip__logo" src="{{$logo}}" alt="" loading="lazy" width="32" height="32">
+                            {{else}}
+                            <span class="store-chip__fallback" aria-hidden="true">{{icon "store"}}</span>
+                            {{end}}
+                            <span class="store-chip__name">{{.Name}}</span>
+                            {{if .HasAPI}}
+                            <span class="store-chip__badge store-chip__badge--api" title="Live prices via official API">API</span>
+                            {{else if .CanScrape}}
+                            <span class="store-chip__badge store-chip__badge--scrape" title="Prices via scraper">Scraper</span>
+                            {{end}}
+                        </span>
+                    </label>
+                    {{end}}
+                </div>
+
+                {{if not .Data.KrogerReady}}
+                <p class="field-hint" style="margin-top:var(--sp-3)">
+                    {{icon "alert"}} No live price API configured. Set
+                    <code>KROGER_CLIENT_ID</code> / <code>KROGER_CLIENT_SECRET</code> in
+                    <code>.env</code>, or configure a scraper in <strong>Settings → Scraper</strong>
+                    after setup.
+                </p>
+                {{end}}
+
+                <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" data-prev="3">
+                        ← Back
+                    </button>
+                    <button type="button" class="btn btn-primary" data-next="5">
+                        Next → Review
+                    </button>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 STEP 5 — Review & Submit
+                 ═══════════════════════════════════════════════════════════════ -->
+            <div class="wizard-step" data-step="5" hidden>
+                <h2 class="form-section__title">Review &amp; submit</h2>
+                <p class="form-section__desc">
+                    Everything can be changed later in Settings. Click <strong>Get started</strong>
+                    to create your account.
+                </p>
+
+                <div class="review-grid" id="review-grid">
+                    <!-- populated by JS -->
+                </div>
+
+                <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" data-prev="4">
+                        ← Back
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        Get started →
+                    </button>
+                </div>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+(function () {
+    'use strict';
+
+    const form  = document.getElementById('setup-form');
+    const steps = Array.from(form.querySelectorAll('.wizard-step'));
+    const indicators = Array.from(document.querySelectorAll('[data-step-indicator]'));
+
+    function show(n) {
+        steps.forEach(function (s) {
+            s.hidden = (parseInt(s.dataset.step, 10) !== n);
+        });
+        indicators.forEach(function (el) {
+            const i = parseInt(el.dataset.stepIndicator, 10);
+            el.classList.toggle('wizard-progress__step--active',   i === n);
+            el.classList.toggle('wizard-progress__step--complete', i < n);
+        });
+        if (n === 5) buildReview();
+    }
+
+    // ── Validation helpers ────────────────────────────────────────────────
+
+    function validateStep(n) {
+        const step = form.querySelector('[data-step="' + n + '"]');
+        const required = step.querySelectorAll('[required]');
+        let ok = true;
+        required.forEach(function (el) {
+            if (!el.value.trim()) {
+                el.classList.add('field-input--error');
+                ok = false;
+            } else {
+                el.classList.remove('field-input--error');
+            }
+        });
+        // Extra: step 1 password match
+        if (n === 1) {
+            const pw  = form.elements['password'];
+            const pw2 = form.elements['password_confirm'];
+            if (pw && pw2 && pw.value !== pw2.value) {
+                pw2.classList.add('field-input--error');
+                window.showToast && window.showToast('Passwords do not match', 'error');
+                ok = false;
+            }
+        }
+        if (!ok) window.showToast && window.showToast('Please fill in all required fields', 'error');
+        return ok;
+    }
+
+    // ── Nav buttons ───────────────────────────────────────────────────────
+
+    form.addEventListener('click', function (e) {
+        const next = e.target.closest('[data-next]');
+        const prev = e.target.closest('[data-prev]');
+        if (next) {
+            const from = parseInt(next.closest('.wizard-step').dataset.step, 10);
+            if (validateStep(from)) show(parseInt(next.dataset.next, 10));
+        }
+        if (prev) {
+            show(parseInt(prev.dataset.prev, 10));
+        }
+    });
+
+    // ── Review summary ────────────────────────────────────────────────────
+
+    function val(name)  { const el = form.elements[name]; return el ? el.value : ''; }
+    function checked(name) {
+        return Array.from(form.querySelectorAll('[name="' + name + '"]:checked'))
+                    .map(function (el) { return el.value; });
+    }
+
+    function buildReview() {
+        const grid = document.getElementById('review-grid');
+        const rows = [
+            ['Username',   val('username')],
+            ['Household',  val('household_name')],
+            ['People',     val('household_size')],
+            ['Budget',     '$' + val('budget') + '/wk'],
+            ['ZIP',        val('zip_code')],
+            ['Timezone',   val('timezone')],
+            ['Diet',       checked('diet_tags').join(', ') || '—'],
+            ['Cuisines',   checked('cuisines').join(', ')  || '—'],
+            ['Allergies',  val('allergies') || '—'],
+            ['Dislikes',   val('dislikes') || '—'],
+            ['Stores',     checked('stores').join(', ') || '—'],
+        ];
+        grid.innerHTML = rows.map(function (r) {
+            return '<div class="review-row"><span class="review-row__label">' +
+                   escHtml(r[0]) + '</span><span class="review-row__value">' +
+                   escHtml(r[1]) + '</span></div>';
+        }).join('');
+    }
+
+    function escHtml(s) {
+        return String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Start at step 1
+    show(1);
+})();
+</script>
 {{end}}

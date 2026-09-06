@@ -23,6 +23,14 @@ var usTimezones = []struct{ Label, Value string }{
 	{"Hawaii (HST)", "Pacific/Honolulu"},
 }
 
+type setupPageData struct {
+	Timezones      []struct{ Label, Value string }
+	Stores         []KnownStore
+	DietTagOptions []checkboxOption
+	CuisineOptions []checkboxOption
+	KrogerReady    bool // true when Kroger API keys are configured
+}
+
 // handleSetupPage renders the first-run setup wizard.
 // Redirects away if setup is already complete.
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +43,22 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.render(w, r, "setup", usTimezones)
+	dietOpts := make([]checkboxOption, len(dietTagDefs))
+	for i, d := range dietTagDefs {
+		dietOpts[i] = checkboxOption{Value: d.value, Label: d.label}
+	}
+	cuisineOpts := make([]checkboxOption, len(cuisineDefs))
+	for i, c := range cuisineDefs {
+		cuisineOpts[i] = checkboxOption{Value: c, Label: c}
+	}
+
+	s.render(w, r, "setup", setupPageData{
+		Timezones:      usTimezones,
+		Stores:         KnownStores,
+		DietTagOptions: dietOpts,
+		CuisineOptions: cuisineOpts,
+		KrogerReady:    s.cfg.KrogerClientID != "",
+	})
 }
 
 // handleSetup processes the setup wizard form (POST /setup).
@@ -59,6 +82,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	zipCode := strings.TrimSpace(r.FormValue("zip_code"))
 	timezone := r.FormValue("timezone")
 	sizeStr := r.FormValue("household_size")
+	selectedStores := r.Form["stores"] // multi-value checkbox list
 
 	// ── Validate ────────────────────────────────────────────────────────────
 
@@ -118,7 +142,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.store.CreateHousehold(ctx, db.CreateHouseholdParams{
+	hh, err := s.store.CreateHousehold(ctx, db.CreateHouseholdParams{
 		Name:              householdName,
 		WeeklyBudgetCents: budgetCents,
 		Country:           "US",
@@ -129,6 +153,43 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+
+	// ── Create selected stores ───────────────────────────────────────────────
+
+	hasNonAPIStore := false
+	for _, storeName := range selectedStores {
+		ks := KnownStoreByName(storeName)
+		if ks == nil {
+			continue // ignore unknown names (safety)
+		}
+		_, _ = s.store.CreateStore(ctx, db.UpsertStoreParams{
+			HouseholdID: hh.ID,
+			Name:        ks.Name,
+			Kind:        ks.Kind,
+		})
+		if !ks.HasAPI {
+			hasNonAPIStore = true
+		}
+	}
+
+	// ── Save initial preferences ─────────────────────────────────────────────
+
+	dietTags := r.Form["diet_tags"]
+	cuisines := r.Form["cuisines"]
+	allergies := splitTrimmed(r.FormValue("allergies"))
+	dislikes := splitTrimmed(r.FormValue("dislikes"))
+	leftover := r.FormValue("leftover_tolerance") == "1"
+
+	_ = s.store.UpsertPreferences(ctx, db.UpsertPreferencesParams{
+		HouseholdID:       hh.ID,
+		DietTags:          dietTags,
+		Cuisines:          cuisines,
+		Dislikes:          dislikes,
+		LeftoverTolerance: leftover,
+	})
+	if len(allergies) > 0 {
+		_ = s.store.SetAllergies(ctx, hh.ID, allergies)
 	}
 
 	// ── Sign in automatically ────────────────────────────────────────────────
@@ -151,6 +212,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 
 	id := user.ID
 	s.logEvent(r, &id, "setup.complete", "household", "1", "")
+
+	if hasNonAPIStore {
+		s.setFlash(w, "Setup complete! For live prices on your stores, configure scraping in Settings → Scraper.")
+	}
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

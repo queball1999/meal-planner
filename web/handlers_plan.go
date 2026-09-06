@@ -82,7 +82,10 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		p, _ = s.store.GetLatestPlan(ctx, hh.ID)
 	}
 
-	if p == nil || p.Status == "generating" {
+	if p == nil || p.Status == "generating" || p.Status == "error" {
+		if p != nil && p.Status == "error" {
+			s.setFlash(w, "The last plan generation failed. Check Settings → AI Logs for details, then regenerate.")
+		}
 		s.render(w, r, "plan", planPageData{HasPlan: false, HasLLM: s.gen != nil})
 		return
 	}

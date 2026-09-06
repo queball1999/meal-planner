@@ -43,9 +43,17 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 
 	tmpl, err := template.New("").
 		Funcs(template.FuncMap{
-			"icon": iconFunc,
-			"divf": func(a int64, b float64) float64 { return float64(a) / b },
-			"sub64": func(a, b int64) int64 { return a - b },
+			"icon":      iconFunc,
+			"storeLogo": StoreLogoURL,
+			"divf":      func(a int64, b float64) float64 { return float64(a) / b },
+			"sub64":     func(a, b int64) int64 { return a - b },
+			"truncate": func(s string, n int) string {
+				r := []rune(s)
+				if len(r) <= n {
+					return s
+				}
+				return string(r[:n]) + "…"
+			},
 			"fmtWeekRange": func(start, end string) string {
 				s, _ := time.Parse("2006-01-02", start)
 				e, _ := time.Parse("2006-01-02", end)

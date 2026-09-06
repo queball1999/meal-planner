@@ -78,7 +78,7 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	}
 
 	var gp GeneratedPlan
-	raw := strings.TrimSpace(resp.Content)
+	raw := stripFences(strings.TrimSpace(resp.Content))
 	if err := json.Unmarshal([]byte(raw), &gp); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
 		return plan.ID, fmt.Errorf("parse llm response: %w", err)
@@ -164,6 +164,21 @@ func persistPlan(ctx context.Context, store db.Store, planID, aiRunID int64, wee
 		}
 	}
 	return nil
+}
+
+// stripFences removes optional markdown code fences that some LLMs wrap JSON in.
+func stripFences(s string) string {
+	// Handle ```json\n...\n``` and ```\n...\n```
+	for _, prefix := range []string{"```json", "```"} {
+		if strings.HasPrefix(s, prefix) {
+			s = strings.TrimPrefix(s, prefix)
+			s = strings.TrimPrefix(s, "\n")
+			s = strings.TrimSuffix(strings.TrimSpace(s), "```")
+			s = strings.TrimSpace(s)
+			break
+		}
+	}
+	return s
 }
 
 // nextSunday returns the upcoming Sunday (or today if today is Sunday).
