@@ -429,6 +429,13 @@ type CatalogRecipeStep struct {
 	Text            string
 }
 
+// CatalogRecipeFilter holds optional filters for FilterCatalogRecipes (§8.4c).
+type CatalogRecipeFilter struct {
+	Q      string // title / tags text search
+	Tag    string // exact tag match
+	Source string // "ai" | "imported" | "manual"
+}
+
 // CreateCatalogRecipeParams bundles inputs for creating a catalog recipe.
 type CreateCatalogRecipeParams struct {
 	HouseholdID int64

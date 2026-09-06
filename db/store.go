@@ -180,9 +180,26 @@ type Store interface {
 	CreateCatalogRecipe(ctx context.Context, p CreateCatalogRecipeParams) (*CatalogRecipe, error)
 	GetCatalogRecipe(ctx context.Context, id int64) (*CatalogRecipe, error)
 	ListCatalogRecipes(ctx context.Context, householdID int64) ([]*CatalogRecipe, error)
+	FilterCatalogRecipes(ctx context.Context, householdID int64, f CatalogRecipeFilter) ([]*CatalogRecipe, error)
 	DeleteCatalogRecipe(ctx context.Context, id int64) error
 	AddCatalogRecipeIngredient(ctx context.Context, catalogRecipeID int64, name, quantity, unit string, position int) error
 	ListCatalogRecipeIngredients(ctx context.Context, catalogRecipeID int64) ([]*CatalogRecipeIngredient, error)
 	AddCatalogRecipeStep(ctx context.Context, catalogRecipeID int64, position int, text string) error
 	ListCatalogRecipeSteps(ctx context.Context, catalogRecipeID int64) ([]*CatalogRecipeStep, error)
+
+	// ── Search (§8.4c) ────────────────────────────────────────────────────────
+
+	SearchCatalogRecipes(ctx context.Context, householdID int64, q string) ([]*CatalogRecipe, error)
+	SearchPantryItems(ctx context.Context, householdID int64, q string) ([]*PantryItem, error)
+	SearchMealTitles(ctx context.Context, householdID int64, q string) ([]*Meal, error)
+
+	// ── Pantry — barcode & filter (§5.8) ──────────────────────────────────────
+
+	FilterPantryItems(ctx context.Context, householdID int64, q string) ([]*PantryItem, error)
+	GetPantryItemByBarcode(ctx context.Context, householdID int64, code string) (*PantryItem, error)
+	IncrementPantryItem(ctx context.Context, id int64, delta float64) error
+
+	// ── Item product map — barcode (§8.4d) ────────────────────────────────────
+
+	GetItemProductMapByBarcode(ctx context.Context, code string) (*ItemProductMap, error)
 }
