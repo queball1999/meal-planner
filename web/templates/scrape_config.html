@@ -1,0 +1,327 @@
+{{define "title"}}Scrape Config — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "code-braces"}} Scrape Configuration</h1>
+    <p class="page-subtitle">
+        Configure how each store's website is scraped for prices (§6.7).
+        Scraping is the fourth tier of the pricing chain — used only when no live, cached, or manual price exists.
+    </p>
+</div>
+
+{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
+
+{{if not .Data.Stores}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🏪</div>
+    <h2 class="skeleton-card__title">No stores configured</h2>
+    <p class="skeleton-card__body">
+        <a href="/stores">Add grocery stores</a> first, then come back to configure scraping.
+    </p>
+</div>
+{{else}}
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">Modes</h2>
+    <dl class="help-dl">
+        <dt><strong>Assisted</strong></dt>
+        <dd>You enter the search URL template (<code>{term}</code> is replaced with the ingredient).
+            The server fetches a sample page and renders it in a sandboxed preview below.
+            Click any element to pick its CSS selector; click "Use selector" to save it.</dd>
+        <dt><strong>Auto</strong></dt>
+        <dd>Server fetches the page and detects prices via JSON-LD / schema.org heuristics.
+            Shows a proposed config for one-click confirmation — no selectors needed.</dd>
+        {{if .Data.HasLLM}}
+        <dt><strong>Auto + AI</strong></dt>
+        <dd>Same as Auto, but fields the heuristic can't resolve are sent to the LLM for a best guess.
+            The proposed config is shown for your review before saving.</dd>
+        {{end}}
+    </dl>
+</div>
+
+{{range .Data.Stores}}
+<section class="card scrape-store" id="store-{{.Store.ID}}" style="margin-bottom:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <h2 class="form-section__title" style="margin:0">
+            {{icon "store"}} {{.Store.Name}}
+        </h2>
+        {{if .Config}}
+        <span class="badge {{if eq .Config.Status "active"}}badge--live{{else if eq .Config.Status "degraded"}}badge--warn{{else}}badge--dim{{end}}">
+            {{if eq .Config.Status "active"}}active{{else if eq .Config.Status "degraded"}}degraded{{else}}{{.Config.Status}}{{end}}
+            {{if .Config.LastTestedAt}}&nbsp;· tested {{.Config.LastTestedAt}}{{end}}
+        </span>
+        {{else}}
+        <span class="badge badge--dim">not configured</span>
+        {{end}}
+    </div>
+
+    <form class="pref-form scrape-form" data-store="{{.Store.ID}}"
+          action="/admin/scrape/{{.Store.ID}}/save" method="POST">
+        {{$.CSRFField}}
+
+        <div class="field-row">
+            <div class="field" style="flex:1">
+                <label class="field-label" for="url-{{.Store.ID}}">Search URL template</label>
+                <input class="field-input" id="url-{{.Store.ID}}" name="search_url_template"
+                       type="url" placeholder="https://store.com/search?q={term}"
+                       value="{{if .Config}}{{.Config.SearchURLTemplate}}{{end}}"
+                       required>
+                <span class="field-hint">Use <code>{term}</code> where the ingredient name goes.</span>
+            </div>
+        </div>
+
+        <div class="field-row" style="margin-top:.75rem">
+            <div class="field">
+                <label class="field-label">Mode</label>
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="assisted"
+                               {{if or (not .Config) (eq .Config.Mode "assisted")}}checked{{end}}>
+                        Assisted
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="auto"
+                               {{if and .Config (eq .Config.Mode "auto")}}checked{{end}}>
+                        Auto
+                    </label>
+                    {{if $.Data.HasLLM}}
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="auto_ai"
+                               {{if and .Config (eq .Config.Mode "auto_ai")}}checked{{end}}>
+                        Auto + AI
+                    </label>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <input type="hidden" name="selectors_json" class="selectors-json"
+               value="{{if .Config}}{{.Config.SelectorsJSON}}{{else}}{}{{end}}">
+        {{if .Config}}<input type="hidden" name="ai_assisted" value="{{if .Config.AIAssisted}}1{{else}}0{{end}}">{{end}}
+
+        <div class="field-row" style="margin-top:1rem;gap:.5rem">
+            <button type="submit" class="btn btn--primary">{{icon "content-save"}} Save config</button>
+            <button type="button" class="btn btn--secondary btn-fetch" data-store="{{.Store.ID}}">
+                {{icon "eye"}} Fetch &amp; Preview
+            </button>
+            <button type="button" class="btn btn--secondary btn-autodetect" data-store="{{.Store.ID}}"
+                    {{if not .Config}}disabled title="Save URL first"{{end}}>
+                {{icon "auto-fix"}} Auto-detect
+            </button>
+            {{if .Config}}
+            <button type="button" class="btn btn--secondary btn-test" data-store="{{.Store.ID}}">
+                {{icon "test-tube"}} Test
+            </button>
+            {{end}}
+        </div>
+    </form>
+
+    <!-- Assisted mode preview panel -->
+    <div class="scrape-preview" id="preview-{{.Store.ID}}" style="display:none;margin-top:1.25rem">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem">
+            <span class="field-label" style="margin:0">Preview</span>
+            <code class="selector-display" id="sel-{{.Store.ID}}" style="font-size:.8rem;color:var(--fg-muted)">
+                — click an element in the preview to pick its selector —
+            </code>
+            <button type="button" class="btn btn--sm btn--secondary" style="display:none"
+                    id="use-sel-{{.Store.ID}}">Use selector</button>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;height:420px">
+            <iframe id="frame-{{.Store.ID}}"
+                    sandbox="allow-same-origin"
+                    style="width:100%;height:100%;border:0;background:white"
+                    srcdoc="<p style='padding:1rem;color:#888'>Click <strong>Fetch &amp; Preview</strong> to load a sample page.</p>">
+            </iframe>
+        </div>
+
+        <!-- Test results area -->
+        <div id="test-results-{{.Store.ID}}" style="display:none;margin-top:.75rem"></div>
+    </div>
+</section>
+{{end}}
+
+<!-- hidden CSRF form for JS fetch calls -->
+<form id="csrf-form" hidden>{{.CSRFField}}</form>
+
+<script>
+(function () {
+    var csrf = (document.querySelector('#csrf-form input[name]') || {}).value || '';
+
+    function post(path, body) {
+        return fetch(path, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrf },
+            body: body,
+        });
+    }
+
+    function getURL(storeID) {
+        var input = document.getElementById('url-' + storeID);
+        return input ? input.value.trim() : '';
+    }
+
+    function setSelector(storeID, css) {
+        var display = document.getElementById('sel-' + storeID);
+        var btn     = document.getElementById('use-sel-' + storeID);
+        if (display) display.textContent = css;
+        if (btn) {
+            btn.style.display = css ? '' : 'none';
+            btn.onclick = function () { applySelector(storeID, css); };
+        }
+    }
+
+    function applySelector(storeID, css) {
+        var form = document.querySelector('.scrape-form[data-store="' + storeID + '"]');
+        if (!form) return;
+        var hidden = form.querySelector('.selectors-json');
+        var current = {};
+        try { current = JSON.parse(hidden.value); } catch (e) {}
+        current.price_css = css;
+        hidden.value = JSON.stringify(current);
+        alert('Selector saved in form. Click "Save config" to persist.');
+    }
+
+    // Attach iframe click detection
+    function attachIframeClicker(storeID) {
+        var frame = document.getElementById('frame-' + storeID);
+        if (!frame) return;
+        frame.addEventListener('load', function () {
+            try {
+                var doc = frame.contentDocument || frame.contentWindow.document;
+                doc.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var el = e.target;
+                    // Build a simple CSS selector from the element
+                    var parts = [el.tagName.toLowerCase()];
+                    if (el.className && typeof el.className === 'string') {
+                        el.className.trim().split(/\s+/).slice(0, 2).forEach(function (c) {
+                            parts[0] += '.' + c;
+                        });
+                    }
+                    var css = parts[0];
+
+                    // Ask server to verify extraction
+                    var fd = new FormData();
+                    fd.append('url', getURL(storeID));
+                    fd.append('selector', css);
+                    post('/admin/scrape/selector', fd).then(function (r) { return r.json(); })
+                      .then(function (data) {
+                        var products = data.products || [];
+                        var label = products.length > 0
+                            ? css + '  →  ' + (products[0].name || '') + '  $' + ((products[0].price || 0) / 100).toFixed(2)
+                            : css + '  (no price found)';
+                        setSelector(storeID, css);
+                        document.getElementById('sel-' + storeID).textContent = label;
+                    }).catch(function () { setSelector(storeID, css); });
+                });
+            } catch (ex) { /* cross-origin sandboxing — no-op */ }
+        });
+    }
+
+    // Fetch & Preview
+    document.querySelectorAll('.btn-fetch').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var storeID = btn.dataset.store;
+            var rawURL  = getURL(storeID);
+            if (!rawURL) { alert('Enter a search URL first.'); return; }
+            // Replace {term} with a test ingredient
+            var testURL = rawURL.replace('{term}', encodeURIComponent('eggs'));
+            btn.disabled = true;
+            btn.textContent = 'Fetching…';
+
+            var fd = new FormData();
+            fd.append('url', testURL);
+            post('/admin/scrape/fetch', fd).then(function (r) {
+                if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+                return r.text();
+            }).then(function (html) {
+                var frame = document.getElementById('frame-' + storeID);
+                var preview = document.getElementById('preview-' + storeID);
+                preview.style.display = '';
+                frame.srcdoc = html;
+                attachIframeClicker(storeID);
+            }).catch(function (e) {
+                alert('Fetch error: ' + e.message);
+            }).finally(function () {
+                btn.disabled = false;
+                btn.innerHTML = '&#128065; Fetch &amp; Preview';
+            });
+        });
+    });
+
+    // Auto-detect
+    document.querySelectorAll('.btn-autodetect').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var storeID = btn.dataset.store;
+            var rawURL  = getURL(storeID);
+            if (!rawURL) { alert('Enter a search URL first.'); return; }
+            var testURL = rawURL.replace('{term}', encodeURIComponent('eggs'));
+
+            var form = document.querySelector('.scrape-form[data-store="' + storeID + '"]');
+            var aiMode = form ? form.querySelector('input[name="mode"][value="auto_ai"]') : null;
+            var aiAssist = aiMode && aiMode.checked ? '1' : '0';
+
+            btn.disabled = true;
+            btn.textContent = 'Detecting…';
+
+            var fd = new FormData();
+            fd.append('url', testURL);
+            fd.append('ai_assisted', aiAssist);
+            post('/admin/scrape/autodetect', fd).then(function (r) { return r.json(); })
+              .then(function (data) {
+                var msg = 'Auto-detect result:\n'
+                    + 'Mode: ' + data.mode + '\n'
+                    + 'Confidence: ' + data.confidence + '\n'
+                    + 'Products found: ' + (data.products || []).length + '\n'
+                    + (data.message || '');
+                alert(msg);
+                if (data.selectors_json && form) {
+                    form.querySelector('.selectors-json').value = data.selectors_json;
+                }
+            }).catch(function (e) {
+                alert('Auto-detect error: ' + e.message);
+            }).finally(function () {
+                btn.disabled = false;
+                btn.innerHTML = '&#9881; Auto-detect';
+            });
+        });
+    });
+
+    // Test
+    document.querySelectorAll('.btn-test').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var storeID = btn.dataset.store;
+            btn.disabled = true;
+            btn.textContent = 'Testing…';
+
+            var fd = new FormData();
+            post('/admin/scrape/' + storeID + '/test', fd).then(function (r) { return r.json(); })
+              .then(function (data) {
+                var results = document.getElementById('test-results-' + storeID);
+                var preview = document.getElementById('preview-' + storeID);
+                preview.style.display = '';
+                results.style.display = '';
+
+                var status = data.status === 'active'
+                    ? '<span class="badge badge--live">active</span>'
+                    : '<span class="badge badge--warn">degraded</span>';
+
+                var rows = (data.products || []).slice(0, 3).map(function (p) {
+                    return '<tr><td>' + (p.name || '—') + '</td><td>$' + ((p.price || 0) / 100).toFixed(2) + '</td><td>' + (p.unit || '—') + '</td></tr>';
+                }).join('');
+
+                results.innerHTML = '<div class="card" style="padding:.75rem">'
+                    + '<p>' + status + ' ' + (data.error ? '<code>' + data.error + '</code>' : 'Test passed with "eggs".') + '</p>'
+                    + (rows ? '<table class="data-table"><thead><tr><th>Name</th><th>Price</th><th>Unit</th></tr></thead><tbody>' + rows + '</tbody></table>' : '')
+                    + '</div>';
+            }).catch(function (e) {
+                alert('Test error: ' + e.message);
+            }).finally(function () {
+                btn.disabled = false;
+                btn.innerHTML = '&#9879; Test';
+            });
+        });
+    });
+})();
+</script>
+{{end}}
+{{end}}

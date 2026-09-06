@@ -46,5 +46,17 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGeneratePage)))
 	mux.Handle("GET /plan/generate/status", requireAuth(http.HandlerFunc(s.handlePlanGenerateStatus)))
 
+	mux.Handle("GET /admin/prices", requireAuth(http.HandlerFunc(s.handleAdminPricesPage)))
+	mux.Handle("POST /admin/prices", requireAuth(http.HandlerFunc(s.handleAdminPriceCreate)))
+	mux.Handle("POST /admin/prices/{id}/delete", requireAuth(http.HandlerFunc(s.handleAdminPriceDelete)))
+
+	mux.Handle("GET /admin/scrape", requireAuth(http.HandlerFunc(s.handleScrapeConfigPage)))
+	mux.Handle("POST /admin/scrape/{storeID}/save", requireAuth(http.HandlerFunc(s.handleScrapeConfigSave)))
+	mux.Handle("POST /admin/scrape/{storeID}/test", requireAuth(http.HandlerFunc(s.handleScrapeConfigTest)))
+	mux.Handle("GET /admin/scrape/proxy", requireAuth(http.HandlerFunc(s.handleScrapeProxy)))
+	mux.Handle("POST /admin/scrape/fetch", requireAuth(http.HandlerFunc(s.handleScrapeFetch)))
+	mux.Handle("POST /admin/scrape/selector", requireAuth(http.HandlerFunc(s.handleScrapeSelector)))
+	mux.Handle("POST /admin/scrape/autodetect", requireAuth(http.HandlerFunc(s.handleScrapeAutodetect)))
+
 	mux.Handle("GET /", requireAuth(http.HandlerFunc(s.handleDashboard)))
 }
