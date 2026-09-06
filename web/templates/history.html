@@ -1,0 +1,86 @@
+{{define "title"}}Plan History — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "history"}} Plan History</h1>
+    <p class="page-subtitle">All generated meal plans, newest first.</p>
+</div>
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <form method="GET" action="/plan/history" class="pref-form">
+        <div class="field-row">
+            <div class="field">
+                <label class="field-label" for="hist-from">From week</label>
+                <input class="field-input" id="hist-from" name="from" type="date"
+                       value="{{.Data.From}}">
+            </div>
+            <div class="field">
+                <label class="field-label" for="hist-to">To week</label>
+                <input class="field-input" id="hist-to" name="to" type="date"
+                       value="{{.Data.To}}">
+            </div>
+            <div class="field field--action">
+                <button type="submit" class="btn btn--outline">{{icon "filter-variant"}} Filter</button>
+            </div>
+            {{if or .Data.From .Data.To}}
+            <div class="field field--action">
+                <a href="/plan/history" class="btn btn--ghost">Clear</a>
+            </div>
+            {{end}}
+        </div>
+    </form>
+</div>
+
+{{if .Data.Plans}}
+<div class="card">
+    <table class="data-table" aria-label="Plan history">
+        <thead>
+            <tr>
+                <th>Week</th>
+                <th>Status</th>
+                <th>Spent</th>
+                <th>Budget</th>
+                <th>vs Budget</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Data.Plans}}
+            <tr>
+                <td>{{fmtWeekRange .WeekStart .WeekEnd}}</td>
+                <td>
+                    {{if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
+                    {{else if eq .Status "generating"}}<span class="badge badge--muted">Generating</span>
+                    {{else}}<span class="badge badge--muted">{{.Status}}</span>{{end}}
+                </td>
+                <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}}—{{end}}</td>
+                <td>${{printf "%.0f" (divf .BudgetCents 100.0)}}</td>
+                <td>
+                    {{if and (gt .TotalCents 0) (gt .BudgetCents 0)}}
+                        {{if gt .TotalCents .BudgetCents}}
+                        <span class="badge badge--danger">+${{printf "%.2f" (divf (sub64 .TotalCents .BudgetCents) 100.0)}} over</span>
+                        {{else}}
+                        <span class="badge badge--success">${{printf "%.2f" (divf (sub64 .BudgetCents .TotalCents) 100.0)}} under</span>
+                        {{end}}
+                    {{else}}—{{end}}
+                </td>
+                <td><a href="/plan?week={{.WeekStart}}" class="btn btn--ghost btn--sm">{{icon "calendar-week"}} View</a></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{else}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">📅</div>
+    <h2 class="skeleton-card__title">No plans found</h2>
+    <p class="skeleton-card__body">
+        {{if or .Data.From .Data.To}}
+        No plans match the selected date range.
+        <a href="/plan/history">Clear filters</a> to see all plans.
+        {{else}}
+        Generate your first weekly plan to see it here.
+        {{end}}
+    </p>
+</div>
+{{end}}
+{{end}}

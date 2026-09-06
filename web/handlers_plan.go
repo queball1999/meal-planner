@@ -44,6 +44,7 @@ type planPageData struct {
 	ConfidenceSummary string
 	Days              []calendarDay
 	HasLLM            bool
+	ReadOnly          bool // true when viewing a past plan via ?week=
 }
 
 var slotOrder = []string{"breakfast", "lunch", "dinner"}
@@ -71,7 +72,16 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
+	// ?week=YYYY-MM-DD loads a specific past plan in read-only mode.
+	readOnly := false
+	var p *db.Plan
+	if week := r.URL.Query().Get("week"); week != "" {
+		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, week)
+		readOnly = true
+	} else {
+		p, _ = s.store.GetLatestPlan(ctx, hh.ID)
+	}
+
 	if p == nil || p.Status == "generating" {
 		s.render(w, r, "plan", planPageData{HasPlan: false, HasLLM: s.gen != nil})
 		return
@@ -143,7 +153,35 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		ConfidenceSummary: p.ConfidenceSummary,
 		Days:              days,
 		HasLLM:            s.gen != nil,
+		ReadOnly:          readOnly,
 	})
+}
+
+// handlePlanHistory lists all past plans with optional date-range filtering.
+// Accepts ?from=YYYY-MM-DD&to=YYYY-MM-DD; params are URL-reflected.
+func (s *Server) handlePlanHistory(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	ctx := r.Context()
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+
+	var plans []*db.Plan
+	if from != "" && to != "" {
+		plans, _ = s.store.ListPlansInRange(ctx, hh.ID, from, to)
+	} else {
+		plans, _ = s.store.ListPlans(ctx, hh.ID)
+	}
+
+	type historyPageData struct {
+		Plans []*db.Plan
+		From  string
+		To    string
+	}
+	s.render(w, r, "history", historyPageData{Plans: plans, From: from, To: to})
 }
 
 // handlePlanGenerate starts a background generation job, then redirects to

@@ -3,7 +3,11 @@
 <div class="page-header">
     <h1 class="page-title">{{icon "calendar"}} Weekly Plan</h1>
     {{if .Data.HasPlan}}
-    <p class="page-subtitle">{{.Data.WeekStart}} &ndash; {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}</p>
+    <p class="page-subtitle">
+        {{if .Data.ReadOnly}}<a href="/" class="btn btn--ghost btn--sm" style="margin-right:.5rem">{{icon "arrow-left"}} Dashboard</a>{{end}}
+        {{.Data.WeekStart}} &ndash; {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}
+        {{if .Data.ReadOnly}}<span class="badge badge--muted" style="margin-left:.5rem">Past plan — read only</span>{{end}}
+    </p>
     {{else}}
     <p class="page-subtitle">No plan yet for this week.</p>
     {{end}}
@@ -23,7 +27,7 @@
         {{end}}
     </div>
     {{end}}
-    {{if .Data.HasLLM}}
+    {{if and .Data.HasLLM (not .Data.ReadOnly)}}
     <form method="POST" action="/plan/generate">
         {{.CSRFField}}
         <button type="submit" class="btn btn--outline btn--sm">
@@ -46,6 +50,7 @@
     <div class="plan-calendar__row" role="row">
         <div class="plan-calendar__day-label" role="rowheader">
             <div>{{$day.DateLabel}}</div>
+            {{if not $.Data.ReadOnly}}
             <form method="POST" action="/plan/days/{{$day.Date}}/headcount"
                   style="display:flex;align-items:center;gap:.25rem;margin-top:.25rem">
                 {{$.CSRFField}}
@@ -56,6 +61,9 @@
                     {{icon "account-group"}}
                 </button>
             </form>
+            {{else}}
+            <span class="plan-cell__meta" style="font-size:.8rem;margin-top:.2rem">{{$day.Headcount}} people</span>
+            {{end}}
         </div>
 
         {{with index $day.Slots "breakfast"}}
@@ -66,6 +74,7 @@
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
                 {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+                {{if not $.Data.ReadOnly}}
                 <div class="plan-cell__actions">
                     <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
                         {{$.CSRFField}}
@@ -85,6 +94,7 @@
                         </button>
                     </form>
                 </div>
+                {{end}}
             </div>{{end}}
         </div>
         {{end}}
@@ -97,6 +107,7 @@
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
                 {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+                {{if not $.Data.ReadOnly}}
                 <div class="plan-cell__actions">
                     <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
                         {{$.CSRFField}}
@@ -116,6 +127,7 @@
                         </button>
                     </form>
                 </div>
+                {{end}}
             </div>{{end}}
         </div>
         {{end}}
@@ -128,6 +140,7 @@
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
                 {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
+                {{if not $.Data.ReadOnly}}
                 <div class="plan-cell__actions">
                     <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
                         {{$.CSRFField}}
@@ -147,6 +160,7 @@
                         </button>
                     </form>
                 </div>
+                {{end}}
             </div>{{end}}
         </div>
         {{end}}

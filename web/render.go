@@ -43,6 +43,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		Funcs(template.FuncMap{
 			"icon": iconFunc,
 			"divf": func(a int64, b float64) float64 { return float64(a) / b },
+			"sub64": func(a, b int64) int64 { return a - b },
 			"fmtWeekRange": func(start, end string) string {
 				s, _ := time.Parse("2006-01-02", start)
 				e, _ := time.Parse("2006-01-02", end)
