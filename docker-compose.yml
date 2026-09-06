@@ -1,0 +1,12 @@
+services:
+  goeat:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: "file:/data/goeat.db"
+      RECIPE_IMAGE_DIR: "/data/recipe-images"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
