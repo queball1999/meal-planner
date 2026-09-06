@@ -56,6 +56,63 @@ func (s *store) UpdatePlanTotal(ctx context.Context, planID int64, totalCents in
 	return err
 }
 
+func (s *store) ListPlans(ctx context.Context, householdID int64) ([]*Plan, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, household_id, week_start, week_end, budget_cents, total_cents,
+		       confidence_summary, status, created_at
+		FROM plans
+		WHERE household_id = ?
+		ORDER BY created_at DESC`, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanPlans(rows)
+}
+
+func (s *store) ListPlansInRange(ctx context.Context, householdID int64, from, to string) ([]*Plan, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, household_id, week_start, week_end, budget_cents, total_cents,
+		       confidence_summary, status, created_at
+		FROM plans
+		WHERE household_id = ? AND week_start >= ? AND week_start <= ?
+		ORDER BY week_start DESC`, householdID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanPlans(rows)
+}
+
+func (s *store) GetPlanByWeekStart(ctx context.Context, householdID int64, weekStart string) (*Plan, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, household_id, week_start, week_end, budget_cents, total_cents,
+		       confidence_summary, status, created_at
+		FROM plans
+		WHERE household_id = ? AND week_start = ?
+		ORDER BY created_at DESC
+		LIMIT 1`, householdID, weekStart)
+	return scanPlan(row)
+}
+
+func scanPlans(rows *sql.Rows) ([]*Plan, error) {
+	var plans []*Plan
+	for rows.Next() {
+		var p Plan
+		var createdAt string
+		if err := rows.Scan(
+			&p.ID, &p.HouseholdID, &p.WeekStart, &p.WeekEnd,
+			&p.BudgetCents, &p.TotalCents, &p.ConfidenceSummary,
+			&p.Status, &createdAt,
+		); err != nil {
+			return nil, err
+		}
+		p.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		plans = append(plans, &p)
+	}
+	return plans, rows.Err()
+}
+
 func scanPlan(row *sql.Row) (*Plan, error) {
 	var p Plan
 	var createdAt string

@@ -392,6 +392,16 @@ type CreateShoppingListItemParams struct {
 	Confidence         string
 }
 
+// ── Phase 5.5 — Spend stats (§5.5) ───────────────────────────────────────────
+
+// SpendStats aggregates spend and usage numbers over a date range (§5.5).
+type SpendStats struct {
+	TotalCents  int64
+	BudgetCents int64
+	MealCount   int64
+	PlanCount   int
+}
+
 // ── Phase 5 — Pantry & plan-day overrides (§5.4, §5.6, §10.1) ───────────────
 
 // PantryItem is one ingredient the household has on hand (§5.4).

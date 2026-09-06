@@ -91,6 +91,9 @@ type Store interface {
 	UpdatePlanStatus(ctx context.Context, planID int64, status string) error
 	GetLatestPlan(ctx context.Context, householdID int64) (*Plan, error)
 	GetPlanByID(ctx context.Context, planID int64) (*Plan, error)
+	ListPlans(ctx context.Context, householdID int64) ([]*Plan, error)
+	ListPlansInRange(ctx context.Context, householdID int64, from, to string) ([]*Plan, error)
+	GetPlanByWeekStart(ctx context.Context, householdID int64, weekStart string) (*Plan, error)
 
 	// ── Meals (§5.2, §5.3, §10.1) ────────────────────────────────────────────
 
@@ -143,6 +146,10 @@ type Store interface {
 	// ── Plan total (§6.4) ─────────────────────────────────────────────────────
 
 	UpdatePlanTotal(ctx context.Context, planID int64, totalCents int64, confidenceSummary string) error
+
+	// ── Spend stats (§5.5) ────────────────────────────────────────────────────
+
+	GetSpendStats(ctx context.Context, householdID int64, from, to string) (*SpendStats, error)
 
 	// ── Meals — additional (§5.2, §5.6, §7.6) ───────────────────────────────
 

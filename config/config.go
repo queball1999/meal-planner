@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"crypto/rand"
@@ -37,6 +37,8 @@ type Config struct {
 	// ── Pricing providers (§11.3) ─────────────────────────────────────────
 	PriceCacheTTLHours int // default 168 (1 week); 0 = no expiry
 
+	// Calendar (SS11.1)
+	WeekStartDay string // "sunday" (default) | "monday"
 	// Kroger OfficialAPIProvider (§6.2)
 	KrogerClientID     string
 	KrogerClientSecret string
@@ -94,6 +96,14 @@ func Load() (*Config, error) {
 		KrogerClientSecret: os.Getenv("KROGER_CLIENT_SECRET"),
 		KrogerLocationID:   os.Getenv("KROGER_LOCATION_ID"),
 		FlareSolverrURL:    os.Getenv("FLARESOLVERR_URL"),
+
+		WeekStartDay: func() string {
+			d := os.Getenv("WEEK_START_DAY")
+			if d == "monday" {
+				return "monday"
+			}
+			return "sunday"
+		}(),
 	}
 
 	if cfg.SessionSecret == "" {
