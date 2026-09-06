@@ -1,66 +1,308 @@
-{{define "title"}}Grocery Stores — {{.AppName}}{{end}}
+{{define "title"}}Grocery Stores - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
-    <h1 class="page-title">Grocery Stores</h1>
+    <div class="page-header__row">
+        <h1 class="page-title">{{icon "store"}} Grocery Stores</h1>
+        <div class="page-header__actions">
+            <button type="button" class="btn btn--primary" data-modal-open="add-store-modal">
+                {{icon "plus"}} Add custom store
+            </button>
+        </div>
+    </div>
     <p class="page-subtitle">The stores your household shops at. Used for price lookups and shopping list sorting.</p>
 </div>
 
-<!-- ── Existing stores ─────────────────────────────────────────────────── -->
+{{template "settingsTabs" .}}
+
+{{/* ── Catalog picker - same list as the setup wizard, current state pre-checked ── */}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">Where do you shop?</h2>
+    <p class="form-section__desc">
+        Check or uncheck stores and save - unchecking removes that store and its scrape config.
+        Stores you typed by hand are left alone.
+    </p>
+
+    {{if .Data.KrogerReady}}
+    <div class="store-api-banner">
+        {{icon "tag"}} <strong>Kroger</strong> is connected via the official API - live prices enabled automatically.
+    </div>
+    {{end}}
+
+    {{if .Data.AwayCount}}
+    <div class="store-filter-bar">
+        <span class="field-hint" style="margin:0">
+            {{.Data.AwayCount}} chain(s) do not operate in {{.Data.State}} and are hidden.
+        </span>
+        <label class="checkbox-chip">
+            <input type="checkbox" id="store_show_all"> Show them anyway
+        </label>
+    </div>
+    {{end}}
+
+    <form method="POST" action="/stores/select">
+        {{.CSRFField}}
+        <div class="store-picker-grid" id="store-picker" role="group" aria-label="Select your grocery stores">
+            {{range .Data.Catalog}}
+            <label class="store-chip{{if not .Available}} store-chip--unavailable store-chip--hidden{{end}}">
+                <input type="checkbox" name="stores" value="{{.Name}}"
+                       {{if .Selected}}checked{{end}}
+                       class="store-chip__check">
+                <span class="store-chip__inner">
+                    {{$logo := storeLogo .Name}}
+                    {{if $logo}}
+                    <img class="store-chip__logo" src="{{$logo}}" alt="" loading="lazy" width="32" height="32">
+                    {{else}}
+                    <span class="store-chip__fallback" aria-hidden="true">{{icon "store"}}</span>
+                    {{end}}
+                    <span class="store-chip__name">{{.Name}}</span>
+                    {{if .HasAPI}}
+                    <span class="store-chip__badge store-chip__badge--api" title="Live prices via official API">API</span>
+                    {{else if .CanScrape}}
+                    <span class="store-chip__badge store-chip__badge--scrape" title="Prices via scraper">Scraper</span>
+                    {{end}}
+                    {{if not .Available}}<span class="store-chip__away">not in {{$.Data.State}}</span>{{end}}
+                </span>
+            </label>
+            {{end}}
+        </div>
+        <div class="form-actions" style="margin-top:var(--sp-4)">
+            <button type="submit" class="btn btn-primary">{{icon "check"}} Save selection</button>
+        </div>
+    </form>
+</div>
+
+{{/* ── Your stores ────────────────────────────────────────────────────────── */}}
 {{if .Data.Stores}}
 <ul class="store-list" aria-label="Your grocery stores">
     {{range .Data.Stores}}
     <li class="store-item card">
-        <span class="store-item__icon" aria-hidden="true">{{icon "store"}}</span>
+        <span class="store-item__icon" aria-hidden="true">
+            {{$logo := storeLogo .Store.Name}}
+            {{if $logo}}<img src="{{$logo}}" alt="" width="24" height="24">{{else}}{{icon "store"}}{{end}}
+        </span>
         <div class="store-item__info">
-            <span class="store-item__name">{{.Name}}</span>
-            {{if .Kind}}<span class="badge badge-muted">{{.Kind}}</span>{{end}}
+            <span class="store-item__name">{{.Store.Name}}</span>
+            {{if .Store.Kind}}<span class="badge badge-muted">{{.Store.Kind}}</span>{{end}}
+            {{if and .Known .Known.HasAPI}}
+            <span class="badge badge-success">API</span>
+            {{else if .Config}}
+            <span class="badge {{if eq .Config.Status "active"}}badge-success{{else}}badge-muted{{end}}">scraper: {{.Config.Status}}</span>
+            {{else}}
+            <span class="badge badge-muted">scraper: not configured</span>
+            {{end}}
         </div>
-        <form method="POST" action="/stores/{{.ID}}/delete" class="store-item__delete">
-            {{$.CSRFField}}
-            <button type="submit" class="btn btn-ghost btn-sm btn-danger"
-                    aria-label="Remove {{.Name}}"
-                    onclick="return confirm('Remove {{.Name}}?')">
-                {{icon "delete"}}
+        <div class="store-item__actions">
+            <button type="button" class="btn btn-ghost btn-sm"
+                    data-modal-open="store-cfg-{{.Store.ID}}"
+                    aria-label="Configure scraping for {{.Store.Name}}"
+                    title="Scraping settings">
+                {{icon "cog"}}
             </button>
-        </form>
+            <form method="POST" action="/stores/{{.Store.ID}}/delete">
+                {{$.CSRFField}}
+                <button type="submit" class="btn btn-ghost btn-sm btn-danger"
+                        aria-label="Remove {{.Store.Name}}"
+                        onclick="return confirm('Remove {{.Store.Name}}?')">
+                    {{icon "delete"}}
+                </button>
+            </form>
+        </div>
     </li>
     {{end}}
 </ul>
+
+{{/* ── Per-store scraping modals ──────────────────────────────────────────── */}}
+{{range .Data.Stores}}
+<div class="modal" id="store-cfg-{{.Store.ID}}" hidden role="dialog" aria-modal="true"
+     aria-label="Scraping settings for {{.Store.Name}}">
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__panel card">
+        <div class="modal__head">
+            <h2 class="form-section__title" style="margin:0">{{icon "cog"}} {{.Store.Name}} - scraping</h2>
+            <button type="button" class="btn btn-ghost btn-sm" data-modal-close aria-label="Close">{{icon "close"}}</button>
+        </div>
+
+        {{if and .Known .Known.HasAPI}}
+        <p class="field-hint">This store has an official price API. Scraping is only used as a fallback.</p>
+        {{end}}
+
+        <form method="POST" action="/admin/scrape/{{.Store.ID}}/save" class="pref-form">
+            {{$.CSRFField}}
+            <input type="hidden" name="redirect_to" value="/stores">
+
+            <div class="field">
+                <label class="field-label" for="m-url-{{.Store.ID}}">Search URL template</label>
+                <input class="field-input" id="m-url-{{.Store.ID}}" name="search_url_template"
+                       type="url" placeholder="https://store.com/search?q={term}"
+                       value="{{if .Config}}{{.Config.SearchURLTemplate}}{{end}}" required>
+                <span class="field-hint">Use <code>{term}</code> where the ingredient name goes.</span>
+            </div>
+
+            <div class="field">
+                <label class="field-label">Mode</label>
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="assisted"
+                               {{if or (not .Config) (eq .Config.Mode "assisted")}}checked{{end}}> Assisted
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="auto"
+                               {{if and .Config (eq .Config.Mode "auto")}}checked{{end}}> Auto
+                    </label>
+                    {{if $.Data.HasLLM}}
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="auto_ai"
+                               {{if and .Config (eq .Config.Mode "auto_ai")}}checked{{end}}> Auto + AI
+                    </label>
+                    {{end}}
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="m-sel-{{.Store.ID}}">Selectors (JSON)</label>
+                <textarea class="field-input" id="m-sel-{{.Store.ID}}" name="selectors_json" rows="3"
+                          spellcheck="false">{{if .Config}}{{.Config.SelectorsJSON}}{{else}}{}{{end}}</textarea>
+                <span class="field-hint">
+                    Keys: <code>item</code>, <code>name</code>, <code>price</code>, <code>pack_size</code> -
+                    each <code>{"css":"…"}</code>. Leave <code>{}</code> when the site publishes JSON-LD.
+                    Use <a href="/admin/scrape#store-{{.Store.ID}}">auto-detect</a> to fill it in.
+                </span>
+            </div>
+
+
+            <details class="store-context"{{if and .Config .Config.ContextJSON (ne .Config.ContextJSON "{}")}} open{{end}}>
+                <summary class="store-context__summary">Store context (needed by Albertsons, Safeway and friends)</summary>
+                <p class="field-hint">
+                    Some retailers answer a search with loading skeletons until a store is chosen,
+                    and keep that choice in a cookie - no selector can find a price that was never
+                    rendered. Pick your store on the retailer's own site, copy the cookie out of
+                    your browser's devtools (Application &rarr; Cookies), and paste it here.
+                </p>
+
+                <div class="field">
+                    <label class="field-label" for="ctx-cookies-{{.Store.ID}}">Store cookies</label>
+                    <textarea class="field-input" id="ctx-cookies-{{.Store.ID}}" name="context_cookies"
+                              rows="3" spellcheck="false"
+                              placeholder="SWY_SYND_USER_INFO=%7B%22storeId%22...">{{if .Config}}{{ctxCookies .Config.ContextJSON}}{{end}}</textarea>
+                    <span class="field-hint">One <code>NAME=value</code> per line.</span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="ctx-prewarm-{{.Store.ID}}">Pre-warm URLs</label>
+                    <textarea class="field-input" id="ctx-prewarm-{{.Store.ID}}" name="context_prewarm"
+                              rows="2" spellcheck="false"
+                              placeholder="https://www.example.com/">{{if .Config}}{{ctxPrewarm .Config.ContextJSON}}{{end}}</textarea>
+                    <span class="field-hint">
+                        Visited in order before the search, in the same browser session - the front
+                        door is where a site hands out the rest of its session. One URL per line.
+                    </span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="ctx-wait-{{.Store.ID}}">Wait for selector</label>
+                    <input class="field-input" type="text" id="ctx-wait-{{.Store.ID}}" name="context_wait_for"
+                           spellcheck="false" placeholder="[data-qa=&quot;prd-itm-prc&quot;]"
+                           value="{{if .Config}}{{ctxWaitFor .Config.ContextJSON}}{{end}}">
+                    <span class="field-hint">
+                        Hold until this appears, so results that arrive by XHR are captured.
+                        Leave blank to wait for any price-looking text.
+                    </span>
+                </div>
+            </details>
+
+            <input type="hidden" name="ai_assisted" value="{{if and .Config .Config.AIAssisted}}1{{else}}0{{end}}">
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{{icon "check"}} Save</button>
+                <a class="btn btn-secondary" href="/admin/scrape#store-{{.Store.ID}}">Advanced &amp; test</a>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}
 {{else}}
 <div class="empty-state card">
-    <p class="empty-state__text">No stores added yet. Add your first store below.</p>
+    <p class="empty-state__text">
+        No stores yet. Pick them above, or
+        <button type="button" class="btn-link" data-modal-open="add-store-modal">add a custom one</button>.
+    </p>
 </div>
 {{end}}
 
-<!-- ── Add store form ──────────────────────────────────────────────────── -->
-<div class="card form-section">
-    <h2 class="form-section__title">{{icon "plus"}} Add a store</h2>
-    <form method="POST" action="/stores" novalidate>
-        {{.CSRFField}}
-        <div class="field">
-            <label class="field-label" for="name">Store name</label>
-            <input class="field-input"
-                   type="text"
-                   id="name"
-                   name="name"
-                   placeholder="Costco, Trader Joe's…"
-                   autofocus
-                   required>
-        </div>
-        <div class="field field--inline">
-            <label class="field-label" for="kind">Type</label>
-            <select class="field-input" id="kind" name="kind">
-                <option value="grocery">Grocery</option>
-                <option value="warehouse">Warehouse / club</option>
-                <option value="specialty">Specialty</option>
-                <option value="online">Online</option>
-            </select>
-        </div>
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">
-                {{icon "plus"}} Add store
+{{/* ── Add a custom store (opened from the header) ─────────────────────────── */}}
+<div class="modal" id="add-store-modal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="add-store-title">
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__panel card">
+        <div class="modal__head">
+            <h2 class="form-section__title" id="add-store-title" style="margin:0">
+                {{icon "plus"}} Add a custom store
+            </h2>
+            <button type="button" class="btn btn-ghost btn-sm" data-modal-close aria-label="Close">
+                {{icon "close"}}
             </button>
         </div>
-    </form>
+        <form method="POST" action="/stores" novalidate>
+            {{.CSRFField}}
+            <div class="field">
+                <label class="field-label" for="name">Store name</label>
+                <input class="field-input" type="text" id="name" name="name"
+                       placeholder="Local co-op, corner market…" required>
+            </div>
+            <div class="field">
+                <label class="field-label" for="kind">Type</label>
+                <select class="field-input" id="kind" name="kind">
+                    <option value="grocery">Grocery</option>
+                    <option value="warehouse">Warehouse / club</option>
+                    <option value="specialty">Specialty</option>
+                    <option value="online">Online</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                <button type="submit" class="btn btn-primary">{{icon "plus"}} Add store</button>
+            </div>
+        </form>
+    </div>
 </div>
+
+<script>
+(function () {
+    function close(m) { m.hidden = true; document.body.style.overflow = ''; }
+
+    // Out-of-area chains are hidden, not removed: a household near a state
+    // line can still opt in.
+    var showAll = document.getElementById('store_show_all');
+    if (showAll) showAll.addEventListener('change', function () {
+        document.querySelectorAll('#store-picker .store-chip--unavailable').forEach(function (chip) {
+            chip.classList.toggle('store-chip--hidden', !showAll.checked);
+        });
+    });
+
+    // One opener for every modal on the page: the per-store scraping panels
+    // and the header's "Add custom store".
+    document.querySelectorAll('[data-modal-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var m = document.getElementById(btn.dataset.modalOpen);
+            if (!m) return;
+            m.hidden = false;
+            document.body.style.overflow = 'hidden';
+            var first = m.querySelector('input,textarea,select,button');
+            if (first) first.focus();
+        });
+    });
+
+    document.querySelectorAll('[data-modal-close]').forEach(function (el) {
+        el.addEventListener('click', function () {
+            var m = el.closest('.modal');
+            if (m) close(m);
+        });
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        document.querySelectorAll('.modal:not([hidden])').forEach(close);
+    });
+}());
+</script>
 {{end}}

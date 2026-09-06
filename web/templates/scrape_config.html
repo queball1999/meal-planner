@@ -1,18 +1,18 @@
-{{define "title"}}Scrape Config — {{.AppName}}{{end}}
+{{define "title"}}Scrape Config - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "code-braces"}} Scrape Configuration</h1>
     <p class="page-subtitle">
         Configure how each store's website is scraped for prices (§6.7).
-        Scraping is the fourth tier of the pricing chain — used only when no live, cached, or manual price exists.
+        Scraping is the fourth tier of the pricing chain - used only when no live, cached, or manual price exists.
     </p>
 </div>
 
-{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
+{{template "settingsTabs" .}}
 
 {{if not .Data.Stores}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🏪</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "store"}}</div>
     <h2 class="skeleton-card__title">No stores configured</h2>
     <p class="skeleton-card__body">
         <a href="/stores">Add grocery stores</a> first, then come back to configure scraping.
@@ -24,33 +24,32 @@
     <h2 class="form-section__title">Modes</h2>
     <dl class="help-dl">
         <dt><strong>Assisted</strong></dt>
-        <dd>You enter the search URL template (<code>{term}</code> is replaced with the ingredient).
-            The server fetches a sample page and renders it in a sandboxed preview below.
-            Click any element to pick its CSS selector; click "Use selector" to save it.</dd>
+        <dd>Click elements in the preview to pick selectors yourself.</dd>
         <dt><strong>Auto</strong></dt>
-        <dd>Server fetches the page and detects prices via JSON-LD / schema.org heuristics.
-            Shows a proposed config for one-click confirmation — no selectors needed.</dd>
+        <dd>Detects prices from the page's structured data, then common retail markup.</dd>
         {{if .Data.HasLLM}}
         <dt><strong>Auto + AI</strong></dt>
-        <dd>Same as Auto, but fields the heuristic can't resolve are sent to the LLM for a best guess.
-            The proposed config is shown for your review before saving.</dd>
+        <dd>Falls back to the LLM when Auto finds nothing. Proposals are verified against the live page before they are offered.</dd>
         {{end}}
     </dl>
+    {{if not .Data.HasLLM}}
+    <p class="field-hint">{{icon "alert"}} No LLM configured - Auto + AI is unavailable. Set <code>LLM_API_KEY</code> in <code>.env</code>.</p>
+    {{end}}
 </div>
 
 {{range .Data.Stores}}
 <section class="card scrape-store" id="store-{{.Store.ID}}" style="margin-bottom:1.5rem">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:.5rem;flex-wrap:wrap">
         <h2 class="form-section__title" style="margin:0">
             {{icon "store"}} {{.Store.Name}}
         </h2>
         {{if .Config}}
-        <span class="badge {{if eq .Config.Status "active"}}badge--live{{else if eq .Config.Status "degraded"}}badge--warn{{else}}badge--dim{{end}}">
-            {{if eq .Config.Status "active"}}active{{else if eq .Config.Status "degraded"}}degraded{{else}}{{.Config.Status}}{{end}}
+        <span class="badge {{if eq .Config.Status "active"}}badge-success{{else if eq .Config.Status "degraded"}}badge-warning{{else}}badge-muted{{end}}">
+            {{.Config.Status}}
             {{if .Config.LastTestedAt}}&nbsp;· tested {{.Config.LastTestedAt}}{{end}}
         </span>
         {{else}}
-        <span class="badge badge--dim">not configured</span>
+        <span class="badge badge-muted">not configured</span>
         {{end}}
     </div>
 
@@ -58,267 +57,476 @@
           action="/admin/scrape/{{.Store.ID}}/save" method="POST">
         {{$.CSRFField}}
 
-        <div class="field-row">
-            <div class="field" style="flex:1">
-                <label class="field-label" for="url-{{.Store.ID}}">Search URL template</label>
-                <input class="field-input" id="url-{{.Store.ID}}" name="search_url_template"
-                       type="url" placeholder="https://store.com/search?q={term}"
-                       value="{{if .Config}}{{.Config.SearchURLTemplate}}{{end}}"
-                       required>
-                <span class="field-hint">Use <code>{term}</code> where the ingredient name goes.</span>
+        <div class="field">
+            <label class="field-label" for="url-{{.Store.ID}}">Search URL template</label>
+            <input class="field-input" id="url-{{.Store.ID}}" name="search_url_template"
+                   type="url" placeholder="https://store.com/search?q={term}"
+                   value="{{if .Config}}{{.Config.SearchURLTemplate}}{{end}}"
+                   required>
+            <span class="field-hint">Use <code>{term}</code> where the ingredient name goes.</span>
+        </div>
+
+        <div class="field">
+            <label class="field-label">Mode</label>
+            <div class="radio-group">
+                <label class="radio-label">
+                    <input type="radio" name="mode" value="assisted"
+                           {{if or (not .Config) (eq .Config.Mode "assisted")}}checked{{end}}>
+                    Assisted
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="mode" value="auto"
+                           {{if and .Config (eq .Config.Mode "auto")}}checked{{end}}>
+                    Auto
+                </label>
+                {{if $.Data.HasLLM}}
+                <label class="radio-label">
+                    <input type="radio" name="mode" value="auto_ai"
+                           {{if and .Config (eq .Config.Mode "auto_ai")}}checked{{end}}>
+                    Auto + AI
+                </label>
+                {{end}}
             </div>
         </div>
 
-        <div class="field-row" style="margin-top:.75rem">
+        <div class="field">
+            <label class="field-label" for="sel-json-{{.Store.ID}}">Selectors</label>
+            <textarea class="field-input selectors-json" id="sel-json-{{.Store.ID}}" name="selectors_json"
+                      rows="4" spellcheck="false">{{if .Config}}{{.Config.SelectorsJSON}}{{else}}{}{{end}}</textarea>
+            <span class="field-hint">
+                <code>item</code> is the per-product container; <code>name</code>, <code>price</code> and
+                <code>pack_size</code> are matched inside it. Leave <code>{}</code> when the page publishes
+                JSON-LD. Auto-detect fills this in for you.
+            </span>
+        </div>
+
+
+        <details class="store-context"{{if and .Config .Config.ContextJSON (ne .Config.ContextJSON "{}")}} open{{end}}>
+            <summary class="store-context__summary">Store context (needed by Albertsons, Safeway and friends)</summary>
+            <p class="field-hint">
+                Some retailers answer a search with loading skeletons until a store is chosen,
+                and keep that choice in a cookie - no selector can find a price that was never
+                rendered. Pick your store on the retailer's own site, copy the cookie out of
+                your browser's devtools (Application &rarr; Cookies), and paste it here.
+            </p>
+
             <div class="field">
-                <label class="field-label">Mode</label>
-                <div class="radio-group">
-                    <label class="radio-label">
-                        <input type="radio" name="mode" value="assisted"
-                               {{if or (not .Config) (eq .Config.Mode "assisted")}}checked{{end}}>
-                        Assisted
-                    </label>
-                    <label class="radio-label">
-                        <input type="radio" name="mode" value="auto"
-                               {{if and .Config (eq .Config.Mode "auto")}}checked{{end}}>
-                        Auto
-                    </label>
-                    {{if $.Data.HasLLM}}
-                    <label class="radio-label">
-                        <input type="radio" name="mode" value="auto_ai"
-                               {{if and .Config (eq .Config.Mode "auto_ai")}}checked{{end}}>
-                        Auto + AI
-                    </label>
-                    {{end}}
-                </div>
+                <label class="field-label" for="ctx-cookies-{{.Store.ID}}">Store cookies</label>
+                <textarea class="field-input" id="ctx-cookies-{{.Store.ID}}" name="context_cookies"
+                          rows="3" spellcheck="false"
+                          placeholder="SWY_SYND_USER_INFO=%7B%22storeId%22...">{{if .Config}}{{ctxCookies .Config.ContextJSON}}{{end}}</textarea>
+                <span class="field-hint">One <code>NAME=value</code> per line.</span>
             </div>
-        </div>
 
-        <input type="hidden" name="selectors_json" class="selectors-json"
-               value="{{if .Config}}{{.Config.SelectorsJSON}}{{else}}{}{{end}}">
-        {{if .Config}}<input type="hidden" name="ai_assisted" value="{{if .Config.AIAssisted}}1{{else}}0{{end}}">{{end}}
+            <div class="field">
+                <label class="field-label" for="ctx-prewarm-{{.Store.ID}}">Pre-warm URLs</label>
+                <textarea class="field-input" id="ctx-prewarm-{{.Store.ID}}" name="context_prewarm"
+                          rows="2" spellcheck="false"
+                          placeholder="https://www.example.com/">{{if .Config}}{{ctxPrewarm .Config.ContextJSON}}{{end}}</textarea>
+                <span class="field-hint">
+                    Visited in order before the search, in the same browser session - the front
+                    door is where a site hands out the rest of its session. One URL per line.
+                </span>
+            </div>
 
-        <div class="field-row" style="margin-top:1rem;gap:.5rem">
-            <button type="submit" class="btn btn--primary">{{icon "content-save"}} Save config</button>
-            <button type="button" class="btn btn--secondary btn-fetch" data-store="{{.Store.ID}}">
-                {{icon "eye"}} Fetch &amp; Preview
+            <div class="field">
+                <label class="field-label" for="ctx-wait-{{.Store.ID}}">Wait for selector</label>
+                <input class="field-input" type="text" id="ctx-wait-{{.Store.ID}}" name="context_wait_for"
+                       spellcheck="false" placeholder="[data-qa=&quot;prd-itm-prc&quot;]"
+                       value="{{if .Config}}{{ctxWaitFor .Config.ContextJSON}}{{end}}">
+                <span class="field-hint">
+                    Hold until this appears, so results that arrive by XHR are captured.
+                    Leave blank to wait for any price-looking text.
+                </span>
+            </div>
+        </details>
+
+        <input type="hidden" name="ai_assisted" class="ai-assisted-flag"
+               value="{{if and .Config .Config.AIAssisted}}1{{else}}0{{end}}">
+
+        <div class="field-row" style="margin-top:1rem;gap:.5rem;flex-wrap:wrap">
+            <button type="submit" class="btn btn-primary">{{icon "check"}} Save config</button>
+            <button type="button" class="btn btn-secondary btn-autodetect" data-store="{{.Store.ID}}">
+                {{icon "cog"}} Auto-detect
             </button>
-            <button type="button" class="btn btn--secondary btn-autodetect" data-store="{{.Store.ID}}"
-                    {{if not .Config}}disabled title="Save URL first"{{end}}>
-                {{icon "auto-fix"}} Auto-detect
-            </button>
-            {{if .Config}}
-            <button type="button" class="btn btn--secondary btn-test" data-store="{{.Store.ID}}">
-                {{icon "test-tube"}} Test
+            {{if $.Data.HasLLM}}
+            <button type="button" class="btn btn-secondary btn-ai-read" data-store="{{.Store.ID}}"
+                    title="Have the model read prices off the page without selectors">
+                {{icon "cpu"}} Ask AI to read page
             </button>
             {{end}}
+            <button type="button" class="btn btn-ghost btn-fetch" data-store="{{.Store.ID}}">
+                {{icon "eye"}} Fetch &amp; preview
+            </button>
+            {{if .Config}}
+            <button type="button" class="btn btn-ghost btn-test" data-store="{{.Store.ID}}">
+                {{icon "check"}} Test
+            </button>
+            {{end}}
+            <input class="field-input test-term" data-store="{{.Store.ID}}" type="text"
+                   value="eggs" aria-label="Test ingredient" style="max-width:140px">
         </div>
     </form>
 
+    <!-- Status line + results for every async action on this store -->
+    <p class="scrape-status" id="status-{{.Store.ID}}" style="margin-top:.75rem;font-size:var(--text-sm);color:var(--text-muted)"></p>
+    <div id="results-{{.Store.ID}}"></div>
+
     <!-- Assisted mode preview panel -->
-    <div class="scrape-preview" id="preview-{{.Store.ID}}" style="display:none;margin-top:1.25rem">
-        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem">
+    <div class="scrape-preview" id="preview-{{.Store.ID}}" hidden style="margin-top:1.25rem">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap">
             <span class="field-label" style="margin:0">Preview</span>
-            <code class="selector-display" id="sel-{{.Store.ID}}" style="font-size:.8rem;color:var(--fg-muted)">
-                — click an element in the preview to pick its selector —
+            <code class="selector-display" id="sel-{{.Store.ID}}" style="font-size:.8rem;color:var(--text-muted)">
+                click an element in the preview to pick its selector
             </code>
-            <button type="button" class="btn btn--sm btn--secondary" style="display:none"
-                    id="use-sel-{{.Store.ID}}">Use selector</button>
+            <button type="button" class="btn btn-secondary btn-sm" hidden id="use-sel-{{.Store.ID}}">Use as price selector</button>
+            <button type="button" class="btn btn-ghost btn-sm" hidden id="use-name-{{.Store.ID}}">Use as name selector</button>
         </div>
         <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;height:420px">
             <iframe id="frame-{{.Store.ID}}"
                     sandbox="allow-same-origin"
                     style="width:100%;height:100%;border:0;background:white"
-                    srcdoc="<p style='padding:1rem;color:#888'>Click <strong>Fetch &amp; Preview</strong> to load a sample page.</p>">
+                    srcdoc="<p style='padding:1rem;color:#888'>Click <strong>Fetch &amp; preview</strong> to load a sample page.</p>">
             </iframe>
         </div>
-
-        <!-- Test results area -->
-        <div id="test-results-{{.Store.ID}}" style="display:none;margin-top:.75rem"></div>
     </div>
 </section>
 {{end}}
 
-<!-- hidden CSRF form for JS fetch calls -->
 <form id="csrf-form" hidden>{{.CSRFField}}</form>
 
 <script>
 (function () {
     var csrf = (document.querySelector('#csrf-form input[name]') || {}).value || '';
 
-    function post(path, body) {
+    /* A long call gets a client-side deadline of its own. Without one a
+       dropped connection (a restart mid-request, a proxy timeout) surfaces as
+       the browser's bare "Failed to fetch", which says nothing about what
+       went wrong. */
+    function post(path, body, timeoutMs) {
+        var ctl = window.AbortController ? new AbortController() : null;
+        var timer = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs || 180000) : 0;
         return fetch(path, {
             method: 'POST',
             headers: { 'X-CSRF-Token': csrf },
             body: body,
+            signal: ctl ? ctl.signal : undefined
+        })
+        .then(function (r) {
+            if (timer) clearTimeout(timer);
+            return r;
+        })
+        .catch(function (e) {
+            if (timer) clearTimeout(timer);
+            throw new Error(describeFetchError(e));
         });
     }
 
-    function getURL(storeID) {
-        var input = document.getElementById('url-' + storeID);
+    function describeFetchError(e) {
+        if (e && e.name === 'AbortError') {
+            return 'the request timed out before the server answered';
+        }
+        if (e instanceof TypeError) {
+            return 'the connection dropped before the server answered '
+                 + '(the app may have restarted, or the page took longer than the proxy allows)';
+        }
+        return e && e.message ? e.message : String(e);
+    }
+
+    /* Read a JSON body, but report a non-JSON error page as itself rather
+       than as a parse error. */
+    function readJSON(r) {
+        return r.text().then(function (text) {
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                throw new Error('HTTP ' + r.status + ': ' + (text || r.statusText).slice(0, 200));
+            }
+        });
+    }
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function el(id, storeID) { return document.getElementById(id + '-' + storeID); }
+    function form(storeID) { return document.querySelector('.scrape-form[data-store="' + storeID + '"]'); }
+    function urlFor(storeID) {
+        var input = el('url', storeID);
         return input ? input.value.trim() : '';
     }
-
-    function setSelector(storeID, css) {
-        var display = document.getElementById('sel-' + storeID);
-        var btn     = document.getElementById('use-sel-' + storeID);
-        if (display) display.textContent = css;
-        if (btn) {
-            btn.style.display = css ? '' : 'none';
-            btn.onclick = function () { applySelector(storeID, css); };
-        }
+    function termFor(storeID) {
+        var t = document.querySelector('.test-term[data-store="' + storeID + '"]');
+        return (t && t.value.trim()) || 'eggs';
+    }
+    function testURL(storeID) {
+        var raw = urlFor(storeID);
+        if (!raw) return '';
+        return raw.replace('{term}', encodeURIComponent(termFor(storeID)));
+    }
+    function setStatus(storeID, text, kind) {
+        var s = el('status', storeID);
+        if (!s) return;
+        s.textContent = text || '';
+        s.style.color = kind === 'error' ? 'var(--color-danger,#ef4444)'
+                      : kind === 'ok'    ? 'var(--color-success,#22c55e)'
+                      : 'var(--text-muted)';
+    }
+    function productTable(products) {
+        if (!products || !products.length) return '';
+        var rows = products.map(function (p) {
+            return '<tr><td>' + esc(p.Name || p.name) + '</td>'
+                 + '<td>$' + Number(p.Price != null ? p.Price : p.price || 0).toFixed(2) + '</td>'
+                 + '<td>' + esc(p.PackSize || p.pack_size || '') + '</td></tr>';
+        }).join('');
+        return '<table class="data-table"><thead><tr><th>Product</th><th>Price</th><th>Pack</th></tr></thead><tbody>'
+             + rows + '</tbody></table>';
+    }
+    function confidenceBadge(c) {
+        var cls = c === 'high' ? 'badge-success' : c === 'none' ? 'badge-muted' : 'badge-warning';
+        return '<span class="badge ' + cls + '">confidence: ' + esc(c) + '</span>';
+    }
+    function busy(btn, label) {
+        btn.dataset.label = btn.innerHTML;
+        btn.disabled = true;
+        btn.classList.add('is-loading'); /* spinning ring beside the label */
+        btn.textContent = label;
+    }
+    function done(btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-loading');
+        if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
     }
 
-    function applySelector(storeID, css) {
-        var form = document.querySelector('.scrape-form[data-store="' + storeID + '"]');
-        if (!form) return;
-        var hidden = form.querySelector('.selectors-json');
-        var current = {};
-        try { current = JSON.parse(hidden.value); } catch (e) {}
-        current.price_css = css;
-        hidden.value = JSON.stringify(current);
-        alert('Selector saved in form. Click "Save config" to persist.');
-    }
-
-    // Attach iframe click detection
-    function attachIframeClicker(storeID) {
-        var frame = document.getElementById('frame-' + storeID);
-        if (!frame) return;
-        frame.addEventListener('load', function () {
-            try {
-                var doc = frame.contentDocument || frame.contentWindow.document;
-                doc.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    var el = e.target;
-                    // Build a simple CSS selector from the element
-                    var parts = [el.tagName.toLowerCase()];
-                    if (el.className && typeof el.className === 'string') {
-                        el.className.trim().split(/\s+/).slice(0, 2).forEach(function (c) {
-                            parts[0] += '.' + c;
-                        });
-                    }
-                    var css = parts[0];
-
-                    // Ask server to verify extraction
-                    var fd = new FormData();
-                    fd.append('url', getURL(storeID));
-                    fd.append('selector', css);
-                    post('/admin/scrape/selector', fd).then(function (r) { return r.json(); })
-                      .then(function (data) {
-                        var products = data.products || [];
-                        var label = products.length > 0
-                            ? css + '  →  ' + (products[0].name || '') + '  $' + ((products[0].price || 0) / 100).toFixed(2)
-                            : css + '  (no price found)';
-                        setSelector(storeID, css);
-                        document.getElementById('sel-' + storeID).textContent = label;
-                    }).catch(function () { setSelector(storeID, css); });
-                });
-            } catch (ex) { /* cross-origin sandboxing — no-op */ }
-        });
-    }
-
-    // Fetch & Preview
-    document.querySelectorAll('.btn-fetch').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var storeID = btn.dataset.store;
-            var rawURL  = getURL(storeID);
-            if (!rawURL) { alert('Enter a search URL first.'); return; }
-            // Replace {term} with a test ingredient
-            var testURL = rawURL.replace('{term}', encodeURIComponent('eggs'));
-            btn.disabled = true;
-            btn.textContent = 'Fetching…';
-
-            var fd = new FormData();
-            fd.append('url', testURL);
-            post('/admin/scrape/fetch', fd).then(function (r) {
-                if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
-                return r.text();
-            }).then(function (html) {
-                var frame = document.getElementById('frame-' + storeID);
-                var preview = document.getElementById('preview-' + storeID);
-                preview.style.display = '';
-                frame.srcdoc = html;
-                attachIframeClicker(storeID);
-            }).catch(function (e) {
-                alert('Fetch error: ' + e.message);
-            }).finally(function () {
-                btn.disabled = false;
-                btn.innerHTML = '&#128065; Fetch &amp; Preview';
-            });
-        });
-    });
-
-    // Auto-detect
+    /* ── Auto-detect (with AI when the mode is Auto + AI) ─────────────── */
     document.querySelectorAll('.btn-autodetect').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var storeID = btn.dataset.store;
-            var rawURL  = getURL(storeID);
-            if (!rawURL) { alert('Enter a search URL first.'); return; }
-            var testURL = rawURL.replace('{term}', encodeURIComponent('eggs'));
+            var url = testURL(storeID);
+            if (!url) { setStatus(storeID, 'Enter a search URL first.', 'error'); return; }
 
-            var form = document.querySelector('.scrape-form[data-store="' + storeID + '"]');
-            var aiMode = form ? form.querySelector('input[name="mode"][value="auto_ai"]') : null;
-            var aiAssist = aiMode && aiMode.checked ? '1' : '0';
+            var f = form(storeID);
+            var aiMode = f.querySelector('input[name="mode"][value="auto_ai"]');
+            var useAI = !!(aiMode && aiMode.checked);
 
-            btn.disabled = true;
-            btn.textContent = 'Detecting…';
+            busy(btn, useAI ? 'Asking AI…' : 'Detecting…');
+            setStatus(storeID, useAI
+                ? 'Fetching the page and asking the model for selectors. This can take up to a minute.'
+                : 'Fetching and analyzing the page…');
 
             var fd = new FormData();
-            fd.append('url', testURL);
-            fd.append('ai_assisted', aiAssist);
-            post('/admin/scrape/autodetect', fd).then(function (r) { return r.json(); })
-              .then(function (data) {
-                var msg = 'Auto-detect result:\n'
-                    + 'Mode: ' + data.mode + '\n'
-                    + 'Confidence: ' + data.confidence + '\n'
-                    + 'Products found: ' + (data.products || []).length + '\n'
-                    + (data.message || '');
-                alert(msg);
-                if (data.selectors_json && form) {
-                    form.querySelector('.selectors-json').value = data.selectors_json;
+            fd.append('url', url);
+            fd.append('ai_assisted', useAI ? '1' : '0');
+
+            post('/admin/scrape/autodetect', fd)
+              .then(readJSON)
+              .then(function (d) {
+                var out = el('results', storeID);
+                var found = (d.products || []).length;
+                var proposed = d.selectors_json && d.selectors_json !== '{}';
+
+                out.innerHTML =
+                    '<div class="card" style="padding:.75rem;margin-top:.5rem">'
+                    + '<p style="margin:0 0 .5rem">' + confidenceBadge(d.confidence || 'none')
+                    + ' <span>' + esc(d.notes || '') + '</span></p>'
+                    + (d.attempts ? '<p class="field-hint">AI attempts: ' + d.attempts + '</p>' : '')
+                    + productTable(d.products)
+                    + (proposed
+                        ? '<pre class="llm-debug-pre" style="margin-top:.5rem">' + esc(d.selectors_json) + '</pre>'
+                          + '<button type="button" class="btn btn-primary btn-sm" id="apply-' + storeID + '">Apply these selectors</button>'
+                        : '')
+                    + '</div>';
+
+                if (proposed) {
+                    document.getElementById('apply-' + storeID).addEventListener('click', function () {
+                        f.querySelector('.selectors-json').value = d.selectors_json;
+                        f.querySelector('.ai-assisted-flag').value = (d.mode === 'auto_ai') ? '1' : '0';
+                        setStatus(storeID, 'Selectors applied to the form. Click "Save config" to keep them.', 'ok');
+                    });
                 }
-            }).catch(function (e) {
-                alert('Auto-detect error: ' + e.message);
-            }).finally(function () {
-                btn.disabled = false;
-                btn.innerHTML = '&#9881; Auto-detect';
-            });
+                setStatus(storeID, found
+                    ? 'Found ' + found + ' product(s) on the page.'
+                    : 'No products extracted.', found ? 'ok' : 'error');
+              })
+              .catch(function (e) { setStatus(storeID, 'Auto-detect failed: ' + e.message, 'error'); })
+              .finally(function () { done(btn); });
         });
     });
 
-    // Test
+    /* ── Ask AI to read the page (no selectors) ──────────────────────── */
+    document.querySelectorAll('.btn-ai-read').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var storeID = btn.dataset.store;
+            var url = testURL(storeID);
+            if (!url) { setStatus(storeID, 'Enter a search URL first.', 'error'); return; }
+
+            busy(btn, 'Reading…');
+            setStatus(storeID, 'The model is reading the page for "' + termFor(storeID) + '"…');
+
+            var fd = new FormData();
+            fd.append('url', url);
+            fd.append('term', termFor(storeID));
+
+            post('/admin/scrape/ai-extract', fd)
+              .then(readJSON)
+              .then(function (d) {
+                if (d.error) { setStatus(storeID, d.error, 'error'); return; }
+                var n = (d.products || []).length;
+                el('results', storeID).innerHTML =
+                    '<div class="card" style="padding:.75rem;margin-top:.5rem">'
+                    + '<p style="margin:0 0 .5rem">Model-read prices for "' + esc(d.term) + '". '
+                    + 'Save this store as <strong>Auto + AI</strong> to use this at lookup time.</p>'
+                    + productTable(d.products) + '</div>';
+                setStatus(storeID, n ? 'Model found ' + n + ' product(s).' : 'Model found no prices.', n ? 'ok' : 'error');
+              })
+              .catch(function (e) { setStatus(storeID, 'AI read failed: ' + e.message, 'error'); })
+              .finally(function () { done(btn); });
+        });
+    });
+
+    /* ── Test the saved config ───────────────────────────────────────── */
     document.querySelectorAll('.btn-test').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var storeID = btn.dataset.store;
-            btn.disabled = true;
-            btn.textContent = 'Testing…';
+            busy(btn, 'Testing…');
+            setStatus(storeID, 'Running the saved config against the live site…');
 
             var fd = new FormData();
-            post('/admin/scrape/' + storeID + '/test', fd).then(function (r) { return r.json(); })
-              .then(function (data) {
-                var results = document.getElementById('test-results-' + storeID);
-                var preview = document.getElementById('preview-' + storeID);
-                preview.style.display = '';
-                results.style.display = '';
+            fd.append('term', termFor(storeID));
 
-                var status = data.status === 'active'
-                    ? '<span class="badge badge--live">active</span>'
-                    : '<span class="badge badge--warn">degraded</span>';
+            post('/admin/scrape/' + storeID + '/test', fd)
+              .then(readJSON)
+              .then(function (d) {
+                var ok = d.status === 'active';
+                el('results', storeID).innerHTML =
+                    '<div class="card" style="padding:.75rem;margin-top:.5rem">'
+                    + '<p style="margin:0 0 .5rem"><span class="badge ' + (ok ? 'badge-success' : 'badge-warning') + '">' + esc(d.status) + '</span> '
+                    + (d.error ? '<code>' + esc(d.error) + '</code>' : 'Test ran with "' + esc(termFor(storeID)) + '".') + '</p>'
+                    + productTable(d.products) + '</div>';
+                setStatus(storeID, ok ? 'Config works.' : 'Config returned no usable price.', ok ? 'ok' : 'error');
+              })
+              .catch(function (e) { setStatus(storeID, 'Test failed: ' + e.message, 'error'); })
+              .finally(function () { done(btn); });
+        });
+    });
 
-                var rows = (data.products || []).slice(0, 3).map(function (p) {
-                    return '<tr><td>' + (p.name || '—') + '</td><td>$' + ((p.price || 0) / 100).toFixed(2) + '</td><td>' + (p.unit || '—') + '</td></tr>';
-                }).join('');
-
-                results.innerHTML = '<div class="card" style="padding:.75rem">'
-                    + '<p>' + status + ' ' + (data.error ? '<code>' + data.error + '</code>' : 'Test passed with "eggs".') + '</p>'
-                    + (rows ? '<table class="data-table"><thead><tr><th>Name</th><th>Price</th><th>Unit</th></tr></thead><tbody>' + rows + '</tbody></table>' : '')
-                    + '</div>';
-            }).catch(function (e) {
-                alert('Test error: ' + e.message);
-            }).finally(function () {
-                btn.disabled = false;
-                btn.innerHTML = '&#9879; Test';
+    /* ── Assisted mode: fetch, preview, click-to-pick ────────────────── */
+    function attachIframeClicker(storeID) {
+        var frame = el('frame', storeID);
+        if (!frame) return;
+        frame.addEventListener('load', function () {
+            var doc;
+            try { doc = frame.contentDocument || frame.contentWindow.document; }
+            catch (ex) { return; }
+            doc.addEventListener('click', function (e) {
+                e.preventDefault();
+                var css = selectorFor(e.target);
+                showSelector(storeID, css);
+                verifySelector(storeID, css);
             });
+        });
+    }
+
+    // Build a reasonably specific selector: prefer a data-* attribute or id,
+    // then tag + up to two classes, scoped by the nearest identifiable parent.
+    function selectorFor(node) {
+        function own(n) {
+            if (!n || !n.tagName) return '';
+            if (n.id) return '#' + n.id;
+            var attrs = ['data-testid', 'data-test', 'data-automation-id', 'itemprop'];
+            for (var i = 0; i < attrs.length; i++) {
+                var v = n.getAttribute && n.getAttribute(attrs[i]);
+                if (v) return n.tagName.toLowerCase() + '[' + attrs[i] + '="' + v + '"]';
+            }
+            var sel = n.tagName.toLowerCase();
+            if (n.className && typeof n.className === 'string') {
+                n.className.trim().split(/\s+/).slice(0, 2).forEach(function (c) {
+                    if (c) sel += '.' + CSS.escape(c);
+                });
+            }
+            return sel;
+        }
+        var self = own(node);
+        var parent = node.parentElement ? own(node.parentElement) : '';
+        return parent && parent !== self ? parent + ' ' + self : self;
+    }
+
+    function showSelector(storeID, css) {
+        var display = el('sel', storeID);
+        if (display) display.textContent = css;
+        [['use-sel', 'price'], ['use-name', 'name']].forEach(function (pair) {
+            var btn = el(pair[0], storeID);
+            if (!btn) return;
+            btn.hidden = !css;
+            btn.onclick = function () { applySelector(storeID, pair[1], css); };
+        });
+    }
+
+    function applySelector(storeID, field, css) {
+        var f = form(storeID);
+        var hidden = f.querySelector('.selectors-json');
+        var current = {};
+        try { current = JSON.parse(hidden.value) || {}; } catch (e) {}
+        current[field] = { css: css };
+        hidden.value = JSON.stringify(current, null, 2);
+        setStatus(storeID, 'Set ' + field + ' selector. Click "Save config" to keep it.', 'ok');
+    }
+
+    function verifySelector(storeID, css) {
+        var fd = new FormData();
+        fd.append('url', testURL(storeID));
+        fd.append('selector', css);
+        post('/admin/scrape/selector', fd)
+          .then(readJSON)
+          .then(function (d) {
+            var p = (d.products || [])[0];
+            setStatus(storeID, p
+                ? 'Matches: ' + (p.Name || '(no name)') + ' $' + Number(p.Price || 0).toFixed(2)
+                : 'That selector matched no price.', p ? 'ok' : 'error');
+          })
+          .catch(function () {});
+    }
+
+    document.querySelectorAll('.btn-fetch').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var storeID = btn.dataset.store;
+            var url = testURL(storeID);
+            if (!url) { setStatus(storeID, 'Enter a search URL first.', 'error'); return; }
+
+            busy(btn, 'Fetching…');
+            setStatus(storeID, 'Fetching a sample page…');
+
+            var fd = new FormData();
+            fd.append('url', url);
+
+            post('/admin/scrape/fetch', fd)
+              .then(function (r) {
+                if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+                /* The server reports which headless browser served the page,
+                   and whether it is still a bot wall, so the preview can say
+                   so instead of looking like the store's real markup. */
+                var backend   = r.headers.get('X-Scrape-Backend') || '';
+                var challenge = r.headers.get('X-Scrape-Challenge') || '';
+                return r.text().then(function (html) {
+                    return { html: html, backend: backend, challenge: challenge };
+                });
+              })
+              .then(function (d) {
+                el('preview', storeID).hidden = false;
+                el('frame', storeID).srcdoc = d.html;
+                attachIframeClicker(storeID);
+                if (d.challenge) {
+                    setStatus(storeID,
+                        'Still blocked after ' + (d.backend || 'a direct fetch') + ': ' + d.challenge,
+                        'error');
+                    return;
+                }
+                setStatus(storeID,
+                    'Page loaded' + (d.backend ? ' via ' + d.backend : '') +
+                    '. Click the price text in the preview.', 'ok');
+              })
+              .catch(function (e) { setStatus(storeID, 'Fetch failed: ' + e.message, 'error'); })
+              .finally(function () { done(btn); });
         });
     });
 })();

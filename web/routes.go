@@ -14,7 +14,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// Static assets from the embedded FS; path includes the "static/" prefix.
 	mux.Handle("GET /static/", http.FileServerFS(staticFS))
 
-	// Health check — used by reverse proxies; exempt from auth and CSRF.
+	// Health check - used by reverse proxies; exempt from auth and CSRF.
 	mux.HandleFunc("GET /health", s.handleHealth)
 
 	// Auth flows
@@ -23,6 +23,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	// Setup wizard (accessible only when no household exists)
 	mux.HandleFunc("GET /setup", s.handleSetupPage)
+	mux.HandleFunc("GET /api/zip-state", s.handleZIPState) // public: the setup wizard needs it before login
 	mux.HandleFunc("POST /setup", s.handleSetup)
 
 	// ── Auth-required ──────────────────────────────────────────────────────
@@ -36,6 +37,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.Handle("GET /stores", requireAuth(http.HandlerFunc(s.handleStoresPage)))
 	mux.Handle("POST /stores", requireAuth(http.HandlerFunc(s.handleStoreCreate)))
+	mux.Handle("POST /stores/select", requireAuth(http.HandlerFunc(s.handleStoreSelect)))
 	mux.Handle("POST /stores/{id}/delete", requireAuth(http.HandlerFunc(s.handleStoreDelete)))
 
 	mux.Handle("GET /list", requireAuth(http.HandlerFunc(s.handleShoppingListPage)))
@@ -61,12 +63,15 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /meals/{id}/feedback", requireAuth(http.HandlerFunc(s.handleMealFeedback)))
 	mux.Handle("POST /meals/{id}/lock", requireAuth(http.HandlerFunc(s.handleMealLock)))
 
-	// Recipe catalog — literal routes before /recipes/{id} wildcard (§8.2)
+	// Recipe catalog - literal routes before /recipes/{id} wildcard (§8.2)
 	mux.Handle("GET /recipes/import", requireAuth(http.HandlerFunc(s.handleRecipeImportPage)))
 	mux.Handle("POST /recipes/import", requireAuth(http.HandlerFunc(s.handleRecipeImport)))
 	mux.Handle("POST /recipes/import/manual", requireAuth(http.HandlerFunc(s.handleRecipeImportManual)))
 	mux.Handle("GET /recipes", requireAuth(http.HandlerFunc(s.handleRecipesPage)))
 	mux.Handle("GET /recipes/{id}", requireAuth(http.HandlerFunc(s.handleRecipeDetail)))
+	mux.Handle("POST /recipes/{id}/edit", requireAuth(http.HandlerFunc(s.handleRecipeEdit)))
+	mux.Handle("POST /recipes/{id}/reimport", requireAuth(http.HandlerFunc(s.handleRecipeReimport)))
+	mux.Handle("POST /recipes/{id}/image", requireAuth(http.HandlerFunc(s.handleRecipeImageReplace)))
 	mux.Handle("POST /recipes/{id}/delete", requireAuth(http.HandlerFunc(s.handleRecipeDelete)))
 	mux.Handle("GET /recipe-images/{name}", requireAuth(http.HandlerFunc(s.handleRecipeImageServe)))
 
@@ -76,10 +81,16 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/scrape/proxy", requireAuth(http.HandlerFunc(s.handleScrapeProxy)))
 	mux.Handle("POST /admin/scrape/fetch", requireAuth(http.HandlerFunc(s.handleScrapeFetch)))
 	mux.Handle("POST /admin/scrape/selector", requireAuth(http.HandlerFunc(s.handleScrapeSelector)))
+	mux.Handle("POST /admin/scrape/ai-extract", requireAuth(http.HandlerFunc(s.handleScrapeAIExtract)))
 	mux.Handle("POST /admin/scrape/autodetect", requireAuth(http.HandlerFunc(s.handleScrapeAutodetect)))
 
 	mux.Handle("GET /settings", requireAuth(http.HandlerFunc(s.handleSettingsPage)))
+	mux.Handle("POST /settings/save", requireAuth(http.HandlerFunc(s.handleSettingsSave)))
+	mux.Handle("POST /settings/test-render", requireAuth(http.HandlerFunc(s.handleSettingsTestRender)))
 	mux.Handle("POST /settings/test-ai", requireAuth(http.HandlerFunc(s.handleSettingsTestAI)))
+	// TODO: mux.Handle("POST /settings/ai/models", requireAuth(http.HandlerFunc(s.handleAIModels)))
+	// handleAIModels doesn't exist yet and nothing in the UI calls this route -
+	// commented out so the build isn't broken; wire it up when that handler lands.
 	mux.Handle("GET /admin/llm-debug", requireAuth(http.HandlerFunc(s.handleLLMDebugLog)))
 	mux.Handle("GET /admin/llm-log", requireAuth(http.HandlerFunc(s.handleLLMLogPage)))
 	mux.Handle("GET /search", requireAuth(http.HandlerFunc(s.handleSearch)))
