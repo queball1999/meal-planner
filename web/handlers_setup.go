@@ -17,6 +17,7 @@ var usTimezones = []struct{ Label, Value string }{
 	{"Eastern (ET)", "America/New_York"},
 	{"Central (CT)", "America/Chicago"},
 	{"Mountain (MT)", "America/Denver"},
+	{"Mountain – Arizona (no DST)", "America/Phoenix"},
 	{"Pacific (PT)", "America/Los_Angeles"},
 	{"Alaska (AKT)", "America/Anchorage"},
 	{"Hawaii (HST)", "Pacific/Honolulu"},

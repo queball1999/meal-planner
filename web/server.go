@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gorilla/csrf"
@@ -88,13 +89,22 @@ func (s *Server) buildHandler() http.Handler {
 
 	var h http.Handler = mux
 	h = middleware.LoadSession(s.store)(h)
-	h = csrf.Protect(
-		[]byte(s.cfg.SessionSecret),
-		csrf.Secure(false),                     // Allow plain HTTP on LAN (§9.3)
-		csrf.SameSite(csrf.SameSiteLaxMode),    // Required alongside Secure(false)
+
+	csrfOpts := []csrf.Option{
+		csrf.Secure(false),                  // Allow plain HTTP on LAN (§9.3)
+		csrf.SameSite(csrf.SameSiteLaxMode), // Required alongside Secure(false)
 		csrf.HttpOnly(true),
 		csrf.ErrorHandler(http.HandlerFunc(s.handleCSRFError)),
-	)(h)
+	}
+	// Trust the external origin declared in PUBLIC_BASE_URL. This is required
+	// when Docker maps a different host port (e.g. 8081:8080) so the browser's
+	// Origin header doesn't match the server's internal bind address.
+	if s.cfg.PublicBaseURL != "" {
+		if u, err := url.Parse(s.cfg.PublicBaseURL); err == nil && u.Host != "" {
+			csrfOpts = append(csrfOpts, csrf.TrustedOrigins([]string{u.Host}))
+		}
+	}
+	h = csrf.Protect([]byte(s.cfg.SessionSecret), csrfOpts...)(h)
 
 	return h
 }
