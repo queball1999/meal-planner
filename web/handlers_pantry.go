@@ -12,7 +12,9 @@ import (
 )
 
 type pantryPageData struct {
-	Items []*db.PantryItem
+	Items    []*db.PantryItem
+	FilterQ  string
+	Filtered bool
 }
 
 func (s *Server) handlePantryPage(w http.ResponseWriter, r *http.Request) {
@@ -21,8 +23,9 @@ func (s *Server) handlePantryPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
-	items, _ := s.store.ListPantryItems(r.Context(), hh.ID)
-	s.render(w, r, "pantry", pantryPageData{Items: items})
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	items, _ := s.store.FilterPantryItems(r.Context(), hh.ID, q)
+	s.render(w, r, "pantry", pantryPageData{Items: items, FilterQ: q, Filtered: q != ""})
 }
 
 func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {

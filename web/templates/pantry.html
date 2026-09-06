@@ -9,6 +9,23 @@
 
 {{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
 
+<form method="GET" action="/pantry" class="filter-bar" aria-label="Filter pantry" style="margin-bottom:1rem">
+    <div class="field-row">
+        <div class="field" style="flex:1">
+            <input class="field-input" name="q" type="search"
+                   value="{{.Data.FilterQ}}" placeholder="Filter ingredients…" autocomplete="off">
+        </div>
+        <div class="field field--action">
+            <button type="submit" class="btn btn--ghost">{{icon "filter"}} Filter</button>
+        </div>
+        {{if .Data.Filtered}}
+        <div class="field field--action">
+            <a href="/pantry" class="btn btn--ghost">Clear</a>
+        </div>
+        {{end}}
+    </div>
+</form>
+
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">Add item</h2>
     <form method="POST" action="/pantry" class="pref-form">
@@ -68,6 +85,12 @@
             {{end}}
         </tbody>
     </table>
+</div>
+{{else if .Data.Filtered}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🔍</div>
+    <h2 class="skeleton-card__title">No items match "{{.Data.FilterQ}}"</h2>
+    <p class="skeleton-card__body"><a href="/pantry">Clear filter</a> to see all pantry items.</p>
 </div>
 {{else}}
 <div class="skeleton-card">

@@ -117,7 +117,11 @@ func (s *Server) handleRecipeImportManual(w http.ResponseWriter, r *http.Request
 // ── Recipe catalog list & detail (§5.7) ──────────────────────────────────────
 
 type recipesPageData struct {
-	Recipes []*db.CatalogRecipe
+	Recipes    []*db.CatalogRecipe
+	FilterQ    string
+	FilterTag  string
+	FilterSrc  string
+	Filtered   bool
 }
 
 func (s *Server) handleRecipesPage(w http.ResponseWriter, r *http.Request) {
@@ -126,8 +130,26 @@ func (s *Server) handleRecipesPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
-	list, _ := s.store.ListCatalogRecipes(r.Context(), hh.ID)
-	s.render(w, r, "recipes", recipesPageData{Recipes: list})
+
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
+	src := strings.TrimSpace(r.URL.Query().Get("source"))
+
+	filtered := q != "" || tag != "" || src != ""
+	var list []*db.CatalogRecipe
+	if filtered {
+		list, _ = s.store.FilterCatalogRecipes(r.Context(), hh.ID, db.CatalogRecipeFilter{Q: q, Tag: tag, Source: src})
+	} else {
+		list, _ = s.store.ListCatalogRecipes(r.Context(), hh.ID)
+	}
+
+	s.render(w, r, "recipes", recipesPageData{
+		Recipes:   list,
+		FilterQ:   q,
+		FilterTag: tag,
+		FilterSrc: src,
+		Filtered:  filtered,
+	})
 }
 
 type recipeDetailPageData struct {

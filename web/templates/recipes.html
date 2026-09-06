@@ -10,6 +10,31 @@
 
 {{if .Flash}}<div class="alert alert--info" role="alert">{{.Flash}}</div>{{end}}
 
+<form method="GET" action="/recipes" class="filter-bar" aria-label="Filter recipes">
+    <div class="field-row" style="flex-wrap:wrap;gap:0.5rem">
+        <div class="field" style="flex:2;min-width:140px">
+            <input class="field-input" name="q" type="search"
+                   value="{{.Data.FilterQ}}" placeholder="Filter by name or tag…" autocomplete="off">
+        </div>
+        <div class="field field--sm" style="min-width:110px">
+            <select class="field-input" name="source">
+                <option value="">Any source</option>
+                <option value="imported"{{if eq .Data.FilterSrc "imported"}} selected{{end}}>Imported</option>
+                <option value="manual"{{if eq .Data.FilterSrc "manual"}} selected{{end}}>Manual</option>
+                <option value="ai"{{if eq .Data.FilterSrc "ai"}} selected{{end}}>AI</option>
+            </select>
+        </div>
+        <div class="field field--action">
+            <button type="submit" class="btn btn--ghost">{{icon "filter"}} Filter</button>
+        </div>
+        {{if .Data.Filtered}}
+        <div class="field field--action">
+            <a href="/recipes" class="btn btn--ghost">Clear</a>
+        </div>
+        {{end}}
+    </div>
+</form>
+
 {{if .Data.Recipes}}
 <div class="card">
     <table class="data-table" aria-label="Recipe catalog">
@@ -58,6 +83,12 @@
             {{end}}
         </tbody>
     </table>
+</div>
+{{else if .Data.Filtered}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🔍</div>
+    <h2 class="skeleton-card__title">No recipes match these filters</h2>
+    <p class="skeleton-card__body"><a href="/recipes">Clear filters</a> to see all recipes.</p>
 </div>
 {{else}}
 <div class="skeleton-card">
