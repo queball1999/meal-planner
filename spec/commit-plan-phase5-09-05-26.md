@@ -24,7 +24,7 @@ not required to be non-empty in Phase 5.
 ```
 db: add pantry items migration
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -49,7 +49,7 @@ Store additions:
 ```
 db: add pantry and plan-day models and store interface
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -67,7 +67,7 @@ Files: `db/pantry.go`, `db/plan_days.go`, `db/meals.go` (add `GetMealByID`)
 ```
 db: implement pantry and plan-day query methods
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -94,7 +94,7 @@ Wire: call `Repair` in `plan/generate.go` after the initial `pricer` call, befor
 ```
 plan: add budget repair loop
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -120,7 +120,7 @@ pricing. Requires `hh.LeftoverTolerance` from the household (or preference row).
 ```
 plan: add leftover/portion planning
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -145,7 +145,7 @@ banner instead of the ingredient list.
 ```
 web: add meal detail page with recipe steps and feedback
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -169,7 +169,7 @@ top; "Remove" per row; empty state with instructions.
 ```
 web: add pantry tracking page
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -192,7 +192,7 @@ Plan template additions:
 ```
 web: plan calendar — lock, feedback, headcount overrides, leftover badges
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
