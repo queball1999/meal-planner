@@ -80,5 +80,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.Handle("GET /search", requireAuth(http.HandlerFunc(s.handleSearch)))
 
+	mux.Handle("GET /scan", requireAuth(http.HandlerFunc(s.handleScanPage)))
+	mux.Handle("GET /scan/{code}", requireAuth(http.HandlerFunc(s.handleScanCode)))
+	mux.Handle("POST /pantry/scan", requireAuth(http.HandlerFunc(s.handlePantryScan)))
+
 	mux.Handle("GET /", requireAuth(http.HandlerFunc(s.handleDashboard)))
 }

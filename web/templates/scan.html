@@ -1,0 +1,74 @@
+{{define "title"}}Scan Barcode — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "barcode"}} Scan Barcode</h1>
+    <p class="page-subtitle">Scan a product barcode to look it up or add it to your pantry.</p>
+</div>
+
+{{if .Data.Code}}
+<div class="card" style="margin-bottom:1rem;padding:1.25rem">
+    <p style="margin-bottom:0.75rem">
+        Barcode <code>{{.Data.Code}}</code> was not found in your pantry or product map.
+    </p>
+    <form method="POST" action="/pantry/scan">
+        {{.CSRFField}}
+        <input type="hidden" name="barcode" value="{{.Data.Code}}">
+        <button type="submit" class="btn btn--primary">{{icon "plus"}} Add to pantry</button>
+        <a href="/pantry" class="btn btn--ghost" style="margin-left:0.5rem">Cancel</a>
+    </form>
+</div>
+{{end}}
+
+<div class="card" style="padding:1.25rem;margin-bottom:1rem">
+    <h2 style="font-size:1rem;margin-bottom:0.75rem">Camera scan</h2>
+    <div id="scan-viewport" style="position:relative;width:100%;max-width:480px;aspect-ratio:4/3;
+         background:#000;border-radius:var(--radius-md);overflow:hidden;margin-bottom:0.75rem">
+        <video id="scan-video" autoplay playsinline muted
+               style="width:100%;height:100%;object-fit:cover"></video>
+        <canvas id="scan-overlay" style="position:absolute;inset:0;width:100%;height:100%;
+                pointer-events:none"></canvas>
+        <div id="scan-corners" aria-hidden="true"
+             style="position:absolute;inset:0;display:grid;place-items:center">
+            <svg width="200" height="200" viewBox="0 0 200 200"
+                 style="opacity:0.6" id="scan-corner-svg">
+                <!-- corner brackets -->
+                <path d="M20,50 L20,20 L50,20" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
+                <path d="M150,20 L180,20 L180,50" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
+                <path d="M180,150 L180,180 L150,180" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
+                <path d="M50,180 L20,180 L20,150" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+        </div>
+        <p id="scan-status" style="position:absolute;bottom:0.5rem;left:0;right:0;
+           text-align:center;color:#fff;font-size:0.8rem;text-shadow:0 1px 3px #000">
+            Starting camera…
+        </p>
+    </div>
+
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+        <button id="scan-start" class="btn btn--primary" type="button">{{icon "camera"}} Start camera</button>
+        <button id="scan-torch" class="btn btn--ghost" type="button" hidden>{{icon "flashlight"}} Torch</button>
+    </div>
+</div>
+
+<div class="card" style="padding:1.25rem">
+    <h2 style="font-size:1rem;margin-bottom:0.75rem">Enter code manually</h2>
+    <form method="GET" action="/scan" class="field-row">
+        <div class="field" style="flex:1">
+            <input class="field-input barcode-field" id="manual-barcode" name="code"
+                   type="text" placeholder="UPC / EAN barcode" autocomplete="off"
+                   data-hid-target="true">
+        </div>
+        <div class="field field--action">
+            <button type="submit" class="btn btn--primary">Look up</button>
+        </div>
+    </form>
+    <p class="field-hint">A USB/Bluetooth barcode scanner will auto-fill this field.</p>
+</div>
+
+<div style="margin-top:1rem">
+    <a href="/pantry" class="btn btn--ghost">{{icon "arrow-left"}} Back to pantry</a>
+</div>
+
+<script src="/static/js/barcode-camera.js" defer></script>
+<script src="/static/js/barcode-hid.js" defer></script>
+{{end}}
