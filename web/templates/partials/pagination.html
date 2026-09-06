@@ -1,0 +1,60 @@
+{{/* Shared pagination bar. Pass a web.Pagination:
+
+         {{template "pagination" .Data.Page}}
+
+     Every link carries the page's other query parameters, so paging never
+     drops an active filter. The per-page picker submits as a plain GET form
+     so it works without JavaScript. */}}
+{{define "pagination"}}
+{{if .Total}}
+<nav class="pager" aria-label="Pagination">
+    <p class="pager__count">
+        Showing <strong>{{.From}}</strong>-<strong>{{.To}}</strong> of <strong>{{.Total}}</strong>
+    </p>
+
+    {{if .HasPages}}
+    <ul class="pager__pages">
+        <li>
+            {{if .Prev}}
+            <a class="pager__link" href="{{.Link .Prev}}" rel="prev" aria-label="Previous page">&lsaquo;</a>
+            {{else}}
+            <span class="pager__link is-disabled" aria-hidden="true">&lsaquo;</span>
+            {{end}}
+        </li>
+        {{$p := .}}
+        {{range .Pages}}
+        <li>
+            {{if eq . $p.Page}}
+            <span class="pager__link is-current" aria-current="page">{{.}}</span>
+            {{else}}
+            <a class="pager__link" href="{{$p.Link .}}">{{.}}</a>
+            {{end}}
+        </li>
+        {{end}}
+        <li>
+            {{if .Next}}
+            <a class="pager__link" href="{{.Link .Next}}" rel="next" aria-label="Next page">&rsaquo;</a>
+            {{else}}
+            <span class="pager__link is-disabled" aria-hidden="true">&rsaquo;</span>
+            {{end}}
+        </li>
+    </ul>
+    {{end}}
+
+    <form class="pager__size" method="GET" aria-label="Rows per page">
+        {{/* Re-submit the current filters; the page resets to 1 on a size change. */}}
+        {{range $k, $v := .CarriedPairs}}
+        <input type="hidden" name="{{$k}}" value="{{$v}}">
+        {{end}}
+        <label for="per_page-{{.Param}}">Per page</label>
+        <select class="field-input" id="per_page-{{.Param}}" name="per_page" onchange="this.form.submit()">
+            {{$cur := .PerPage}}
+            {{range .PerPageOpts}}
+            <option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{.}}</option>
+            {{end}}
+        </select>
+        <noscript><button type="submit" class="btn btn--ghost btn--sm">Apply</button></noscript>
+    </form>
+</nav>
+{{end}}
+{{end}}

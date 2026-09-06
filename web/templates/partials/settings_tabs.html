@@ -1,0 +1,11 @@
+{{/* Sub-tab nav shared by the Settings section pages.
+     Highlighting keys off pageData.Page (the render template name). */}}
+{{define "settingsTabs"}}
+<nav class="subtabs" aria-label="Settings sections">
+    <a href="/settings"      class="subtab{{if eq .Page "settings"}}      subtab--active{{end}}"{{if eq .Page "settings"}} aria-current="page"{{end}}>{{icon "cog"}} General</a>
+    <a href="/preferences"   class="subtab{{if eq .Page "preferences"}}   subtab--active{{end}}"{{if eq .Page "preferences"}} aria-current="page"{{end}}>{{icon "fork"}} Preferences</a>
+    <a href="/stores"        class="subtab{{if eq .Page "stores"}}        subtab--active{{end}}"{{if eq .Page "stores"}} aria-current="page"{{end}}>{{icon "store"}} Stores</a>
+    <a href="/admin/prices"  class="subtab{{if eq .Page "admin_prices"}}  subtab--active{{end}}"{{if eq .Page "admin_prices"}} aria-current="page"{{end}}>{{icon "tag"}} Prices</a>
+    <a href="/admin/scrape"  class="subtab{{if eq .Page "scrape_config"}} subtab--active{{end}}"{{if eq .Page "scrape_config"}} aria-current="page"{{end}}>{{icon "code"}} Scraping</a>
+</nav>
+{{end}}

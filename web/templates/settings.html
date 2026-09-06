@@ -1,42 +1,152 @@
-{{define "title"}}Settings — {{.AppName}}{{end}}
+{{define "title"}}Settings - {{.AppName}}{{end}}
 {{define "content"}}
 {{/* Hidden CSRF token so JS fetch calls can attach X-CSRF-Token header */}}
 <input type="hidden" id="csrf-token" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
 
 <div class="page-header">
     <h1 class="page-title">{{icon "cog"}} Settings</h1>
-    <p class="page-subtitle">Application configuration overview.</p>
+    <p class="page-subtitle">Every .env-configurable option, editable here. Changes are saved immediately but need a restart to take effect - <code>make docker-restart</code> (or <code>make docker-rebuild</code> after a code change).</p>
 </div>
 
-{{if .Flash}}<div class="flash flash-info" role="alert">{{.Flash}}</div>{{end}}
+{{template "settingsTabs" .}}
 
-{{/* ── AI Provider ──────────────────────────────────────────────────────── */}}
+{{/* ── AI provider configuration ─────────────────────────── */}}
 <div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">{{icon "cpu"}} AI Provider</h2>
-    <div style="display:grid;grid-template-columns:max-content 1fr;gap:var(--sp-2) var(--sp-6);align-items:center;font-size:var(--text-sm)">
-        <span style="color:var(--text-muted)">Status</span>
-        <span>
-            {{if .Data.HasLLM}}
-            <span class="badge badge-success">Connected</span>
-            {{else}}
-            <span class="badge badge-muted">Not configured</span>
-            {{end}}
-        </span>
-
-        <span style="color:var(--text-muted)">Provider</span>
-        <code>{{if .Data.Provider}}{{.Data.Provider}}{{else}}—{{end}}</code>
-
-        <span style="color:var(--text-muted)">Model</span>
-        <code>{{if .Data.Model}}{{.Data.Model}}{{else}}—{{end}}</code>
+    <div class="ai-head">
+        <h2 class="form-section__title" style="margin:0">{{icon "cpu"}} AI Provider</h2>
+        {{if .Data.HasLLM}}
+        <span class="badge badge-success">Connected</span>
+        {{else}}
+        <span class="badge badge-muted">Not configured</span>
+        {{end}}
     </div>
-    <p class="field-hint" style="margin-top:var(--sp-4)">
-        Set <code>PROVIDER</code>, <code>LLM_API_URL</code>, <code>LLM_MODEL</code>, and
-        <code>LLM_API_KEY</code> (or <code>ANTHROPIC_API_KEY</code>) in your <code>.env</code>
-        file and restart the server to change the AI provider.
+    <p class="field-hint" style="margin-top:var(--sp-2)">
+        Configure as many providers as you like - each keeps its own key, URL and model.
+        The one picked here is the default used to generate meal plans. Changes save
+        immediately and take effect after a restart.
     </p>
 
+    <div class="field">
+        <label class="field-label" for="aiPickerBtn">Provider</label>
+        <div class="ai-picker" id="aiPicker">
+            <button type="button" class="ai-picker__btn" id="aiPickerBtn"
+                    aria-haspopup="listbox" aria-expanded="false">
+                <span class="ai-picker__face" id="aiPickerFace"></span>
+                <span class="ai-picker__caret" aria-hidden="true">&#9662;</span>
+            </button>
+            <ul class="ai-picker__menu" id="aiPickerMenu" role="listbox" hidden>
+                {{range .Data.Providers}}
+                <li class="ai-picker__opt{{if .IsDefault}} is-selected{{end}}" role="option"
+                    tabindex="0" data-provider="{{.ID}}"
+                    aria-selected="{{if .IsDefault}}true{{else}}false{{end}}">
+                    {{aiLogo .ID}}
+                    <span class="ai-picker__label">{{.Label}}</span>
+                    {{if .Configured}}
+                    <span class="badge badge-success">Ready</span>
+                    {{else}}
+                    <span class="badge badge-muted">Not set</span>
+                    {{end}}
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{/* The real setting. The picker above writes into it and fires change,
+             so the page-wide autosave handler persists PROVIDER unchanged. */}}
+        <select id="set-PROVIDER" data-setting-key="PROVIDER" style="display:none" tabindex="-1" aria-hidden="true">
+            {{$active := .Data.ActiveID}}
+            {{range .Data.Providers}}
+            <option value="{{.ID}}"{{if eq .ID $active}} selected{{end}}>{{.Label}}</option>
+            {{end}}
+        </select>
+    </div>
+
+    {{range .Data.Providers}}
+    <div class="ai-panel" data-provider-panel="{{.ID}}"{{if not .IsDefault}} hidden{{end}}>
+        {{if .DocsURL}}
+        <p class="field-hint" style="margin-top:0">
+            <a href="{{.DocsURL}}" target="_blank" rel="noopener noreferrer">Get an API key for {{.Label}}</a>
+        </p>
+        {{end}}
+
+        {{with .KeyField}}
+        <div class="field settings-field">
+            <label class="field-label" for="set-{{.Key}}">
+                {{.Label}}
+                {{if eq .Source "admin"}}<span class="badge badge-accent" title="Overrides the .env value">edited</span>{{end}}
+            </label>
+            <input class="field-input" type="password" id="set-{{.Key}}" data-setting-key="{{.Key}}"
+                   autocomplete="off"
+                   placeholder="{{if .IsSet}}A value is set - leave blank to keep it{{else}}Not set{{end}}">
+            {{if .Help}}<span class="field-hint">{{.Help}}</span>{{end}}
+        </div>
+        {{end}}
+
+        {{if .ShowURL}}{{with .URLField}}
+        <div class="field settings-field">
+            <label class="field-label" for="set-{{.Key}}">
+                {{.Label}}
+                {{if eq .Source "admin"}}<span class="badge badge-accent">edited</span>{{end}}
+            </label>
+            <input class="field-input" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+            {{if .Help}}<span class="field-hint">{{.Help}}</span>{{end}}
+        </div>
+        {{end}}{{end}}
+
+        {{if .ModelField}}
+        {{$mf := .ModelField}}{{$mv := .ModelField.Value}}
+        <div class="field settings-field">
+            <label class="field-label" for="ai-model-{{$mf.Key}}">
+                Default model
+                {{if eq $mf.Source "admin"}}<span class="badge badge-accent">edited</span>{{end}}
+            </label>
+            <div class="ai-model-row">
+                <select class="field-input ai-model-select" id="ai-model-{{$mf.Key}}" data-model-for="{{$mf.Key}}">
+                    {{range .Models}}
+                    <option value="{{.}}"{{if eq . $mv}} selected{{end}}>{{.}}</option>
+                    {{end}}
+                    <option value="__custom__"{{if not $mv}} selected{{end}}>Custom&hellip;</option>
+                </select>
+                <button type="button" class="btn btn--ghost btn--sm"
+                        data-model-refresh="{{$mf.Key}}" data-provider="{{.ID}}">{{icon "refresh"}} Refresh list</button>
+            </div>
+            {{/* Source of truth: the dropdown and the custom box both write here. */}}
+            <input class="field-input ai-model-custom" type="text" id="set-{{$mf.Key}}"
+                   data-setting-key="{{$mf.Key}}" value="{{$mv}}"
+                   placeholder="model name"{{if $mv}} hidden{{end}}>
+            <span class="field-hint" data-model-status="{{$mf.Key}}">{{$mf.Help}}</span>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+
+    {{/* Sampling parameters, shared by every provider. */}}
+    <details class="ai-sampling">
+        <summary class="ai-sampling__summary">Sampling parameters</summary>
+        <p class="field-hint">
+            Applied to every provider that accepts them. Top K goes to OpenAI-compatible
+            and Anthropic backends; Min P to OpenAI-compatible only.
+        </p>
+        <div class="ai-sampling__grid">
+            {{range .Data.SharedFields}}
+            <div class="field settings-field">
+                <label class="field-label" for="set-{{.Key}}">
+                    {{.Label}}
+                    {{if eq .Source "admin"}}<span class="badge badge-accent">edited</span>{{end}}
+                </label>
+                {{if eq .Kind "int"}}
+                <input class="field-input" type="number" step="1" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+                {{else if eq .Kind "float"}}
+                <input class="field-input" type="number" step="any" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+                {{else}}
+                <input class="field-input" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+                {{end}}
+                {{if .Help}}<span class="field-hint">{{.Help}}</span>{{end}}
+            </div>
+            {{end}}
+        </div>
+    </details>
+
     {{if .Data.HasLLM}}
-    {{/* ── Test AI ─────────────────────────────────────────────────── */}}
     <div style="margin-top:var(--sp-5);border-top:1px solid var(--border);padding-top:var(--sp-5)">
         <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
             <button id="testAIBtn" class="btn btn--ghost btn--sm" type="button">
@@ -72,49 +182,248 @@
         <h2 class="form-section__title" style="margin:0">{{icon "code"}} LLM Call Log</h2>
         <button id="llmLogRefresh" class="btn btn--ghost btn--sm" type="button">{{icon "refresh"}} Refresh</button>
     </div>
-    <p class="field-hint" style="margin-bottom:var(--sp-4)">Last {{`30`}} calls — newest first. Captured in memory; cleared on restart.</p>
+    <p class="field-hint" style="margin-bottom:var(--sp-4)">Last {{`30`}} calls - newest first. Captured in memory; cleared on restart.</p>
     <div id="llmLogContainer">
         <p style="color:var(--text-muted);font-size:var(--text-sm)">Loading…</p>
     </div>
 </div>
 {{end}}
 
-{{/* ── Calendar ─────────────────────────────────────────────────────────── */}}
+{{/* ── Headless browser (scraping) ─────────────────────────────────── */}}
 <div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">{{icon "calendar"}} Calendar</h2>
-    <div style="display:grid;grid-template-columns:max-content 1fr;gap:var(--sp-2) var(--sp-6);align-items:center;font-size:var(--text-sm)">
-        <span style="color:var(--text-muted)">Week starts on</span>
-        <span style="text-transform:capitalize">{{.Data.WeekStartDay}}</span>
-    </div>
-    <p class="field-hint" style="margin-top:var(--sp-4)">
-        Set <code>WEEK_START_DAY=monday</code> or <code>WEEK_START_DAY=sunday</code> in
-        <code>.env</code> and restart to change.
+    <h2 class="form-section__title">{{icon "code"}} Headless browser</h2>
+    <p class="field-hint" style="margin-top:0">
+        Most grocery sites block plain HTTP requests or render their prices in JavaScript.
+        Point Go Eat at a headless browser and scraping escalates to it automatically when a
+        direct fetch comes back as a challenge page or an empty shell.
+        Configure <code>RENDER_BACKEND</code>, <code>RENDER_URL</code> and
+        <code>RENDER_TOKEN</code> in the <strong>Scraping</strong> section below - changes take
+        effect immediately, no restart.
     </p>
+    <ul class="help-steps">
+        <li><strong>flaresolverr</strong> - solves Cloudflare-style anti-bot challenges. Use when a store returns 403 or "Just a moment".</li>
+        <li><strong>browserless</strong> - runs the page's JavaScript and returns the rendered HTML
+            (<code>browserless/chromium</code> or anything exposing <code>POST /content</code>).
+            Use when the page loads but has no prices in its markup.</li>
+    </ul>
+    <p class="field-hint">
+        <code>docker-compose.yml</code> already includes both services - comment out either
+        block if you don't need it, then set the URL to <code>http://browserless:3000</code>
+        (same Docker network) or <code>http://localhost:3900</code>.
+    </p>
+
+    <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;margin-top:var(--sp-4)">
+        <button id="testRenderBtn" class="btn btn--ghost btn--sm" type="button">
+            {{icon "refresh"}} Test headless browser
+        </button>
+        <span id="testRenderStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
+    </div>
 </div>
 
-{{/* ── Storage ──────────────────────────────────────────────────────────── */}}
-<div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">{{icon "archive"}} Storage</h2>
-    <div style="display:grid;grid-template-columns:max-content 1fr;gap:var(--sp-2) var(--sp-6);align-items:center;font-size:var(--text-sm)">
-        <span style="color:var(--text-muted)">Recipe images</span>
-        <code>{{if .Data.ImageDir}}{{.Data.ImageDir}}{{else}}not configured{{end}}</code>
-    </div>
-    <p class="field-hint" style="margin-top:var(--sp-4)">
-        Set <code>RECIPE_IMAGE_DIR</code> in <code>.env</code>. The directory must be
-        writable and is served at <code>/recipe-images/</code>.
-    </p>
-</div>
+{{/* ── Editable settings, one card per category ────────────────────────── */}}
+{{range .Data.Categories}}
+<div class="card form-section settings-category" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{.Name}}</h2>
+    {{range .Fields}}
+    <div class="field settings-field">
+        <label class="field-label" for="set-{{.Key}}">
+            {{.Label}}
+            {{if eq .Source "admin"}}<span class="badge badge-accent" title="Overrides the .env value">edited</span>{{end}}
+        </label>
 
-{{/* ── Quick links ──────────────────────────────────────────────────────── */}}
-<div class="card form-section">
-    <h2 class="form-section__title">Quick links</h2>
-    <div style="display:flex;flex-direction:column;gap:var(--sp-2);font-size:var(--text-sm)">
-        <a href="/preferences">{{icon "cog"}} Diet preferences, cuisines &amp; slot hints</a>
-        <a href="/admin/prices">{{icon "tag"}} Manual price management</a>
-        <a href="/admin/scrape">{{icon "code"}} Scraper configuration</a>
-        <a href="/stores">{{icon "store"}} Grocery stores</a>
+        {{if eq .Kind "select"}}
+        <select class="field-input" id="set-{{.Key}}" data-setting-key="{{.Key}}">
+            {{$val := .Value}}
+            {{range .Options}}
+            <option value="{{.}}"{{if eq . $val}} selected{{end}}>{{.}}</option>
+            {{end}}
+        </select>
+
+        {{else if eq .Kind "secret"}}
+        <input class="field-input" type="password" id="set-{{.Key}}" data-setting-key="{{.Key}}"
+               autocomplete="off"
+               placeholder="{{if .IsSet}}A value is set - leave blank to keep it{{else}}Not set{{end}}">
+
+        {{else if eq .Kind "int"}}
+        <input class="field-input" type="number" step="1" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+
+        {{else if eq .Kind "float"}}
+        <input class="field-input" type="number" step="any" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+
+        {{else}}
+        <input class="field-input" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+        {{end}}
+
+        {{if .Help}}<span class="field-hint">{{.Help}}</span>{{end}}
     </div>
+    {{end}}
 </div>
+{{end}}
+
+<script>
+(function () {
+    function csrfToken() {
+        var f = document.getElementById('csrf-token');
+        return f ? f.value : '';
+    }
+    window.goeatCSRF = window.goeatCSRF || csrfToken;
+
+    /* ── Settings autosave ──────────────────────────────────────────── */
+    document.querySelectorAll('[data-setting-key]').forEach(function (input) {
+        function save() {
+            var key = input.dataset.settingKey;
+            var wrap = input.closest('.settings-field');
+            fetch('/settings/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify({ key: key, value: input.value })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.ok) {
+                    window.showToast && window.showToast('Saved - restart to apply', 'success');
+                    if (input.type === 'password') input.value = '';
+                } else {
+                    window.showToast && window.showToast(d.error || 'Save failed', 'error');
+                    if (wrap) wrap.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    input.focus();
+                }
+            })
+            .catch(function () {
+                window.showToast && window.showToast('Save failed', 'error');
+            });
+        }
+        input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'blur', save);
+    });
+
+    /* ── Provider picker ────────────────────────────────────────────── */
+    var picker   = document.getElementById('aiPicker');
+    var pickBtn  = document.getElementById('aiPickerBtn');
+    var pickMenu = document.getElementById('aiPickerMenu');
+    var pickFace = document.getElementById('aiPickerFace');
+    var provSel  = document.getElementById('set-PROVIDER');
+
+    function optFor(id) {
+        return pickMenu ? pickMenu.querySelector('[data-provider="' + id + '"]') : null;
+    }
+
+    function paintFace(id) {
+        var opt = optFor(id);
+        if (opt && pickFace) pickFace.innerHTML = opt.innerHTML;
+    }
+
+    function openMenu(open) {
+        if (!pickMenu) return;
+        pickMenu.hidden = !open;
+        pickBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    /* Show the chosen provider's panel; the others keep their values in the
+       DOM (and in the DB), so switching back prefills everything. */
+    function selectProvider(id, persist) {
+        document.querySelectorAll('[data-provider-panel]').forEach(function (panel) {
+            panel.hidden = panel.dataset.providerPanel !== id;
+        });
+        pickMenu.querySelectorAll('.ai-picker__opt').forEach(function (opt) {
+            var on = opt.dataset.provider === id;
+            opt.classList.toggle('is-selected', on);
+            opt.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        paintFace(id);
+        if (persist && provSel && provSel.value !== id) {
+            provSel.value = id;
+            provSel.dispatchEvent(new Event('change'));
+        }
+        openMenu(false);
+    }
+
+    if (picker) {
+        paintFace(provSel ? provSel.value : '');
+        pickBtn.addEventListener('click', function () {
+            openMenu(pickMenu.hidden);
+        });
+        pickMenu.addEventListener('click', function (e) {
+            var opt = e.target.closest('[data-provider]');
+            if (opt) selectProvider(opt.dataset.provider, true);
+        });
+        pickMenu.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            var opt = e.target.closest('[data-provider]');
+            if (opt) { e.preventDefault(); selectProvider(opt.dataset.provider, true); }
+        });
+        document.addEventListener('click', function (e) {
+            if (!picker.contains(e.target)) openMenu(false);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') openMenu(false);
+        });
+    }
+
+    /* ── Model dropdown ─────────────────────────────────────────────── */
+    /* The hidden text input is the saved value. Picking "Custom…" reveals it;
+       picking a listed model writes it and triggers the autosave above. */
+    function modelInput(key) { return document.getElementById('set-' + key); }
+
+    document.querySelectorAll('.ai-model-select').forEach(function (sel) {
+        var key = sel.dataset.modelFor;
+        sel.addEventListener('change', function () {
+            var box = modelInput(key);
+            if (!box) return;
+            if (sel.value === '__custom__') {
+                box.hidden = false;
+                box.focus();
+                return;
+            }
+            box.hidden = true;
+            box.value = sel.value;
+            box.dispatchEvent(new Event('blur'));
+        });
+    });
+
+    document.querySelectorAll('[data-model-refresh]').forEach(function (btn) {
+        var key = btn.dataset.modelRefresh;
+        btn.addEventListener('click', function () {
+            var sel    = document.querySelector('[data-model-for="' + key + '"]');
+            var status = document.querySelector('[data-model-status="' + key + '"]');
+            var box    = modelInput(key);
+            btn.disabled = true;
+            btn.classList.add('is-loading');
+            if (status) status.textContent = 'Asking the provider\u2026';
+
+            fetch('/settings/ai/models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify({ provider: btn.dataset.provider })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) {
+                    if (status) status.textContent = d.error || 'Could not list models.';
+                    return;
+                }
+                var current = box ? box.value : '';
+                var models  = d.models || [];
+                if (current && models.indexOf(current) === -1) models.unshift(current);
+                sel.innerHTML = models.map(function (m) {
+                    return '<option value="' + m + '"' + (m === current ? ' selected' : '') + '>' + m + '</option>';
+                }).join('') + '<option value="__custom__">Custom\u2026</option>';
+                if (status) {
+                    status.textContent = d.source === 'live'
+                        ? models.length + ' models from the provider.'
+                        : 'Using the built-in list: ' + (d.error || 'provider unreachable');
+                }
+            })
+            .catch(function (e) {
+                if (status) status.textContent = String(e);
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.classList.remove('is-loading');
+            });
+        });
+    });
+})();
+</script>
 
 {{if .Data.HasLLM}}
 <script>
@@ -123,7 +432,6 @@
     var btn = document.getElementById('testAIBtn');
     var status = document.getElementById('testAIStatus');
     var result = document.getElementById('testAIResult');
-    var csrf = document.querySelector('meta[name="csrf-token"]');
 
     function csrfToken() {
         var f = document.getElementById('csrf-token');
@@ -133,6 +441,7 @@
     if (btn) {
         btn.addEventListener('click', function () {
             btn.disabled = true;
+            btn.classList.add('is-loading');
             status.textContent = 'Calling LLM…';
             result.hidden = true;
 
@@ -152,25 +461,29 @@
                     document.getElementById('testAIResponse').textContent = d.response || '';
                     respRow.hidden = false;
                     errRow.hidden  = true;
-                    status.textContent = '✓ ' + d.duration_ms + ' ms';
+                    status.innerHTML = '{{icon "check"}} ' + d.duration_ms + ' ms';
                     status.style.color = 'var(--color-success, #22c55e)';
                 } else {
                     document.getElementById('testAIError').textContent = d.error || 'Unknown error';
                     respRow.hidden = true;
                     errRow.hidden  = false;
-                    status.textContent = '✗ Failed';
+                    status.innerHTML = '{{icon "close"}} Failed';
                     status.style.color = 'var(--color-danger, #ef4444)';
                 }
                 document.getElementById('testAIMeta').textContent =
+                    (d.provider ? 'Provider: ' + d.provider + '  ' : '') +
                     (d.model ? 'Model: ' + d.model + '  ' : '') +
                     'Latency: ' + d.duration_ms + ' ms';
                 result.hidden = false;
             })
             .catch(function(err){
-                status.textContent = '✗ ' + err;
+                status.innerHTML = '{{icon "close"}} ' + err;
                 status.style.color = 'var(--color-danger, #ef4444)';
             })
-            .finally(function(){ btn.disabled = false; });
+            .finally(function(){
+                btn.disabled = false;
+                btn.classList.remove('is-loading');
+            });
         });
     }
 
@@ -180,6 +493,14 @@
 
     function truncate(s, n) {
         return s && s.length > n ? s.slice(0, n) + '…' : (s || '');
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;');
     }
 
     function renderLog() {
@@ -201,7 +522,8 @@
                     '<summary class="llm-debug-summary">' +
                         '<span class="llm-debug-time">' + time + '</span>' +
                         (isErr ? '<span class="badge badge-danger">error</span>' : '') +
-                        '<span class="llm-debug-model">' + (e.model || '') + '</span>' +
+                        (e.provider ? '<span class="llm-debug-model">' + esc(e.provider) + '</span>' : '') +
+                        (e.model ? '<span class="llm-debug-model">' + esc(e.model) + '</span>' : '') +
                         '<span class="llm-debug-dur">' + e.duration_ms + ' ms</span>' +
                         (e.input_tokens ? '<span class="llm-debug-toks">' + e.input_tokens + '↑ ' + e.output_tokens + '↓</span>' : '') +
                         '<span class="llm-debug-snippet">' + truncate(e.prompt, 80) + '</span>' +
@@ -219,17 +541,58 @@
         });
     }
 
-    function esc(s) {
-        return String(s)
-            .replace(/&/g,'&amp;')
-            .replace(/</g,'&lt;')
-            .replace(/>/g,'&gt;')
-            .replace(/"/g,'&quot;');
-    }
-
     if (logRefresh) logRefresh.addEventListener('click', renderLog);
     renderLog(); // load on page open
 }());
 </script>
 {{end}}
+<script>
+(function () {
+    var btn = document.getElementById('testRenderBtn');
+    var status = document.getElementById('testRenderStatus');
+    if (!btn) return;
+
+    function token() {
+        var f = document.getElementById('csrf-token');
+        return f ? f.value : '';
+    }
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.classList.add('is-loading');
+        status.style.color = 'var(--text-muted)';
+        status.textContent = 'Rendering a test page\u2026';
+
+        fetch('/settings/test-render', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': token(), 'Content-Type': 'application/json' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var checks = d.checks || [];
+            if (!checks.length) {
+                status.style.color = 'var(--color-danger, #ef4444)';
+                status.textContent = d.error || 'No headless browser configured.';
+                return;
+            }
+            /* One line per configured service - under "auto" both are tested. */
+            status.style.color = d.ok ? 'var(--color-success, #22c55e)' : 'var(--color-danger, #ef4444)';
+            status.textContent = checks.map(function (c) {
+                return c.ok
+                    ? c.backend + ' at ' + c.url + ' rendered the test page in ' + c.duration_ms + ' ms.'
+                    : c.backend + ' at ' + c.url + ' failed: ' + c.error;
+            }).join('  ');
+        })
+        .catch(function (e) {
+            status.style.color = 'var(--color-danger, #ef4444)';
+            status.textContent = String(e);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.classList.remove('is-loading');
+        });
+    });
+}());
+</script>
+
 {{end}}
