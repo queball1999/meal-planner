@@ -39,3 +39,34 @@
         });
     }
 })();
+
+// ── Hamburger nav toggle ──────────────────────────────────────────────────
+
+(function initNav() {
+    const toggle = document.getElementById('navToggle');
+    if (!toggle) return;
+
+    toggle.addEventListener('click', function () {
+        const open = document.body.classList.toggle('nav-open');
+        toggle.setAttribute('aria-expanded', String(open));
+    });
+
+    // Close nav when a link is activated (single-page-style navigation).
+    const nav = document.getElementById('site-nav');
+    if (nav) {
+        nav.addEventListener('click', function (e) {
+            if (e.target.closest('a')) {
+                document.body.classList.remove('nav-open');
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+    // Close nav on outside click.
+    document.addEventListener('click', function (e) {
+        if (!toggle.contains(e.target) && !(nav && nav.contains(e.target))) {
+            document.body.classList.remove('nav-open');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+})();

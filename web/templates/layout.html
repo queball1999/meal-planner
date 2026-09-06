@@ -18,7 +18,12 @@
         </a>
 
         {{if .User}}
-        <nav class="site-nav" aria-label="Main navigation">
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav">
+            <span class="nav-toggle__bar"></span>
+            <span class="nav-toggle__bar"></span>
+            <span class="nav-toggle__bar"></span>
+        </button>
+        <nav class="site-nav" id="site-nav" aria-label="Main navigation">
             <a href="/"        class="nav-link{{if eq .Page "index"}}   nav-link--active{{end}}"{{if eq .Page "index"}} aria-current="page"{{end}} aria-label="Dashboard">
                 {{icon "home"}} Dashboard
             </a>
