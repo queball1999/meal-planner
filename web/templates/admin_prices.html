@@ -1,0 +1,105 @@
+{{define "title"}}Manual Prices — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "tag-multiple"}} Manual Prices</h1>
+    <p class="page-subtitle">
+        Operator-entered prices are used by the pricing chain when no live source answers
+        (§6.2 ManualProvider). Prices are scoped to your household's ZIP code.
+    </p>
+</div>
+
+{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
+
+<div class="card form-section">
+    <h2 class="form-section__title">Getting started</h2>
+    <ol class="help-steps">
+        <li>Pick a store from the list below.</li>
+        <li>Enter the ingredient name as it appears in a recipe (e.g. "chicken breast").</li>
+        <li>Enter the price per pack and pack size (e.g. $8.99 for a 2 lb pack → size 2, unit lb).</li>
+        <li>Save. This price will be used whenever the pricing chain can't find a live price for that store.</li>
+    </ol>
+</div>
+
+{{range .Data.Stores}}
+<section class="card" aria-labelledby="store-prices-{{.Store.ID}}">
+    <h2 class="form-section__title" id="store-prices-{{.Store.ID}}">
+        {{icon "store"}} {{.Store.Name}}
+    </h2>
+
+    <form method="POST" action="/admin/prices" class="pref-form">
+        {{$.CSRFField}}
+        <input type="hidden" name="store_id" value="{{.Store.ID}}">
+        <div class="field-row">
+            <div class="field">
+                <label class="field-label" for="name-{{.Store.ID}}">Ingredient name</label>
+                <input class="field-input" id="name-{{.Store.ID}}" name="name"
+                       type="text" placeholder="e.g. chicken breast" autocomplete="off">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="price-{{.Store.ID}}">Price ($)</label>
+                <input class="field-input" id="price-{{.Store.ID}}" name="price_dollars"
+                       type="number" min="0.01" step="0.01" placeholder="8.99">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="pack-{{.Store.ID}}">Pack size</label>
+                <input class="field-input" id="pack-{{.Store.ID}}" name="pack_size"
+                       type="number" min="0.01" step="0.01" placeholder="2" value="1">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="unit-{{.Store.ID}}">Unit</label>
+                <input class="field-input" id="unit-{{.Store.ID}}" name="purchase_unit"
+                       type="text" placeholder="lb" value="each">
+            </div>
+            <div class="field field--action">
+                <button type="submit" class="btn btn--primary">{{icon "plus"}} Add</button>
+            </div>
+        </div>
+    </form>
+
+    {{if .Prices}}
+    <table class="data-table" aria-label="Manual prices for {{.Store.Name}}">
+        <thead>
+            <tr>
+                <th>Ingredient</th>
+                <th>Price</th>
+                <th>Pack size</th>
+                <th>Unit</th>
+                <th>Updated</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Prices}}
+            <tr>
+                <td>{{.NormalizedTerm}}</td>
+                <td>{{.PriceLabel}}</td>
+                <td>{{.PackSize}}</td>
+                <td>{{.PurchaseUnit}}</td>
+                <td>{{.UpdatedAt.Format "Jan 2, 2006"}}</td>
+                <td>
+                    <form method="POST" action="/admin/prices/{{.ID}}/delete" style="display:inline">
+                        {{$.CSRFField}}
+                        <button type="submit" class="btn btn--ghost btn--danger btn--sm"
+                                aria-label="Delete price for {{.NormalizedTerm}}">
+                            {{icon "delete"}}
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="form-section__desc">No manual prices yet for this store.</p>
+    {{end}}
+</section>
+{{else}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🏪</div>
+    <h2 class="skeleton-card__title">No stores configured</h2>
+    <p class="skeleton-card__body">
+        <a href="/stores">Add grocery stores</a> first, then come back to enter manual prices.
+    </p>
+</div>
+{{end}}
+{{end}}
