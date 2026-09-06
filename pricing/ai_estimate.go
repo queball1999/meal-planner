@@ -11,7 +11,7 @@ import (
 )
 
 // AIEstimateProvider asks the configured LLM for a typical current price (§6.2).
-// Always the floor of the chain — available even with zero integrations.
+// Always the floor of the chain - available even with zero integrations.
 // Results are tagged ConfidenceEstimate and persisted to price_cache by the chain.
 type AIEstimateProvider struct {
 	gen    llm.Generator
@@ -35,7 +35,7 @@ func (a *AIEstimateProvider) Lookup(ctx context.Context, term string, _ int64, r
 
 	prompt := fmt.Sprintf(
 		`Estimate the typical US grocery store price for "%s" in the region/ZIP: %s.
-Return ONLY valid JSON — no prose, no markdown:
+Return ONLY valid JSON - no prose, no markdown:
 {"price_cents": <integer cents>, "purchase_unit": "<each|oz|lb|cup|pack>", "pack_size": <float>}`,
 		term, r,
 	)
@@ -56,7 +56,7 @@ Return ONLY valid JSON — no prose, no markdown:
 	}
 	raw := strings.TrimSpace(resp.Content)
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, nil // unparseable — fail soft
+		return nil, nil // unparseable - fail soft
 	}
 	if out.PriceCents <= 0 {
 		return nil, nil

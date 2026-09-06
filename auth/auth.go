@@ -1,5 +1,5 @@
 // Package auth handles password hashing, token generation, and input
-// validation. It has no internal dependencies — everything here is pure crypto.
+// validation. It has no internal dependencies - everything here is pure crypto.
 package auth
 
 import (
@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const bcryptCost = 12 // §9.1 — bcrypt cost 12
+const bcryptCost = 12 // §9.1 - bcrypt cost 12
 
 // HashPassword hashes password with bcrypt cost 12.
 func HashPassword(password string) (string, error) {
@@ -48,7 +48,7 @@ func GenerateToken() (string, error) {
 }
 
 // HashToken returns the SHA-256 hex digest of token. This digest is what is
-// stored in the sessions table — the raw token never touches the database.
+// stored in the sessions table - the raw token never touches the database.
 func HashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])

@@ -9,4 +9,42 @@ services:
     ports:
       - "8081:8080"
     volumes:
-      - ./data:/data
+      - goeat-data:/data
+
+  # Optional headless browsers for scraping (Settings -> Scraping). Comment
+  # out either block if you don't need it.
+  browserless:
+    image: ghcr.io/browserless/chromium:latest
+    restart: unless-stopped
+    ports:
+      - "3900:3000" # host port 3000 often falls in a Windows/WSL2 reserved range
+    environment:
+      TOKEN: ${RENDER_TOKEN:-change-me}
+      CONCURRENT: 2
+      TIMEOUT: 60000
+      QUEUED: 5
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS \"http://localhost:3000/pressure?token=$$TOKEN\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    restart: unless-stopped
+    ports:
+      - "8191:8191"
+    environment:
+      LOG_LEVEL: info
+      TZ: ${TZ:-America/Phoenix}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8191/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  goeat-data:

@@ -12,17 +12,19 @@ import (
 // Phase 2 uses it for free-text parsing; Phase 3 adds structured outputs
 // and adaptive thinking for meal-plan generation.
 type anthropicClient struct {
-	client  anthropic.Client
-	model   string
-	maxToks int
+	client   anthropic.Client
+	model    string
+	maxToks  int
+	sampling Sampling
 }
 
-func newAnthropicClient(apiKey, model string, maxToks int) *anthropicClient {
+func newAnthropicClient(apiKey, model string, maxToks int, s Sampling) *anthropicClient {
 	opts := []option.RequestOption{option.WithAPIKey(apiKey)}
 	return &anthropicClient{
-		client:  anthropic.NewClient(opts...),
-		model:   model,
-		maxToks: maxToks,
+		client:   anthropic.NewClient(opts...),
+		model:    model,
+		maxToks:  maxToks,
+		sampling: s,
 	}
 }
 
@@ -41,6 +43,17 @@ func (c *anthropicClient) Generate(ctx context.Context, req GenerateRequest) (Ge
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(req.Prompt)),
 		},
+	}
+	// Anthropic accepts temperature/top_p/top_k but has no min_p or
+	// presence_penalty; those two are silently skipped here.
+	if c.sampling.Temperature > 0 {
+		params.Temperature = anthropic.Float(clampTemp(c.sampling.Temperature))
+	}
+	if c.sampling.TopP > 0 {
+		params.TopP = anthropic.Float(c.sampling.TopP)
+	}
+	if c.sampling.TopK > 0 {
+		params.TopK = anthropic.Int(int64(c.sampling.TopK))
 	}
 	if req.System != "" {
 		params.System = []anthropic.TextBlockParam{{Text: req.System}}
@@ -66,4 +79,16 @@ func (c *anthropicClient) Generate(ctx context.Context, req GenerateRequest) (Ge
 		ProviderName: "anthropic",
 		ModelName:    msg.Model,
 	}, nil
+}
+
+// clampTemp keeps temperature inside the 0-1 range the Anthropic API accepts;
+// the shared default (1.01) is tuned for local models that allow more.
+func clampTemp(t float64) float64 {
+	if t > 1 {
+		return 1
+	}
+	if t < 0 {
+		return 0
+	}
+	return t
 }

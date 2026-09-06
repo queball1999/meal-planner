@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-// prepWords are stripped before normalization — they describe preparation, not
+// prepWords are stripped before normalization - they describe preparation, not
 // the ingredient itself, so "diced onion" and "onion" should match.
 var prepWords = map[string]bool{
 	"diced": true, "chopped": true, "sliced": true, "minced": true,
@@ -19,33 +19,33 @@ var prepWords = map[string]bool{
 // synonyms maps ingredient aliases to a canonical term so that, e.g.,
 // "scallion" and "green onion" resolve to the same cache key.
 var synonyms = map[string]string{
-	"scallion":      "green onion",
-	"spring onion":  "green onion",
-	"capsicum":      "bell pepper",
-	"zucchini":      "zucchini",
-	"courgette":     "zucchini",
-	"aubergine":     "eggplant",
-	"coriander":     "cilantro",
-	"corn starch":   "cornstarch",
-	"corn flour":    "cornstarch",
-	"chili":         "chilli",
-	"chile":         "chilli",
-	"stock":         "broth",
-	"heavy cream":   "heavy whipping cream",
-	"double cream":  "heavy whipping cream",
-	"plain flour":   "all-purpose flour",
-	"self raising":  "self-rising flour",
-	"bicarbonate":   "baking soda",
-	"sultana":       "raisin",
-	"rocket":        "arugula",
-	"swede":         "rutabaga",
-	"mangetout":     "snow peas",
-	"mange tout":    "snow peas",
+	"scallion":       "green onion",
+	"spring onion":   "green onion",
+	"capsicum":       "bell pepper",
+	"zucchini":       "zucchini",
+	"courgette":      "zucchini",
+	"aubergine":      "eggplant",
+	"coriander":      "cilantro",
+	"corn starch":    "cornstarch",
+	"corn flour":     "cornstarch",
+	"chili":          "chilli",
+	"chile":          "chilli",
+	"stock":          "broth",
+	"heavy cream":    "heavy whipping cream",
+	"double cream":   "heavy whipping cream",
+	"plain flour":    "all-purpose flour",
+	"self raising":   "self-rising flour",
+	"bicarbonate":    "baking soda",
+	"sultana":        "raisin",
+	"rocket":         "arugula",
+	"swede":          "rutabaga",
+	"mangetout":      "snow peas",
+	"mange tout":     "snow peas",
 	"natural yogurt": "plain yogurt",
 }
 
 // Normalize strips prep words, lowercases, singularizes lightly, and applies
-// synonym mapping — producing the join key for price_cache, item_product_map,
+// synonym mapping - producing the join key for price_cache, item_product_map,
 // and pantry_items (§6.3, §10.2). Deterministic; no LLM.
 func Normalize(raw string) string {
 	raw = strings.ToLower(strings.TrimSpace(raw))

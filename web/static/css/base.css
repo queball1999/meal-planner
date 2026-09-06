@@ -1,5 +1,5 @@
-/* base.css — reset + base element styles.
- * No colours here — use tokens from tokens.css.
+/* base.css - reset + base element styles.
+ * No colours here - use tokens from tokens.css.
  */
 
 *, *::before, *::after {
@@ -8,6 +8,13 @@
 
 * {
     margin: 0;
+}
+
+/* The `hidden` attribute is how the JS on this site shows and hides things.
+ * A class that sets `display` outranks the UA sheet's `[hidden]` rule, so
+ * without this an element toggled with `el.hidden` stays on screen. */
+[hidden] {
+    display: none !important;
 }
 
 html {
@@ -64,7 +71,7 @@ pre {
 img, video { display: block; max-width: 100%; }
 svg { display: block; max-width: 100%; }
 
-/* Inline icon SVGs produced by {{icon "name"}} — scale with text. */
+/* Inline icon SVGs produced by {{icon "name"}} - scale with text. */
 svg.icon {
     display: inline;
     width: 1em;
@@ -81,7 +88,7 @@ input, textarea, select, button {
 
 /* ── Focus ──────────────────────────────────────────────────────────────── */
 
-/* Global :focus-visible ring — non-negotiable (§8.6). */
+/* Global :focus-visible ring - non-negotiable (§8.6). */
 :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
@@ -95,7 +102,7 @@ input, textarea, select, button {
 
 /* ── Utilities ──────────────────────────────────────────────────────────── */
 
-/* Screen-reader only — non-negotiable (§8.6). */
+/* Screen-reader only - non-negotiable (§8.6). */
 .sr-only {
     position: absolute;
     width: 1px;
@@ -135,7 +142,7 @@ input, textarea, select, button {
         animation: fadeIn 0.12s var(--ease) both;
     }
 
-    .flash, [role="alert"] {
+    .banner, [role="alert"] {
         animation: slideDown 0.15s var(--ease) both;
     }
 

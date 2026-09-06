@@ -10,9 +10,9 @@ import (
 // stopping at the first result whose confidence meets the minimum threshold
 // (§6.1). The caller is responsible for persisting results to price_cache.
 type Chain struct {
-	providers      []PriceProvider
-	minConfidence  string // stop when a result is at least this confident
-	persistFn      func(context.Context, *PriceResult, int64, string) error // optional write-back
+	providers     []PriceProvider
+	minConfidence string                                                   // stop when a result is at least this confident
+	persistFn     func(context.Context, *PriceResult, int64, string) error // optional write-back
 }
 
 // ChainOption configures a Chain.
@@ -50,13 +50,13 @@ func (ch *Chain) Resolve(ctx context.Context, term string, storeID int64, region
 		r, err := p.Lookup(ctx, normalized, storeID, region)
 		if err != nil {
 			log.Printf("pricing: provider %s error for %q: %v", p.Name(), normalized, err)
-			continue // fail soft — try next provider
+			continue // fail soft - try next provider
 		}
 		if r == nil {
 			continue // "no answer"
 		}
 		if !ConfidenceAtLeast(r.Confidence, ch.minConfidence) {
-			continue // below threshold — keep looking
+			continue // below threshold - keep looking
 		}
 		// Write-back for non-cache providers so future cache hits are available.
 		if ch.persistFn != nil && r.Source != "cache" {

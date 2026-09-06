@@ -1,12 +1,12 @@
-{{define "title"}}Meal Plan — {{.AppName}}{{end}}
+{{define "title"}}Meal Plan - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "calendar"}} Weekly Plan</h1>
     {{if .Data.HasPlan}}
     <p class="page-subtitle">
         {{if .Data.ReadOnly}}<a href="/" class="btn btn--ghost btn--sm" style="margin-right:.5rem">{{icon "arrow-left"}} Dashboard</a>{{end}}
-        {{.Data.WeekStart}} &ndash; {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}
-        {{if .Data.ReadOnly}}<span class="badge badge--muted" style="margin-left:.5rem">Past plan — read only</span>{{end}}
+        {{.Data.WeekStart}} - {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}
+        {{if .Data.ReadOnly}}<span class="badge badge--muted" style="margin-left:.5rem">Past plan - read only</span>{{end}}
     </p>
     {{else}}
     <p class="page-subtitle">No plan yet for this week.</p>
@@ -68,11 +68,11 @@
 
         {{with index $day.Slots "breakfast"}}
         <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
-            {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
+            {{if .IsEmpty}}<span class="plan-cell--empty"> - </span>{{else}}
             <div class="plan-cell">
                 <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
-                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
+                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">{{icon "recycle"}}</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
                 {{if not $.Data.ReadOnly}}
                 <div class="plan-cell__actions">
@@ -101,11 +101,11 @@
 
         {{with index $day.Slots "lunch"}}
         <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
-            {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
+            {{if .IsEmpty}}<span class="plan-cell--empty"> - </span>{{else}}
             <div class="plan-cell">
                 <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
-                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
+                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">{{icon "recycle"}}</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
                 {{if not $.Data.ReadOnly}}
                 <div class="plan-cell__actions">
@@ -134,11 +134,11 @@
 
         {{with index $day.Slots "dinner"}}
         <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
-            {{if .IsEmpty}}<span class="plan-cell--empty">&mdash;</span>{{else}}
+            {{if .IsEmpty}}<span class="plan-cell--empty"> - </span>{{else}}
             <div class="plan-cell">
                 <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
                 <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
-                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">♻</span>{{end}}
+                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">{{icon "recycle"}}</span>{{end}}
                 {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
                 {{if not $.Data.ReadOnly}}
                 <div class="plan-cell__actions">
@@ -170,10 +170,10 @@
 
 {{else}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🍳</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "chef-hat"}}</div>
     <h2 class="skeleton-card__title">No meal plan yet</h2>
     <p class="skeleton-card__body">
-        Generate your first weekly plan — the AI will respect your preferences,
+        Generate your first weekly plan - the AI will respect your preferences,
         allergies, budget, and meal slot hints.
     </p>
     {{if .Data.HasLLM}}

@@ -38,7 +38,7 @@ var jsonldScriptRE = regexp.MustCompile(`(?i)<script[^>]+type=["']application/ld
 var iso8601DurRE = regexp.MustCompile(`PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?`)
 
 // ParseRecipe attempts to extract a Recipe from HTML. It tries JSON-LD first,
-// then OpenGraph meta tags, then microdata — returning whatever it can find.
+// then OpenGraph meta tags, then microdata - returning whatever it can find.
 func ParseRecipe(htmlBody, sourceURL string) (*Recipe, error) {
 	r := &Recipe{SourceURL: sourceURL}
 	if u, err := url.Parse(sourceURL); err == nil {
@@ -71,23 +71,45 @@ func (e *noRecipeErr) Error() string { return "scrape: no recipe data found in p
 
 // ── JSON-LD ───────────────────────────────────────────────────────────────────
 
+// parseJSONLDRecipe scans every ld+json block and walks each document looking
+// for a Recipe node. Real-world pages wrap it in a top-level array, an
+// @graph list, or a mainEntity chain, so the walk has to recurse rather than
+// assume the block decodes to a single object (allrecipes.com ships an array).
 func parseJSONLDRecipe(body string, r *Recipe) bool {
 	matches := jsonldScriptRE.FindAllStringSubmatch(body, -1)
 	for _, m := range matches {
-		var obj map[string]any
-		if err := json.Unmarshal([]byte(strings.TrimSpace(m[1])), &obj); err != nil {
+		var doc any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(m[1])), &doc); err != nil {
 			continue
 		}
-		if applyRecipeObj(obj, r) {
+		if findRecipeNode(doc, r, 0) {
 			return true
 		}
-		// @graph array
-		if graph, ok := obj["@graph"].([]any); ok {
-			for _, item := range graph {
-				if sub, ok := item.(map[string]any); ok {
-					if applyRecipeObj(sub, r) {
-						return true
-					}
+	}
+	return false
+}
+
+// findRecipeNode depth-first searches a decoded JSON-LD document for the first
+// node that applyRecipeObj accepts.
+func findRecipeNode(node any, r *Recipe, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	switch n := node.(type) {
+	case []any:
+		for _, item := range n {
+			if findRecipeNode(item, r, depth+1) {
+				return true
+			}
+		}
+	case map[string]any:
+		if applyRecipeObj(n, r) {
+			return true
+		}
+		for _, key := range []string{"@graph", "mainEntity", "mainEntityOfPage", "itemListElement", "hasPart"} {
+			if v, ok := n[key]; ok {
+				if findRecipeNode(v, r, depth+1) {
+					return true
 				}
 			}
 		}
@@ -95,44 +117,51 @@ func parseJSONLDRecipe(body string, r *Recipe) bool {
 	return false
 }
 
-func applyRecipeObj(obj map[string]any, r *Recipe) bool {
-	t, _ := obj["@type"].(string)
-	if !strings.EqualFold(t, "Recipe") {
-		// @type can also be a []any
-		if arr, ok := obj["@type"].([]any); ok {
-			found := false
-			for _, v := range arr {
-				if s, ok := v.(string); ok && strings.EqualFold(s, "Recipe") {
-					found = true
-					break
-				}
+// isRecipeType reports whether a JSON-LD @type value (a string or a list of
+// strings) names a Recipe. A node with no @type at all is treated as a
+// candidate so sloppy markup still parses.
+func isRecipeType(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return true
+	case string:
+		return t == "" || strings.EqualFold(t, "Recipe")
+	case []any:
+		for _, item := range t {
+			if sub, ok := item.(string); ok && strings.EqualFold(sub, "Recipe") {
+				return true
 			}
-			if !found {
-				return false
-			}
-		} else if t == "" {
-			return false
 		}
+	}
+	return false
+}
+
+func applyRecipeObj(obj map[string]any, r *Recipe) bool {
+	if !isRecipeType(obj["@type"]) {
+		return false
 	}
 
 	r.Title = strVal(obj, "name")
-	r.Description = strVal(obj, "description")
+	r.Description = cleanText(strVal(obj, "description"))
 	r.ImageURL = extractImageURL(obj["image"])
-	r.PrepMinutes = parseDuration(strVal(obj, "prepTime"))
-	r.CookMinutes = parseDuration(strVal(obj, "cookTime"))
-	r.Servings = parseServings(strVal(obj, "recipeYield"))
+	r.PrepMinutes = parseDuration(anyToString(obj["prepTime"]))
+	r.CookMinutes = parseDuration(anyToString(obj["cookTime"]))
+	r.Servings = parseServings(anyToString(obj["recipeYield"]))
 
 	// Keywords / categories → tags
 	for _, key := range []string{"keywords", "recipeCategory", "recipeCuisine"} {
 		r.Tags = append(r.Tags, extractStringList(obj[key])...)
 	}
 
-	// Ingredients
-	if ings, ok := obj["recipeIngredient"].([]any); ok {
-		for _, v := range ings {
-			if s, ok := v.(string); ok && s != "" {
-				r.Ingredients = append(r.Ingredients, RecipeIngredient{Raw: strings.TrimSpace(s)})
+	// Ingredients. Some sites use the older "ingredients" key.
+	for _, key := range []string{"recipeIngredient", "ingredients"} {
+		for _, line := range extractStringList(obj[key]) {
+			if line = cleanText(line); line != "" {
+				r.Ingredients = append(r.Ingredients, RecipeIngredient{Raw: line})
 			}
+		}
+		if len(r.Ingredients) > 0 {
+			break
 		}
 	}
 
@@ -163,31 +192,67 @@ func extractImageURL(v any) string {
 	return ""
 }
 
+// extractSteps flattens recipeInstructions into plain step strings. It handles
+// a bare string (split on newlines), a list of strings, HowToStep objects, and
+// HowToSection objects whose steps live under itemListElement.
 func extractSteps(v any) []string {
 	var steps []string
 	switch s := v.(type) {
 	case string:
-		if s != "" {
-			steps = append(steps, s)
+		// Split before cleaning: cleanText collapses newlines into spaces.
+		for _, line := range strings.Split(strings.ReplaceAll(s, "<br>", "\n"), "\n") {
+			if line = cleanText(line); line != "" {
+				steps = append(steps, line)
+			}
 		}
 	case []any:
 		for _, item := range s {
-			switch it := item.(type) {
-			case string:
-				if it != "" {
-					steps = append(steps, strings.TrimSpace(it))
-				}
-			case map[string]any:
-				// HowToStep
-				if text, ok := it["text"].(string); ok && text != "" {
-					steps = append(steps, strings.TrimSpace(text))
-				} else if name, ok := it["name"].(string); ok && name != "" {
-					steps = append(steps, strings.TrimSpace(name))
-				}
-			}
+			steps = append(steps, extractSteps(item)...)
+		}
+	case map[string]any:
+		// HowToSection: recurse into its child steps.
+		if sub, ok := s["itemListElement"]; ok {
+			steps = append(steps, extractSteps(sub)...)
+			break
+		}
+		if text := cleanText(strVal(s, "text")); text != "" {
+			steps = append(steps, text)
+		} else if name := cleanText(strVal(s, "name")); name != "" {
+			steps = append(steps, name)
 		}
 	}
 	return steps
+}
+
+var htmlTagRE = regexp.MustCompile(`<[^>]*>`)
+
+// cleanText strips embedded HTML tags, unescapes entities, and collapses
+// whitespace. JSON-LD payloads routinely carry markup inside step text.
+func cleanText(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = htmlTagRE.ReplaceAllString(s, " ")
+	s = html.UnescapeString(s)
+	s = strings.ReplaceAll(s, " ", " ")
+	fields := strings.Fields(s)
+	return strings.Join(fields, " ")
+}
+
+// anyToString renders a JSON value that may be a string, number, or list of
+// either as a single string - recipeYield and the *Time fields vary by site.
+func anyToString(v any) string {
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	case []any:
+		if len(t) > 0 {
+			return anyToString(t[0])
+		}
+	}
+	return ""
 }
 
 func extractStringList(v any) []string {
@@ -197,7 +262,11 @@ func extractStringList(v any) []string {
 	var out []string
 	switch s := v.(type) {
 	case string:
-		for _, tok := range strings.Split(s, ",") {
+		sep := ","
+		if strings.Contains(s, "\n") {
+			sep = "\n"
+		}
+		for _, tok := range strings.Split(s, sep) {
 			if t := strings.TrimSpace(tok); t != "" {
 				out = append(out, t)
 			}

@@ -25,6 +25,7 @@ type ctxKey int
 const (
 	ctxKeyUser      ctxKey = iota
 	ctxKeyHousehold ctxKey = iota
+	ctxKeyReqStart  ctxKey = iota
 )
 
 // UserFromCtx returns the authenticated user from the context, or nil.
@@ -38,6 +39,25 @@ func UserFromCtx(r *http.Request) *db.User {
 func HouseholdFromCtx(r *http.Request) *db.Household {
 	h, _ := r.Context().Value(ctxKeyHousehold).(*db.Household)
 	return h
+}
+
+// ── Timing ───────────────────────────────────────────────────────────────────
+
+// Timing stamps the request's arrival time into context so render() can later
+// compute page-load wall-clock time for the footer. Wrap the outermost layer
+// of the handler chain so the measurement includes CSRF and session overhead,
+// not just the route handler's own work.
+func Timing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), ctxKeyReqStart, time.Now())
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// RequestStart returns when Timing saw this request begin.
+func RequestStart(r *http.Request) (time.Time, bool) {
+	t, ok := r.Context().Value(ctxKeyReqStart).(time.Time)
+	return t, ok
 }
 
 // ── LoadSession ──────────────────────────────────────────────────────────────
@@ -62,7 +82,7 @@ func LoadSession(store db.Store) func(http.Handler) http.Handler {
 				}
 			}
 
-			// Always try to load household — needed for setup-redirect logic.
+			// Always try to load household - needed for setup-redirect logic.
 			hh, err := store.GetHousehold(ctx)
 			if err == nil && hh != nil {
 				ctx = context.WithValue(ctx, ctxKeyHousehold, hh)

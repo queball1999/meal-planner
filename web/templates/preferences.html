@@ -1,9 +1,11 @@
-{{define "title"}}Preferences — {{.AppName}}{{end}}
+{{define "title"}}Preferences - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">Preferences</h1>
     <p class="page-subtitle">Tell us how your household eats so we can plan smarter meals.</p>
 </div>
+{{template "settingsTabs" .}}
+
 
 <form method="POST" action="/preferences" class="pref-form" novalidate>
     {{.CSRFField}}
@@ -14,7 +16,7 @@
             {{icon "fork"}} Typical meals
         </h2>
         <p class="form-section__desc">
-            Describe what you normally eat for each meal. Be as loose or specific as you like —
+            Describe what you normally eat for each meal. Be as loose or specific as you like - 
             {{if .Data.HasLLM}}the AI will extract structured data from your descriptions.{{else}}these notes help guide meal generation.{{end}}
         </p>
 
@@ -33,7 +35,7 @@
                 <label class="field-label" for="effort_{{.Slot}}">Cooking effort</label>
                 <select class="field-input" id="effort_{{.Slot}}" name="effort_{{.Slot}}">
                     <option value="quick"    {{if eq .Effort "quick"}}selected{{end}}>Quick (&lt;15 min)</option>
-                    <option value="standard" {{if eq .Effort "standard"}}selected{{end}}>Standard (15–45 min)</option>
+                    <option value="standard" {{if eq .Effort "standard"}}selected{{end}}>Standard (15-45 min)</option>
                     <option value="elaborate"{{if eq .Effort "elaborate"}}selected{{end}}>Elaborate (45+ min)</option>
                 </select>
             </div>
@@ -88,7 +90,7 @@
                    name="dislikes"
                    value="{{.Data.DislikesCSV}}"
                    placeholder="liver, Brussels sprouts…">
-            <span class="field-hint">Comma-separated. Soft-weighted — avoided but not strictly excluded.</span>
+            <span class="field-hint">Comma-separated. Soft-weighted - avoided but not strictly excluded.</span>
         </div>
     </section>
 

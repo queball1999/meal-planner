@@ -1,4 +1,4 @@
-{{define "title"}}Shopping List — {{.AppName}}{{end}}
+{{define "title"}}Shopping List - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "cart"}} Shopping List</h1>
@@ -9,10 +9,10 @@
 
 {{if not .Data.HasPlan}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🛒</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "cart"}}</div>
     <h2 class="skeleton-card__title">No plan yet</h2>
     <p class="skeleton-card__body">
-        <a href="/plan">Generate a meal plan</a> first — the shopping list is built from it.
+        <a href="/plan">Generate a meal plan</a> first - the shopping list is built from it.
     </p>
 </div>
 {{else}}

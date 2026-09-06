@@ -6,7 +6,7 @@ import (
 )
 
 // LogEvent appends an entry to the audit log (§9.3). Errors are non-fatal to
-// the calling request — callers may ignore the returned error for fire-and-forget
+// the calling request - callers may ignore the returned error for fire-and-forget
 // logging, but it is returned so tests can assert on it.
 func (s *store) LogEvent(ctx context.Context, e AppEvent) error {
 	status := e.Status

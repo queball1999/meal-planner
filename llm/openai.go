@@ -17,20 +17,31 @@ type openAIClient struct {
 	apiKey   string
 	model    string
 	maxToks  int
-	temp     float64
+	sampling Sampling
 	provider string
 	httpCli  *http.Client
 }
 
-func newOpenAIClient(baseURL, apiKey, model, provider string, maxToks int, temp float64) *openAIClient {
+// Sampling carries the decoding parameters shared by every provider.
+// TopK and MinP are not part of the OpenAI API and are only sent to
+// openai_compatible backends, which is where they are understood.
+type Sampling struct {
+	Temperature float64
+	TopP        float64
+	TopK        int
+	MinP        float64
+	Presence    float64
+}
+
+func newOpenAIClient(baseURL, apiKey, model, provider string, maxToks int, s Sampling) *openAIClient {
 	return &openAIClient{
 		baseURL:  baseURL,
 		apiKey:   apiKey,
 		model:    model,
 		maxToks:  maxToks,
-		temp:     temp,
+		sampling: s,
 		provider: provider,
-		httpCli:  &http.Client{Timeout: 300 * time.Second}, // 5 min — large local models are slow
+		httpCli:  &http.Client{Timeout: 300 * time.Second}, // 5 min - large local models are slow
 	}
 }
 
@@ -53,7 +64,24 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 		Model:       c.model,
 		Messages:    msgs,
 		MaxTokens:   maxToks,
-		Temperature: c.temp,
+		Temperature: c.sampling.Temperature,
+	}
+	if c.sampling.TopP > 0 {
+		body.TopP = &c.sampling.TopP
+	}
+	if c.sampling.Presence != 0 {
+		body.PresencePenalty = &c.sampling.Presence
+	}
+	// top_k / min_p are llama.cpp-family extensions; api.openai.com and the
+	// Gemini compatibility layer reject unknown fields, so send them only to
+	// a generic OpenAI-compatible endpoint.
+	if c.provider == "openai_compatible" {
+		if c.sampling.TopK > 0 {
+			body.TopK = &c.sampling.TopK
+		}
+		if c.sampling.MinP > 0 {
+			body.MinP = &c.sampling.MinP
+		}
 	}
 
 	raw, err := json.Marshal(body)
@@ -62,7 +90,7 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.baseURL+"/v1/chat/completions", bytes.NewReader(raw))
+		APIBase(c.baseURL, c.provider)+"/chat/completions", bytes.NewReader(raw))
 	if err != nil {
 		return GenerateResponse{}, fmt.Errorf("openai: build request: %w", err)
 	}
@@ -110,10 +138,14 @@ type chatMsg struct {
 }
 
 type chatReq struct {
-	Model       string    `json:"model"`
-	Messages    []chatMsg `json:"messages"`
-	MaxTokens   int       `json:"max_tokens"`
-	Temperature float64   `json:"temperature"`
+	Model           string    `json:"model"`
+	Messages        []chatMsg `json:"messages"`
+	MaxTokens       int       `json:"max_tokens"`
+	Temperature     float64   `json:"temperature"`
+	TopP            *float64  `json:"top_p,omitempty"`
+	PresencePenalty *float64  `json:"presence_penalty,omitempty"`
+	TopK            *int      `json:"top_k,omitempty"`
+	MinP            *float64  `json:"min_p,omitempty"`
 }
 
 type chatResp struct {

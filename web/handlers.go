@@ -33,18 +33,18 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type dashPageData struct {
-	HasPlan        bool
-	PlanStatus     string // "generating" | "ready" | "error" | ""
-	WeekLabel      string // "Sep 1 – Sep 7"
-	TotalLabel     string // "$47.20" or ""
-	BudgetLabel    string // "$120"
-	OverBudget     bool
-	StatsSpent     string // "$47.20 / $120" or ""
+	HasPlan         bool
+	PlanStatus      string // "generating" | "ready" | "error" | ""
+	WeekLabel       string // "Sep 1 - Sep 7"
+	TotalLabel      string // "$47.20" or ""
+	BudgetLabel     string // "$120"
+	OverBudget      bool
+	StatsSpent      string // "$47.20 / $120" or ""
 	StatsOverBudget bool
-	StatsMeals     int64
-	StatsPlans     int
-	RecentPlans    []*db.Plan // up to 8 for the history strip
-	HasLLM         bool
+	StatsMeals      int64
+	StatsPlans      int
+	RecentPlans     []*db.Plan // up to 8 for the history strip
+	HasLLM          bool
 }
 
 // handleDashboard serves the main dashboard. RequireAuth middleware guarantees
@@ -71,7 +71,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if p, _ := s.store.GetLatestPlan(ctx, hh.ID); p != nil {
 		data.HasPlan = true
 		data.PlanStatus = p.Status
-		data.WeekLabel = fmt.Sprintf("%s – %s",
+		data.WeekLabel = fmt.Sprintf("%s - %s",
 			fmtMonthDay(p.WeekStart), fmtMonthDay(p.WeekEnd))
 		data.BudgetLabel = fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100)
 		if p.TotalCents > 0 {
@@ -108,7 +108,7 @@ func fmtMonthDay(isoDate string) string {
 	return t.Format("Jan 2")
 }
 
-// handleCSRFError is the gorilla/csrf error handler — returns a plain 403 with
+// handleCSRFError is the gorilla/csrf error handler - returns a plain 403 with
 // the failure reason so clients get an actionable message.
 func (s *Server) handleCSRFError(w http.ResponseWriter, r *http.Request) {
 	reason := csrf.FailureReason(r)

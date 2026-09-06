@@ -120,6 +120,49 @@ func (s *store) ListCatalogRecipeSteps(ctx context.Context, catalogRecipeID int6
 	return out, rows.Err()
 }
 
+// UpdateCatalogRecipe rewrites the editable fields of a catalog recipe.
+// ImagePath is only written when non-empty so an edit that leaves the image
+// alone does not clear it; use ClearCatalogRecipeImage to drop one.
+func (s *store) UpdateCatalogRecipe(ctx context.Context, p UpdateCatalogRecipeParams) error {
+	tags, _ := json.Marshal(p.Tags)
+	if p.ImagePath != "" {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE catalog_recipes
+			SET title = ?, servings = ?, prep_minutes = ?, cook_minutes = ?,
+			    tags = ?, image_path = ?
+			WHERE id = ?`,
+			p.Title, p.Servings, p.PrepMinutes, p.CookMinutes, string(tags), p.ImagePath, p.ID)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE catalog_recipes
+		SET title = ?, servings = ?, prep_minutes = ?, cook_minutes = ?, tags = ?
+		WHERE id = ?`,
+		p.Title, p.Servings, p.PrepMinutes, p.CookMinutes, string(tags), p.ID)
+	return err
+}
+
+// ClearCatalogRecipeImage drops the stored image reference.
+func (s *store) ClearCatalogRecipeImage(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE catalog_recipes SET image_path = '' WHERE id = ?`, id)
+	return err
+}
+
+// DeleteCatalogRecipeIngredients removes every ingredient line so the caller
+// can re-add the full set (edit and re-import both replace wholesale).
+func (s *store) DeleteCatalogRecipeIngredients(ctx context.Context, catalogRecipeID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM catalog_recipe_ingredients WHERE catalog_recipe_id = ?`, catalogRecipeID)
+	return err
+}
+
+// DeleteCatalogRecipeSteps removes every step so the caller can re-add them.
+func (s *store) DeleteCatalogRecipeSteps(ctx context.Context, catalogRecipeID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM catalog_recipe_steps WHERE catalog_recipe_id = ?`, catalogRecipeID)
+	return err
+}
+
 // ── scan helpers ──────────────────────────────────────────────────────────────
 
 func scanCatalogRecipe(row *sql.Row) (*CatalogRecipe, error) {

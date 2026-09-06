@@ -27,7 +27,7 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 // handleLogin processes the sign-in form (POST /auth/login).
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		s.setFlash(w, "Invalid form submission")
+		s.setNotify(w, NotifyDanger, "Invalid form submission")
 		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 		return
 	}
@@ -36,7 +36,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if username == "" || password == "" {
-		s.setFlash(w, "Username and password are required")
+		s.setNotify(w, NotifyDanger, "Username and password are required")
 		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 		return
 	}
@@ -49,7 +49,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Deliberate constant-time response: do a dummy bcrypt compare so
 		// timing doesn't reveal whether the username exists.
 		_ = auth.CheckPassword("$2a$12$notavalidhashXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", password)
-		s.setFlash(w, "Invalid username or password")
+		s.setNotify(w, NotifyDanger, "Invalid username or password")
 		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 		return
 	}
@@ -57,7 +57,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := auth.CheckPassword(user.PasswordHash, password); err != nil {
 		id := user.ID
 		s.logEvent(r, &id, "auth.login.failed", "user", fmt.Sprintf("%d", id), `{"reason":"wrong_password"}`)
-		s.setFlash(w, "Invalid username or password")
+		s.setNotify(w, NotifyDanger, "Invalid username or password")
 		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 		return
 	}

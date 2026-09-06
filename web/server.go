@@ -14,6 +14,8 @@ import (
 	"goeat/middleware"
 	"goeat/plan"
 	"goeat/pricing"
+	"goeat/scrape"
+	"goeat/settings"
 )
 
 // Server holds shared dependencies and the fully-wired HTTP handler.
@@ -60,7 +62,9 @@ func buildChain(cfg *config.Config, store db.Store, gen llm.Generator) *pricing.
 	}
 	providers = append(providers, pricing.NewCacheProvider(store, cfg.PriceCacheTTLHours))
 	providers = append(providers, pricing.NewManualProvider(store, region))
-	providers = append(providers, pricing.NewScraperProvider(store, cfg.FlareSolverrURL))
+	providers = append(providers, pricing.NewScraperProvider(store, func(ctx context.Context) scrape.RenderConfig {
+		return settings.LiveRenderConfig(ctx, store, cfg)
+	}, gen))
 	if gen != nil {
 		providers = append(providers, pricing.NewAIEstimateProvider(gen, region))
 	}
@@ -108,6 +112,7 @@ func (s *Server) buildHandler() http.Handler {
 		}
 	}
 	h = csrf.Protect([]byte(s.cfg.SessionSecret), csrfOpts...)(h)
+	h = middleware.Timing(h) // outermost: footer's "Page" time includes CSRF + session overhead
 
 	return h
 }

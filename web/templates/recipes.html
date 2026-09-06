@@ -1,4 +1,4 @@
-{{define "title"}}Recipes — {{.AppName}}{{end}}
+{{define "title"}}Recipes - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
@@ -7,8 +7,6 @@
     </div>
     <p class="page-subtitle">Your saved recipe catalog.</p>
 </div>
-
-{{if .Flash}}<div class="alert alert--info" role="alert">{{.Flash}}</div>{{end}}
 
 <form method="GET" action="/recipes" class="filter-bar" aria-label="Filter recipes">
     <div class="field-row" style="flex-wrap:wrap;gap:0.5rem">
@@ -40,6 +38,7 @@
     <table class="data-table" aria-label="Recipe catalog">
         <thead>
             <tr>
+                <th><span class="sr-only">Photo</span></th>
                 <th>Title</th>
                 <th>Source</th>
                 <th>Servings</th>
@@ -52,6 +51,15 @@
         <tbody>
             {{range .Data.Recipes}}
             <tr>
+                <td data-label="Photo">
+                    <a href="/recipes/{{.ID}}" class="recipe-thumb" aria-label="View {{.Title}}">
+                        {{if .ImagePath}}
+                        <img src="/recipe-images/{{.ImagePath}}" alt="" loading="lazy" width="56" height="40">
+                        {{else}}
+                        <span class="recipe-thumb__placeholder" aria-hidden="true">{{icon "fork"}}</span>
+                        {{end}}
+                    </a>
+                </td>
                 <td data-label="Title"><a href="/recipes/{{.ID}}">{{.Title}}</a></td>
                 <td data-label="Source">
                     {{if eq .SourceKind "imported"}}
@@ -62,13 +70,13 @@
                         AI-generated
                     {{end}}
                 </td>
-                <td data-label="Servings">{{if .Servings}}{{.Servings}}{{else}}—{{end}}</td>
+                <td data-label="Servings">{{if .Servings}}{{.Servings}}{{else}} - {{end}}</td>
                 <td data-label="Time">
                     {{if or .PrepMinutes .CookMinutes}}
                         {{if .PrepMinutes}}{{.PrepMinutes}}m prep{{end}}
                         {{if and .PrepMinutes .CookMinutes}} + {{end}}
                         {{if .CookMinutes}}{{.CookMinutes}}m cook{{end}}
-                    {{else}}—{{end}}
+                    {{else}} - {{end}}
                 </td>
                 <td data-label="Tags">
                     {{range .Tags}}<span class="badge">{{.}}</span> {{end}}
@@ -78,21 +86,25 @@
                     <a href="/recipes/{{.ID}}" class="btn btn--ghost btn--sm" aria-label="View {{.Title}}">
                         {{icon "eye"}}
                     </a>
+                    <a href="/recipes/{{.ID}}#edit" class="btn btn--ghost btn--sm" aria-label="Edit {{.Title}}">
+                        {{icon "pencil"}}
+                    </a>
                 </td>
             </tr>
             {{end}}
         </tbody>
     </table>
+    {{template "pagination" .Data.Page}}
 </div>
 {{else if .Data.Filtered}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🔍</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "search"}}</div>
     <h2 class="skeleton-card__title">No recipes match these filters</h2>
     <p class="skeleton-card__body"><a href="/recipes">Clear filters</a> to see all recipes.</p>
 </div>
 {{else}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">📖</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "book"}}</div>
     <h2 class="skeleton-card__title">No recipes yet</h2>
     <p class="skeleton-card__body">
         Import a recipe from the web or enter one by hand.

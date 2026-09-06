@@ -1,5 +1,5 @@
 /**
- * barcode-hid.js — HID/USB keystroke barcode scanner support (§8.4d).
+ * barcode-hid.js - HID/USB keystroke barcode scanner support (§8.4d).
  *
  * Hardware scanners emit characters < 60 ms apart and terminate with Enter.
  * This script captures that pattern and fires a custom "barcode:scanned"
@@ -51,7 +51,7 @@
     if (e.key.length !== 1) return;
 
     if (now - lastTime > GAP_MS && buf.length > 0) {
-      // Gap too large — reset (this was human typing, not a scanner burst).
+      // Gap too large - reset (this was human typing, not a scanner burst).
       buf = '';
     }
     lastTime = now;

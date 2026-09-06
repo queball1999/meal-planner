@@ -1,11 +1,11 @@
-{{define "title"}}{{.Data.Meal.Title}} — {{.AppName}}{{end}}
+{{define "title"}}{{.Data.Meal.Title}} - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
         <a href="/plan" class="btn btn--ghost btn--sm">{{icon "arrow-left"}} Plan</a>
         <h1 class="page-title" style="margin:0">{{.Data.Meal.Title}}</h1>
         {{if .Data.Meal.IsLeftover}}
-        <span class="badge badge--dim">♻ Leftovers</span>
+        <span class="badge badge--dim">{{icon "recycle"}} Leftovers</span>
         {{end}}
         {{if .Data.Meal.Locked}}
         <span class="badge badge--live">{{icon "lock"}} Locked</span>
@@ -18,16 +18,14 @@
     </p>
 </div>
 
-{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
-
 {{if .Data.Meal.IsLeftover}}
 <div class="card" style="margin-bottom:1.5rem;background:var(--surface-2)">
     {{icon "information"}}
     {{if .Data.SourceMeal}}
     This slot is covered by leftovers from <strong>{{.Data.SourceMeal.Title}}</strong>
-    ({{.Data.SourceMeal.Day}} {{.Data.SourceMeal.Slot}}) — no new shopping needed.
+    ({{.Data.SourceMeal.Day}} {{.Data.SourceMeal.Slot}}) - no new shopping needed.
     {{else}}
-    This slot is covered by leftovers from an earlier meal — no new shopping needed.
+    This slot is covered by leftovers from an earlier meal - no new shopping needed.
     {{end}}
 </div>
 {{end}}

@@ -22,7 +22,7 @@ const (
 type JobEvent struct {
 	Type    string // "status" | "done" | "error"
 	Message string
-	PlanID  int64  // set on "done" events
+	PlanID  int64 // set on "done" events
 }
 
 // Job tracks a single in-flight or completed generation attempt.

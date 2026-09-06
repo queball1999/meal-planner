@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 // ── Recipe import (§5.7) ──────────────────────────────────────────────────────
 
 type recipeImportPageData struct {
-	// populated on GET after a successful import or flash redirect
+	// populated on GET after a successful import or notify redirect
 }
 
 func (s *Server) handleRecipeImportPage(w http.ResponseWriter, r *http.Request) {
@@ -31,19 +32,19 @@ func (s *Server) handleRecipeImport(w http.ResponseWriter, r *http.Request) {
 
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	if rawURL == "" {
-		s.setFlash(w, "Please enter a URL.")
+		s.setNotify(w, NotifyDanger, "Please enter a URL.")
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
 	if _, err := url.ParseRequestURI(rawURL); err != nil {
-		s.setFlash(w, "Invalid URL.")
+		s.setNotify(w, NotifyDanger, "Invalid URL.")
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
 
 	id, err := recipes.Import(r.Context(), s.store, hh.ID, rawURL, s.imageDir)
 	if err != nil {
-		s.setFlash(w, fmt.Sprintf("Import failed: %v", err))
+		s.setNotify(w, NotifyDanger, fmt.Sprintf("Import failed: %v", err))
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
@@ -59,7 +60,7 @@ func (s *Server) handleRecipeImportManual(w http.ResponseWriter, r *http.Request
 
 	title := strings.TrimSpace(r.FormValue("title"))
 	if title == "" {
-		s.setFlash(w, "Recipe title is required.")
+		s.setNotify(w, NotifyDanger, "Recipe title is required.")
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
@@ -107,7 +108,7 @@ func (s *Server) handleRecipeImportManual(w http.ResponseWriter, r *http.Request
 		Tags:        tags,
 	}, ings, steps)
 	if err != nil {
-		s.setFlash(w, fmt.Sprintf("Could not save recipe: %v", err))
+		s.setNotify(w, NotifyDanger, fmt.Sprintf("Could not save recipe: %v", err))
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
@@ -117,11 +118,12 @@ func (s *Server) handleRecipeImportManual(w http.ResponseWriter, r *http.Request
 // ── Recipe catalog list & detail (§5.7) ──────────────────────────────────────
 
 type recipesPageData struct {
-	Recipes    []*db.CatalogRecipe
-	FilterQ    string
-	FilterTag  string
-	FilterSrc  string
-	Filtered   bool
+	Recipes   []*db.CatalogRecipe
+	FilterQ   string
+	FilterTag string
+	FilterSrc string
+	Filtered  bool
+	Page      Pagination
 }
 
 func (s *Server) handleRecipesPage(w http.ResponseWriter, r *http.Request) {
@@ -143,8 +145,11 @@ func (s *Server) handleRecipesPage(w http.ResponseWriter, r *http.Request) {
 		list, _ = s.store.ListCatalogRecipes(r.Context(), hh.ID)
 	}
 
+	list, page := paginate(r, list)
+
 	s.render(w, r, "recipes", recipesPageData{
 		Recipes:   list,
+		Page:      page,
 		FilterQ:   q,
 		FilterTag: tag,
 		FilterSrc: src,
@@ -185,6 +190,167 @@ func (s *Server) handleRecipeDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.store.DeleteCatalogRecipe(r.Context(), id)
 	http.Redirect(w, r, "/recipes", http.StatusSeeOther)
+}
+
+// handleRecipeEdit rewrites a recipe's fields plus its ingredient and step
+// lists from the edit form on the detail page.
+func (s *Server) handleRecipeEdit(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+
+	cr, err := s.store.GetCatalogRecipe(ctx, id)
+	if err != nil || cr == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not read form data.")
+		http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
+		return
+	}
+
+	title := strings.TrimSpace(r.FormValue("title"))
+	if title == "" {
+		title = cr.Title
+	}
+	servings, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("servings")))
+	prep, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("prep_minutes")))
+	cook, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("cook_minutes")))
+
+	var tags []string
+	for _, t := range strings.Split(r.FormValue("tags"), ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			tags = append(tags, t)
+		}
+	}
+
+	if err := s.store.UpdateCatalogRecipe(ctx, db.UpdateCatalogRecipeParams{
+		ID:          cr.ID,
+		Title:       title,
+		Servings:    servings,
+		PrepMinutes: prep,
+		CookMinutes: cook,
+		Tags:        tags,
+	}); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not save recipe.")
+		http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
+		return
+	}
+
+	ings := splitLines(r.FormValue("ingredients"))
+	steps := splitLines(r.FormValue("steps"))
+	if err := recipes.ReplaceContent(ctx, s.store, cr.ID, ings, steps); err != nil {
+		s.setNotify(w, NotifyWarning, fmt.Sprintf("Recipe saved, but ingredients/steps failed: %v", err))
+	} else {
+		s.setNotify(w, NotifySuccess, "Recipe updated.")
+	}
+	http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
+}
+
+// handleRecipeReimport re-fetches the source page and replaces the recipe's
+// ingredients and steps - repairs recipes imported before the parser fix.
+func (s *Server) handleRecipeReimport(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := recipes.Refresh(r.Context(), s.store, id, s.imageDir); err != nil {
+		s.setNotify(w, NotifyDanger, fmt.Sprintf("Re-import failed: %v", err))
+	} else {
+		s.setNotify(w, NotifySuccess, "Recipe re-imported from source.")
+	}
+	http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
+}
+
+// handleRecipeImageReplace accepts either an uploaded file or an image URL and
+// swaps the recipe's image, deleting the previous file.
+func (s *Server) handleRecipeImageReplace(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	dest := fmt.Sprintf("/recipes/%d", id)
+
+	cr, err := s.store.GetCatalogRecipe(ctx, id)
+	if err != nil || cr == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseMultipartForm(8 << 20); err != nil && r.MultipartForm == nil {
+		_ = r.ParseForm()
+	}
+
+	// "remove" wins over any supplied source.
+	if r.FormValue("remove") == "1" {
+		if err := s.store.ClearCatalogRecipeImage(ctx, id); err != nil {
+			s.setNotify(w, NotifyDanger, "Could not remove image.")
+		} else {
+			recipes.RemoveImage(s.imageDir, cr.ImagePath)
+			s.setNotify(w, NotifySuccess, "Image removed.")
+		}
+		http.Redirect(w, r, dest, http.StatusSeeOther)
+		return
+	}
+
+	var newName string
+	if f, fh, ferr := r.FormFile("image_file"); ferr == nil {
+		defer f.Close()
+		data, rerr := io.ReadAll(io.LimitReader(f, 8<<20))
+		if rerr != nil {
+			s.setNotify(w, NotifyDanger, "Could not read the uploaded file.")
+			http.Redirect(w, r, dest, http.StatusSeeOther)
+			return
+		}
+		newName, err = recipes.SaveImageBytes(s.imageDir, fh.Filename, data)
+	} else if raw := strings.TrimSpace(r.FormValue("image_url")); raw != "" {
+		newName, err = recipes.DownloadImage(ctx, raw, s.imageDir)
+	} else {
+		s.setNotify(w, NotifyDanger, "Choose a file or paste an image URL.")
+		http.Redirect(w, r, dest, http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		s.setNotify(w, NotifyDanger, fmt.Sprintf("Image failed: %v", err))
+		http.Redirect(w, r, dest, http.StatusSeeOther)
+		return
+	}
+
+	if err := s.store.UpdateCatalogRecipe(ctx, db.UpdateCatalogRecipeParams{
+		ID:          cr.ID,
+		Title:       cr.Title,
+		Servings:    cr.Servings,
+		PrepMinutes: cr.PrepMinutes,
+		CookMinutes: cr.CookMinutes,
+		Tags:        cr.Tags,
+		ImagePath:   newName,
+	}); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not save the new image.")
+		recipes.RemoveImage(s.imageDir, newName)
+	} else {
+		if cr.ImagePath != "" && cr.ImagePath != newName {
+			recipes.RemoveImage(s.imageDir, cr.ImagePath)
+		}
+		s.setNotify(w, NotifySuccess, "Image updated.")
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
+}
+
+// splitLines turns a textarea value into trimmed, non-empty lines.
+func splitLines(v string) []string {
+	var out []string
+	for _, line := range strings.Split(v, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // handleRecipeImageServe serves images from the runtime imageDir.

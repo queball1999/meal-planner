@@ -1,26 +1,29 @@
-{{define "title"}}Setup — {{.AppName}}{{end}}
+{{define "title"}}Setup - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="auth-wrap">
     <div class="card card--wide setup-card">
-        <div class="auth-logo" aria-hidden="true">🍳</div>
+        <div class="auth-logo" aria-hidden="true">{{icon "chef-hat"}}</div>
         <h1 class="card-title">Welcome to {{.AppName}}</h1>
 
         <!-- ── Wizard progress bar ───────────────────────────────────────── -->
         <div class="wizard-progress" role="progressbar" aria-label="Setup progress">
             <div class="wizard-progress__step" data-step-indicator="1">
-                <span class="wizard-step-dot"></span><span class="wizard-step-label">Account</span>
+                <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Account</span>
             </div>
             <div class="wizard-progress__step" data-step-indicator="2">
-                <span class="wizard-step-dot"></span><span class="wizard-step-label">Household</span>
+                <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Household</span>
             </div>
             <div class="wizard-progress__step" data-step-indicator="3">
-                <span class="wizard-step-dot"></span><span class="wizard-step-label">Diet</span>
+                <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Diet</span>
             </div>
             <div class="wizard-progress__step" data-step-indicator="4">
-                <span class="wizard-step-dot"></span><span class="wizard-step-label">Stores</span>
+                <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Meals</span>
             </div>
             <div class="wizard-progress__step" data-step-indicator="5">
-                <span class="wizard-step-dot"></span><span class="wizard-step-label">Review</span>
+                <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Stores</span>
+            </div>
+            <div class="wizard-progress__step" data-step-indicator="6">
+                <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Review</span>
             </div>
         </div>
 
@@ -28,7 +31,7 @@
             {{.CSRFField}}
 
             <!-- ═══════════════════════════════════════════════════════════════
-                 STEP 1 — Account
+                 STEP 1 - Account
                  ═══════════════════════════════════════════════════════════════ -->
             <div class="wizard-step" data-step="1">
                 <h2 class="form-section__title">Your account</h2>
@@ -56,6 +59,7 @@
 
                 <div class="wizard-nav">
                     <span></span>
+                    <span class="wizard-step-count"></span>
                     <button type="button" class="btn btn-primary" data-next="2">
                         Next → Household
                     </button>
@@ -63,7 +67,7 @@
             </div>
 
             <!-- ═══════════════════════════════════════════════════════════════
-                 STEP 2 — Household
+                 STEP 2 - Household
                  ═══════════════════════════════════════════════════════════════ -->
             <div class="wizard-step" data-step="2" hidden>
                 <h2 class="form-section__title">Your household</h2>
@@ -109,6 +113,7 @@
                     <button type="button" class="btn btn-secondary" data-prev="1">
                         ← Back
                     </button>
+                    <span class="wizard-step-count"></span>
                     <button type="button" class="btn btn-primary" data-next="3">
                         Next → Diet &amp; Cuisine
                     </button>
@@ -116,12 +121,12 @@
             </div>
 
             <!-- ═══════════════════════════════════════════════════════════════
-                 STEP 3 — Diet & Cuisine
+                 STEP 3 - Diet & Cuisine
                  ═══════════════════════════════════════════════════════════════ -->
             <div class="wizard-step" data-step="3" hidden>
                 <h2 class="form-section__title">Diet &amp; cuisine</h2>
                 <p class="form-section__desc">
-                    All fields are optional — skip anything that doesn't apply.
+                    All fields are optional - skip anything that doesn't apply.
                 </p>
 
                 <div class="field">
@@ -174,16 +179,85 @@
                     <button type="button" class="btn btn-secondary" data-prev="2">
                         ← Back
                     </button>
+                    <span class="wizard-step-count"></span>
                     <button type="button" class="btn btn-primary" data-next="4">
+                        Next → What you eat now
+                    </button>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 STEP 4 - What you eat now
+                 ═══════════════════════════════════════════════════════════════ -->
+            <div class="wizard-step" data-step="4" hidden>
+                <h2 class="form-section__title">What do you eat now?</h2>
+                <p class="form-section__desc">
+                    Describe a normal week in your own words. The planner starts from what you
+                    already eat instead of inventing a new diet{{if .Data.HasLLM}} - the AI turns these
+                    notes into structured meal hints{{end}}. All optional.
+                </p>
+
+                <div class="field">
+                    <label class="field-label" for="hint_breakfast">Typical breakfast</label>
+                    <textarea class="field-input" id="hint_breakfast" name="hint_breakfast" rows="2"
+                              placeholder="Cereal or eggs on the run; pancakes on Sunday."></textarea>
+                    <div class="radio-group" style="margin-top:var(--sp-2)">
+                        <label class="radio-label"><input type="radio" name="effort_breakfast" value="quick" checked> Quick</label>
+                        <label class="radio-label"><input type="radio" name="effort_breakfast" value="standard"> Standard</label>
+                        <label class="radio-label"><input type="radio" name="effort_breakfast" value="elaborate"> Elaborate</label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="hint_lunch">Typical lunch</label>
+                    <textarea class="field-input" id="hint_lunch" name="hint_lunch" rows="2"
+                              placeholder="Leftovers or a sandwich at work; packed lunches for the kids."></textarea>
+                    <div class="radio-group" style="margin-top:var(--sp-2)">
+                        <label class="radio-label"><input type="radio" name="effort_lunch" value="quick" checked> Quick</label>
+                        <label class="radio-label"><input type="radio" name="effort_lunch" value="standard"> Standard</label>
+                        <label class="radio-label"><input type="radio" name="effort_lunch" value="elaborate"> Elaborate</label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="hint_dinner">Typical dinner</label>
+                    <textarea class="field-input" id="hint_dinner" name="hint_dinner" rows="2"
+                              placeholder="Chicken and rice, tacos, pasta. Grilling on weekends."></textarea>
+                    <div class="radio-group" style="margin-top:var(--sp-2)">
+                        <label class="radio-label"><input type="radio" name="effort_dinner" value="quick"> Quick</label>
+                        <label class="radio-label"><input type="radio" name="effort_dinner" value="standard" checked> Standard</label>
+                        <label class="radio-label"><input type="radio" name="effort_dinner" value="elaborate"> Elaborate</label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="favorite_meals">Meals you make on repeat</label>
+                    <input class="field-input" type="text" id="favorite_meals" name="favorite_meals"
+                           placeholder="spaghetti bolognese, chili, sheet-pan chicken...">
+                    <span class="field-hint">Comma-separated. These get planned in regularly.</span>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="meals_out">Meals out or takeout per week</label>
+                    <input class="field-input" type="number" id="meals_out" name="meals_out"
+                           min="0" max="21" value="2">
+                    <span class="field-hint">Those slots are left unplanned so the budget stays honest.</span>
+                </div>
+
+                <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" data-prev="3">
+                        ← Back
+                    </button>
+                    <button type="button" class="btn btn-primary" data-next="5">
                         Next → Stores
                     </button>
                 </div>
             </div>
 
             <!-- ═══════════════════════════════════════════════════════════════
-                 STEP 4 — Grocery Stores
+                 STEP 5 - Grocery Stores
                  ═══════════════════════════════════════════════════════════════ -->
-            <div class="wizard-step" data-step="4" hidden>
+            <div class="wizard-step" data-step="5" hidden>
                 <h2 class="form-section__title">Where do you shop?</h2>
                 <p class="form-section__desc">
                     Select the stores you shop at. You can add more later in
@@ -192,13 +266,23 @@
 
                 {{if .Data.KrogerReady}}
                 <div class="store-api-banner">
-                    {{icon "tag"}} <strong>Kroger</strong> is connected via the official API — live prices enabled automatically.
+                    {{icon "tag"}} <strong>Kroger</strong> is connected via the official API - live prices enabled automatically.
                 </div>
                 {{end}}
 
-                <div class="store-picker-grid" role="group" aria-label="Select your grocery stores">
+                <div class="store-filter-bar">
+                    <label for="store_zip_filter">Showing stores near ZIP</label>
+                    <input class="field-input store-filter-bar__zip" id="store_zip_filter"
+                           type="text" inputmode="numeric" maxlength="5" pattern="[0-9]{5}">
+                    <span id="store-filter-note" class="field-hint" style="margin:0"></span>
+                    <label class="checkbox-chip">
+                        <input type="checkbox" id="store_show_all"> Show every chain
+                    </label>
+                </div>
+
+                <div class="store-picker-grid" id="store-picker" role="group" aria-label="Select your grocery stores">
                     {{range .Data.Stores}}
-                    <label class="store-chip">
+                    <label class="store-chip" data-store-name="{{.Name}}" data-states="{{.StatesCSV}}">
                         <input type="checkbox" name="stores" value="{{.Name}}"
                                {{if .HasAPI}}checked{{end}}
                                class="store-chip__check">
@@ -215,6 +299,7 @@
                             {{else if .CanScrape}}
                             <span class="store-chip__badge store-chip__badge--scrape" title="Prices via scraper">Scraper</span>
                             {{end}}
+                            <span class="store-chip__away" hidden>not in your area</span>
                         </span>
                     </label>
                     {{end}}
@@ -230,19 +315,20 @@
                 {{end}}
 
                 <div class="wizard-nav">
-                    <button type="button" class="btn btn-secondary" data-prev="3">
+                    <button type="button" class="btn btn-secondary" data-prev="4">
                         ← Back
                     </button>
-                    <button type="button" class="btn btn-primary" data-next="5">
+                    <span class="wizard-step-count"></span>
+                    <button type="button" class="btn btn-primary" data-next="6">
                         Next → Review
                     </button>
                 </div>
             </div>
 
             <!-- ═══════════════════════════════════════════════════════════════
-                 STEP 5 — Review & Submit
+                 STEP 6 - Review & Submit
                  ═══════════════════════════════════════════════════════════════ -->
-            <div class="wizard-step" data-step="5" hidden>
+            <div class="wizard-step" data-step="6" hidden>
                 <h2 class="form-section__title">Review &amp; submit</h2>
                 <p class="form-section__desc">
                     Everything can be changed later in Settings. Click <strong>Get started</strong>
@@ -254,9 +340,10 @@
                 </div>
 
                 <div class="wizard-nav">
-                    <button type="button" class="btn btn-secondary" data-prev="4">
+                    <button type="button" class="btn btn-secondary" data-prev="5">
                         ← Back
                     </button>
+                    <span class="wizard-step-count"></span>
                     <button type="submit" class="btn btn-primary btn-lg">
                         Get started →
                     </button>
@@ -273,34 +360,65 @@
     const form  = document.getElementById('setup-form');
     const steps = Array.from(form.querySelectorAll('.wizard-step'));
     const indicators = Array.from(document.querySelectorAll('[data-step-indicator]'));
+    const progress = document.querySelector('.wizard-progress');
+    const LAST = steps.length;
+    let current = 1;
 
-    function show(n) {
-        steps.forEach(function (s) {
-            s.hidden = (parseInt(s.dataset.step, 10) !== n);
-        });
+    // ── Step display + motion ─────────────────────────────────────────────
+
+    function show(n, direction) {
+        const target = form.querySelector('[data-step="' + n + '"]');
+        if (!target) return;
+
+        steps.forEach(function (s) { s.hidden = (s !== target); });
+
+        // Re-trigger the entry animation, choosing its direction so going back
+        // reads as going back.
+        target.classList.remove('wizard-step--back');
+        if (direction === 'back') target.classList.add('wizard-step--back');
+        void target.offsetWidth; // force reflow so the animation replays
+
+        // Stagger the fields behind the step.
+        const kids = target.querySelectorAll('.field, .store-picker-grid, .review-grid, .store-api-banner, .wizard-nav');
+        kids.forEach(function (el, i) { el.style.setProperty('--i', i); });
+
         indicators.forEach(function (el) {
             const i = parseInt(el.dataset.stepIndicator, 10);
             el.classList.toggle('wizard-progress__step--active',   i === n);
             el.classList.toggle('wizard-progress__step--complete', i < n);
         });
-        if (n === 5) buildReview();
+        if (progress) {
+            progress.style.setProperty('--wizard-fill', (n - 1) / (LAST - 1));
+            progress.setAttribute('aria-valuenow', n);
+            progress.setAttribute('aria-valuemax', LAST);
+        }
+
+        target.querySelectorAll('.wizard-step-count').forEach(function (el) {
+            el.textContent = 'Step ' + n + ' of ' + LAST;
+        });
+
+        current = n;
+        if (n === LAST) buildReview();
+        if (n === 5) applyStoreFilter();
+
+        const focusable = target.querySelector('input:not([type=hidden]), textarea, select');
+        if (focusable && n !== 1) focusable.focus({ preventScroll: true });
     }
 
-    // ── Validation helpers ────────────────────────────────────────────────
+    // ── Validation ────────────────────────────────────────────────────────
 
     function validateStep(n) {
         const step = form.querySelector('[data-step="' + n + '"]');
         const required = step.querySelectorAll('[required]');
         let ok = true;
         required.forEach(function (el) {
+            el.classList.remove('field-input--error');
             if (!el.value.trim()) {
+                void el.offsetWidth;
                 el.classList.add('field-input--error');
                 ok = false;
-            } else {
-                el.classList.remove('field-input--error');
             }
         });
-        // Extra: step 1 password match
         if (n === 1) {
             const pw  = form.elements['password'];
             const pw2 = form.elements['password_confirm'];
@@ -314,18 +432,91 @@
         return ok;
     }
 
-    // ── Nav buttons ───────────────────────────────────────────────────────
+    // ── Nav ───────────────────────────────────────────────────────────────
 
     form.addEventListener('click', function (e) {
         const next = e.target.closest('[data-next]');
         const prev = e.target.closest('[data-prev]');
         if (next) {
             const from = parseInt(next.closest('.wizard-step').dataset.step, 10);
-            if (validateStep(from)) show(parseInt(next.dataset.next, 10));
+            if (validateStep(from)) show(parseInt(next.dataset.next, 10), 'forward');
         }
-        if (prev) {
-            show(parseInt(prev.dataset.prev, 10));
-        }
+        if (prev) show(parseInt(prev.dataset.prev, 10), 'back');
+    });
+
+    // Enter advances instead of submitting a half-filled form.
+    form.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || e.target.tagName === 'TEXTAREA') return;
+        if (current === LAST) return;
+        e.preventDefault();
+        const btn = form.querySelector('[data-step="' + current + '"] [data-next]');
+        if (btn) btn.click();
+    });
+
+    // ── Store availability by ZIP ─────────────────────────────────────────
+    //
+    // Chains only operate in some states (there is no Publix in Arizona). The
+    // ZIP typed in step 2 is looked up server-side, and chains that do not
+    // reach that state are greyed out and unchecked - never silently removed,
+    // so a household near a border can still opt in with "Show every chain".
+
+    const zipFilter = document.getElementById('store_zip_filter');
+    const showAll   = document.getElementById('store_show_all');
+    const filterNote = document.getElementById('store-filter-note');
+    let unavailable = [];
+    let lookedUpZip = '';
+
+    function chips() {
+        return Array.from(document.querySelectorAll('#store-picker .store-chip'));
+    }
+
+    function applyStoreFilter() {
+        const zip = (zipFilter && zipFilter.value.trim()) || '';
+        if (zip.length === 5 && zip !== lookedUpZip) { lookupZip(zip); return; }
+        renderStoreFilter();
+    }
+
+    function lookupZip(zip) {
+        fetch('/api/zip-state?zip=' + encodeURIComponent(zip))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            lookedUpZip = zip;
+            unavailable = d.unavailable || [];
+            if (filterNote) {
+                filterNote.textContent = d.state
+                    ? unavailable.length + ' chain(s) do not operate in ' + d.state
+                    : 'Could not place that ZIP - showing every chain.';
+            }
+            renderStoreFilter();
+          })
+          .catch(function () { renderStoreFilter(); });
+    }
+
+    function renderStoreFilter() {
+        const hideThem = showAll ? !showAll.checked : true;
+        chips().forEach(function (chip) {
+            const name = chip.dataset.storeName;
+            const gone = unavailable.indexOf(name) !== -1;
+            const away = chip.querySelector('.store-chip__away');
+            chip.classList.toggle('store-chip--unavailable', gone);
+            chip.classList.toggle('store-chip--hidden', gone && hideThem);
+            if (away) away.hidden = !gone;
+            if (gone) {
+                const box = chip.querySelector('input[type=checkbox]');
+                if (box && box.checked) box.checked = false;
+            }
+        });
+    }
+
+    if (zipFilter) zipFilter.addEventListener('input', function () {
+        if (zipFilter.value.trim().length === 5) applyStoreFilter();
+    });
+    if (showAll) showAll.addEventListener('change', renderStoreFilter);
+
+    // Carry the household ZIP forward into the store step's filter.
+    const zipInput = form.elements['zip_code'];
+    if (zipInput) zipInput.addEventListener('change', function () {
+        if (zipFilter && !zipFilter.value.trim()) zipFilter.value = zipInput.value.trim();
     });
 
     // ── Review summary ────────────────────────────────────────────────────
@@ -334,6 +525,15 @@
     function checked(name) {
         return Array.from(form.querySelectorAll('[name="' + name + '"]:checked'))
                     .map(function (el) { return el.value; });
+    }
+    function radio(name) {
+        const el = form.querySelector('[name="' + name + '"]:checked');
+        return el ? el.value : '';
+    }
+    function meal(slot) {
+        const text = val('hint_' + slot);
+        if (!text) return ' - ';
+        return text + ' (' + radio('effort_' + slot) + ')';
     }
 
     function buildReview() {
@@ -345,14 +545,19 @@
             ['Budget',     '$' + val('budget') + '/wk'],
             ['ZIP',        val('zip_code')],
             ['Timezone',   val('timezone')],
-            ['Diet',       checked('diet_tags').join(', ') || '—'],
-            ['Cuisines',   checked('cuisines').join(', ')  || '—'],
-            ['Allergies',  val('allergies') || '—'],
-            ['Dislikes',   val('dislikes') || '—'],
-            ['Stores',     checked('stores').join(', ') || '—'],
+            ['Diet',       checked('diet_tags').join(', ') || ' - '],
+            ['Cuisines',   checked('cuisines').join(', ')  || ' - '],
+            ['Allergies',  val('allergies') || ' - '],
+            ['Dislikes',   val('dislikes') || ' - '],
+            ['Breakfast',  meal('breakfast')],
+            ['Lunch',      meal('lunch')],
+            ['Dinner',     meal('dinner')],
+            ['Regulars',   val('favorite_meals') || ' - '],
+            ['Meals out',  val('meals_out') + '/wk'],
+            ['Stores',     checked('stores').join(', ') || ' - '],
         ];
-        grid.innerHTML = rows.map(function (r) {
-            return '<div class="review-row"><span class="review-row__label">' +
+        grid.innerHTML = rows.map(function (r, i) {
+            return '<div class="review-row" style="--i:' + i + '"><span class="review-row__label">' +
                    escHtml(r[0]) + '</span><span class="review-row__value">' +
                    escHtml(r[1]) + '</span></div>';
         }).join('');
@@ -364,8 +569,7 @@
             .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // Start at step 1
-    show(1);
+    show(1, 'forward');
 })();
 </script>
 {{end}}

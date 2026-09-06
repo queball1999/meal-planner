@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -17,7 +18,7 @@ var usTimezones = []struct{ Label, Value string }{
 	{"Eastern (ET)", "America/New_York"},
 	{"Central (CT)", "America/Chicago"},
 	{"Mountain (MT)", "America/Denver"},
-	{"Mountain – Arizona (no DST)", "America/Phoenix"},
+	{"Mountain - Arizona (no DST)", "America/Phoenix"},
 	{"Pacific (PT)", "America/Los_Angeles"},
 	{"Alaska (AKT)", "America/Anchorage"},
 	{"Hawaii (HST)", "Pacific/Honolulu"},
@@ -29,6 +30,7 @@ type setupPageData struct {
 	DietTagOptions []checkboxOption
 	CuisineOptions []checkboxOption
 	KrogerReady    bool // true when Kroger API keys are configured
+	HasLLM         bool // true when an LLM is configured (free-text parsing)
 }
 
 // handleSetupPage renders the first-run setup wizard.
@@ -58,6 +60,7 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 		DietTagOptions: dietOpts,
 		CuisineOptions: cuisineOpts,
 		KrogerReady:    s.cfg.KrogerClientID != "",
+		HasLLM:         s.gen != nil,
 	})
 }
 
@@ -69,7 +72,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		s.setFlash(w, "Invalid form submission")
+		s.setNotify(w, NotifyDanger, "Invalid form submission")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
@@ -87,17 +90,17 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	// ── Validate ────────────────────────────────────────────────────────────
 
 	if len(username) < 3 {
-		s.setFlash(w, "Username must be at least 3 characters")
+		s.setNotify(w, NotifyDanger, "Username must be at least 3 characters")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
 	if err := auth.ValidatePassword(password); err != nil {
-		s.setFlash(w, err.Error())
+		s.setNotify(w, NotifyDanger, err.Error())
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
 	if password != passwordConfirm {
-		s.setFlash(w, "Passwords do not match")
+		s.setNotify(w, NotifyDanger, "Passwords do not match")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
@@ -107,7 +110,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 
 	budget, err := strconv.ParseFloat(budgetStr, 64)
 	if err != nil || budget <= 0 || budget > 99999 {
-		s.setFlash(w, "Budget must be a positive dollar amount")
+		s.setNotify(w, NotifyDanger, "Budget must be a positive dollar amount")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
@@ -115,7 +118,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 
 	hSize, err := strconv.Atoi(sizeStr)
 	if err != nil || hSize < 1 || hSize > 20 {
-		s.setFlash(w, "Household size must be between 1 and 20")
+		s.setNotify(w, NotifyDanger, "Household size must be between 1 and 20")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
@@ -137,7 +140,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.store.CreateUser(ctx, username, hash, "admin")
 	if err != nil {
-		s.setFlash(w, "Could not create account — username may already be taken")
+		s.setNotify(w, NotifyDanger, "Could not create account - username may already be taken")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
@@ -163,11 +166,14 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		if ks == nil {
 			continue // ignore unknown names (safety)
 		}
-		_, _ = s.store.CreateStore(ctx, db.UpsertStoreParams{
+		created, cerr := s.store.CreateStore(ctx, db.UpsertStoreParams{
 			HouseholdID: hh.ID,
 			Name:        ks.Name,
 			Kind:        ks.Kind,
 		})
+		if cerr == nil {
+			s.ensureScrapeConfig(ctx, created.ID, ks)
+		}
 		if !ks.HasAPI {
 			hasNonAPIStore = true
 		}
@@ -192,6 +198,14 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.SetAllergies(ctx, hh.ID, allergies)
 	}
 
+	// ── What the household already eats ──────────────────────────────────────
+	//
+	// Free-text slot descriptions are the planner's anchor: it starts from a
+	// household's real habits instead of inventing a diet. The LLM parse is
+	// deliberately skipped here - setup should not block on a model call - so
+	// the raw text is stored and Preferences parses it on the first save.
+	s.saveSetupMealHabits(r, hh.ID)
+
 	// ── Sign in automatically ────────────────────────────────────────────────
 
 	token, err := auth.GenerateToken()
@@ -214,8 +228,52 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	s.logEvent(r, &id, "setup.complete", "household", "1", "")
 
 	if hasNonAPIStore {
-		s.setFlash(w, "Setup complete! For live prices on your stores, configure scraping in Settings → Scraper.")
+		s.setNotify(w, NotifySuccess, "Setup complete! For live prices on your stores, configure scraping in Settings → Scraper.")
 	}
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// saveSetupMealHabits stores the wizard's "what you eat now" answers: one
+// free-text hint per meal slot, the household's repeat meals, and how many
+// meals a week are eaten out.
+func (s *Server) saveSetupMealHabits(r *http.Request, householdID int64) {
+	ctx := r.Context()
+
+	for _, slot := range []string{"breakfast", "lunch", "dinner"} {
+		rawText := strings.TrimSpace(r.FormValue("hint_" + slot))
+		effort := r.FormValue("effort_" + slot)
+		switch effort {
+		case "quick", "standard", "elaborate":
+		default:
+			effort = "standard"
+		}
+		if rawText == "" && effort == "standard" {
+			continue // nothing the household told us
+		}
+		if err := s.store.UpsertMealSlotHint(ctx, db.UpsertMealSlotHintParams{
+			HouseholdID: householdID,
+			Slot:        slot,
+			RawText:     rawText,
+			ParsedJSON:  "null", // Preferences parses it on the first save
+			Effort:      effort,
+		}); err != nil {
+			log.Printf("setup: slot hint %s: %v", slot, err)
+		}
+	}
+
+	favorites := splitTrimmed(r.FormValue("favorite_meals"))
+	mealsOut, err := strconv.Atoi(strings.TrimSpace(r.FormValue("meals_out")))
+	if err != nil || mealsOut < 0 || mealsOut > 21 {
+		mealsOut = 0
+	}
+	if len(favorites) == 0 && mealsOut == 0 {
+		return
+	}
+	if err := s.store.SetSetting(ctx, "favorite_meals", strings.Join(favorites, ", ")); err != nil {
+		log.Printf("setup: favorite meals: %v", err)
+	}
+	if err := s.store.SetSetting(ctx, "meals_out_per_week", strconv.Itoa(mealsOut)); err != nil {
+		log.Printf("setup: meals out: %v", err)
+	}
 }

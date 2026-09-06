@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"time"
 )
 
@@ -28,6 +29,20 @@ type Options struct {
 	MaxBytes     int64         // default 512 KB
 	Timeout      time.Duration // default 10 s
 	MaxRedirects int           // default 3
+
+	// Headers are set on the request, overriding the defaults. Retail sites
+	// serve a bot wall to anything that does not look like a browser.
+	Headers map[string]string
+
+	// CookieJar keeps cookies across redirect hops. Store sites hand out a
+	// session cookie on the first hop and 403 the redirect target without it,
+	// so a jar is the difference between a product page and a challenge page.
+	CookieJar bool
+
+	// KeepErrorBody returns the response instead of an error on a 4xx/5xx, so
+	// the caller can inspect a challenge page rather than being told only that
+	// it got a 403.
+	KeepErrorBody bool
 }
 
 const (
@@ -58,8 +73,14 @@ func Fetch(ctx context.Context, rawURL string, opts *Options) (*Result, error) {
 		maxRedirects = defaultMaxRedirects
 	}
 
+	var jar http.CookieJar
+	if opts.CookieJar {
+		jar, _ = cookiejar.New(nil)
+	}
+
 	client := &http.Client{
 		Timeout: timeout,
+		Jar:     jar,
 		Transport: &http.Transport{
 			DialContext: ssrfDialer(),
 		},
@@ -90,6 +111,9 @@ func Fetch(ctx context.Context, rawURL string, opts *Options) (*Result, error) {
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; GoEat/1.0)")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	for k, v := range opts.Headers {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -101,7 +125,7 @@ func Fetch(ctx context.Context, rawURL string, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("safefetch: read body: %w", err)
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= 400 && !opts.KeepErrorBody {
 		return nil, fmt.Errorf("safefetch: HTTP %d from %s", resp.StatusCode, rawURL)
 	}
 
@@ -135,7 +159,7 @@ func ssrfDialer() func(ctx context.Context, network, addr string) (net.Conn, err
 				return nil, errBlockedIP
 			}
 		}
-		// Dial the first resolved IP directly (pin it — no re-resolve).
+		// Dial the first resolved IP directly (pin it - no re-resolve).
 		return d.DialContext(ctx, network, net.JoinHostPort(ips[0], port))
 	}
 }

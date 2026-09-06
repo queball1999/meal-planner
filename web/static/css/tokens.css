@@ -1,11 +1,11 @@
-/* tokens.css — design tokens (CSS custom properties)
+/* tokens.css - design tokens (CSS custom properties)
  * All colours, spacing, radii, and type scale live here. Nothing else
  * defines a colour directly; all other CSS files reference these vars.
  * Strategy: semantic-tier scheme with a warm-green accent (§8.3).
  */
 
 :root {
-    /* ── Accent (warm green — "fresh / Go") ───────────────────────────── */
+    /* ── Accent (warm green - "fresh / Go") ───────────────────────────── */
     --accent:         #43a047;
     --accent-hover:   #2e7d32;
     --accent-bg:      #e8f5e9;
@@ -83,7 +83,7 @@
     --shadow:    0 2px 8px rgba(0, 0, 0, 0.08);
     --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.12);
 
-    /* ── Motion (§8.5 — cap UI chrome at ~0.25s) ─────────────────────── */
+    /* ── Motion (§8.5 - cap UI chrome at ~0.25s) ─────────────────────── */
     --dur-fast: 0.1s;
     --dur:      0.15s;
     --dur-slow: 0.25s;

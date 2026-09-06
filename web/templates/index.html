@@ -1,11 +1,9 @@
-{{define "title"}}Dashboard — {{.AppName}}{{end}}
+{{define "title"}}Dashboard - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "view-dashboard"}} Dashboard</h1>
     <p class="page-subtitle">Your weekly meal plan at a glance.</p>
 </div>
-
-{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
 
 {{$d := .Data}}
 
@@ -35,7 +33,7 @@
                     <span class="plan-budget-meter__budget">of {{$d.BudgetLabel}} budget</span>
                 </div>
                 {{else}}
-                <p class="plan-status__sub">Plan ready — not yet priced.</p>
+                <p class="plan-status__sub">Plan ready - not yet priced.</p>
                 {{end}}
             </div>
             <div class="plan-status__actions">
@@ -53,7 +51,7 @@
         {{end}}
     {{else}}
     <div class="skeleton-card">
-        <div class="skeleton-card__icon" aria-hidden="true">🍳</div>
+        <div class="skeleton-card__icon" aria-hidden="true">{{icon "chef-hat"}}</div>
         <h2 class="skeleton-card__title">No plan yet this week</h2>
         <p class="skeleton-card__body">
             Set your <a href="/preferences">dietary preferences</a> and
@@ -82,7 +80,7 @@
             {{$d.StatsSpent}}
         </span>
         {{else}}
-        <span class="stats-chip__value">—</span>
+        <span class="stats-chip__value"> - </span>
         {{end}}
     </div>
     <div class="stats-chip">
@@ -122,7 +120,7 @@
                     {{else if eq .Status "generating"}}<span class="badge badge--muted">Generating</span>
                     {{else}}<span class="badge badge--muted">{{.Status}}</span>{{end}}
                 </td>
-                <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}}—{{end}}</td>
+                <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}} - {{end}}</td>
                 <td>${{printf "%.0f" (divf .BudgetCents 100.0)}}</td>
                 <td><a href="/plan?week={{.WeekStart}}" class="btn btn--ghost btn--sm">View</a></td>
             </tr>
@@ -131,7 +129,7 @@
     </table>
     {{else}}
     <p class="form-section__desc" style="padding:1rem">
-        No past plans yet — generate your first plan above.
+        No past plans yet - generate your first plan above.
     </p>
     {{end}}
 </div>

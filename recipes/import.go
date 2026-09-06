@@ -74,6 +74,147 @@ func Import(ctx context.Context, store db.Store, householdID int64, rawURL, imag
 	return cr.ID, nil
 }
 
+// Refresh re-fetches an already-imported recipe's source page and replaces its
+// ingredients, steps, timing, and (when missing) its image with freshly parsed
+// data. Used by the "re-import" button to repair recipes saved before the
+// JSON-LD parser handled array-wrapped documents.
+func Refresh(ctx context.Context, store db.Store, id int64, imageDir string) error {
+	cr, err := store.GetCatalogRecipe(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cr == nil {
+		return fmt.Errorf("recipes: recipe %d not found", id)
+	}
+	if cr.SourceURL == "" {
+		return fmt.Errorf("recipes: %q has no source URL to re-import from", cr.Title)
+	}
+
+	res, err := safefetch.Fetch(ctx, cr.SourceURL, nil)
+	if err != nil {
+		return fmt.Errorf("recipes: fetch %q: %w", cr.SourceURL, err)
+	}
+	recipe, err := scrape.ParseRecipe(string(res.Body), res.FinalURL)
+	if err != nil {
+		return fmt.Errorf("recipes: parse: %w", err)
+	}
+	if len(recipe.Ingredients) == 0 && len(recipe.Steps) == 0 {
+		return fmt.Errorf("recipes: no ingredients or steps found at %s", cr.SourceURL)
+	}
+
+	title := cr.Title
+	if recipe.Title != "" {
+		title = recipe.Title
+	}
+	imagePath := ""
+	if cr.ImagePath == "" && recipe.ImageURL != "" && imageDir != "" {
+		imagePath = downloadImage(ctx, recipe.ImageURL, imageDir)
+	}
+
+	if err := store.UpdateCatalogRecipe(ctx, db.UpdateCatalogRecipeParams{
+		ID:          cr.ID,
+		Title:       title,
+		Servings:    pickInt(recipe.Servings, cr.Servings),
+		PrepMinutes: pickInt(recipe.PrepMinutes, cr.PrepMinutes),
+		CookMinutes: pickInt(recipe.CookMinutes, cr.CookMinutes),
+		Tags:        dedupTags(append(cr.Tags, recipe.Tags...)),
+		ImagePath:   imagePath,
+	}); err != nil {
+		return err
+	}
+	return ReplaceContent(ctx, store, cr.ID, rawIngredients(recipe), recipe.Steps)
+}
+
+// ReplaceContent swaps a recipe's ingredient and step lists for the given ones.
+func ReplaceContent(ctx context.Context, store db.Store, id int64, ingredients, steps []string) error {
+	if err := store.DeleteCatalogRecipeIngredients(ctx, id); err != nil {
+		return err
+	}
+	if err := store.DeleteCatalogRecipeSteps(ctx, id); err != nil {
+		return err
+	}
+	pos := 0
+	for _, raw := range ingredients {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		name, qty, unit := splitIngredient(raw)
+		if err := store.AddCatalogRecipeIngredient(ctx, id, name, qty, unit, pos); err != nil {
+			return err
+		}
+		pos++
+	}
+	pos = 0
+	for _, step := range steps {
+		if strings.TrimSpace(step) == "" {
+			continue
+		}
+		if err := store.AddCatalogRecipeStep(ctx, id, pos, strings.TrimSpace(step)); err != nil {
+			return err
+		}
+		pos++
+	}
+	return nil
+}
+
+// DownloadImage fetches an image URL into imageDir and returns the stored
+// filename, or an error when the fetch or write fails.
+func DownloadImage(ctx context.Context, imageURL, imageDir string) (string, error) {
+	if imageDir == "" {
+		return "", fmt.Errorf("recipes: RECIPE_IMAGE_DIR is not configured")
+	}
+	name := downloadImage(ctx, imageURL, imageDir)
+	if name == "" {
+		return "", fmt.Errorf("recipes: could not download %s", imageURL)
+	}
+	return name, nil
+}
+
+// SaveImageBytes writes uploaded image bytes to imageDir under a fresh name
+// and returns that name.
+func SaveImageBytes(imageDir, origName string, data []byte) (string, error) {
+	if imageDir == "" {
+		return "", fmt.Errorf("recipes: RECIPE_IMAGE_DIR is not configured")
+	}
+	ext := strings.ToLower(filepath.Ext(origName))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
+	default:
+		return "", fmt.Errorf("recipes: unsupported image type %q", ext)
+	}
+	if err := os.MkdirAll(imageDir, 0o755); err != nil {
+		return "", err
+	}
+	name := uuid.NewString() + ext
+	if err := os.WriteFile(filepath.Join(imageDir, name), data, 0o644); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// RemoveImage deletes a stored image file, ignoring a missing file.
+func RemoveImage(imageDir, name string) {
+	if imageDir == "" || name == "" || strings.ContainsAny(name, `/\`) {
+		return
+	}
+	_ = os.Remove(filepath.Join(imageDir, name))
+}
+
+func rawIngredients(r *scrape.Recipe) []string {
+	out := make([]string, 0, len(r.Ingredients))
+	for _, ing := range r.Ingredients {
+		out = append(out, ing.Raw)
+	}
+	return out
+}
+
+func pickInt(fresh, existing int) int {
+	if fresh > 0 {
+		return fresh
+	}
+	return existing
+}
+
 // SaveManual saves a manually-entered recipe to the catalog.
 func SaveManual(ctx context.Context, store db.Store, householdID int64, p db.CreateCatalogRecipeParams,
 	ingredients []string, steps []string) (int64, error) {

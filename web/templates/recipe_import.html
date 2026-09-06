@@ -1,11 +1,9 @@
-{{define "title"}}Import Recipe — {{.AppName}}{{end}}
+{{define "title"}}Import Recipe - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "fork"}} Import Recipe</h1>
     <p class="page-subtitle">Paste a recipe URL to import it automatically, or enter one by hand.</p>
 </div>
-
-{{if .Flash}}<div class="alert alert--danger" role="alert">{{.Flash}}</div>{{end}}
 
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">Import from URL</h2>

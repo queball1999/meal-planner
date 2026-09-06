@@ -11,31 +11,31 @@ import (
 
 // shoppingStoreGroup groups shopping list items under one store heading.
 type shoppingStoreGroup struct {
-	StoreName    string
+	StoreName     string
 	SubtotalLabel string
-	Items        []shoppingLineItem
+	Items         []shoppingLineItem
 }
 
 // shoppingLineItem is one row in the shopping list display.
 type shoppingLineItem struct {
-	ID           int64
-	DisplayName  string
-	BuyLabel     string // "2 lb" | "3 each"
-	PriceLabel   string // "$2.49 / lb"
-	TotalLabel   string // "$4.98"
-	BadgeClass   string // "badge-live" | "badge-cached" | "badge-manual" | "badge-estimate"
-	BadgeText    string // "Live" | "Cached" | "Manual" | "Estimated"
-	Checked      bool
+	ID          int64
+	DisplayName string
+	BuyLabel    string // "2 lb" | "3 each"
+	PriceLabel  string // "$2.49 / lb"
+	TotalLabel  string // "$4.98"
+	BadgeClass  string // "badge-live" | "badge-cached" | "badge-manual" | "badge-estimate"
+	BadgeText   string // "Live" | "Cached" | "Manual" | "Estimated"
+	Checked     bool
 }
 
 type shoppingListPageData struct {
-	HasPlan      bool
-	PlanID       int64
-	WeekStart    string
-	TotalLabel   string
-	BudgetLabel  string
-	OverBudget   bool
-	Groups       []shoppingStoreGroup
+	HasPlan         bool
+	PlanID          int64
+	WeekStart       string
+	TotalLabel      string
+	BudgetLabel     string
+	OverBudget      bool
+	Groups          []shoppingStoreGroup
 	UnassignedItems []shoppingLineItem
 }
 
@@ -88,7 +88,7 @@ func (s *Server) handleShoppingListPage(w http.ResponseWriter, r *http.Request) 
 	for i := range groups {
 		var sub int64
 		for _, item := range groups[i].Items {
-			// Re-derive cents from the label for display only — avoid re-querying.
+			// Re-derive cents from the label for display only - avoid re-querying.
 			// The subtotal is computed from the raw items below instead.
 			_ = item
 		}

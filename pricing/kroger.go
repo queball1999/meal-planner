@@ -27,13 +27,13 @@ type KrogerProvider struct {
 	locationID   string
 	client       *http.Client
 
-	mu        sync.Mutex
-	token     string
-	tokenExp  time.Time
+	mu       sync.Mutex
+	token    string
+	tokenExp time.Time
 }
 
 // NewKrogerProvider constructs the Kroger adapter. Returns nil when no credentials
-// are configured — the chain skips nil providers at construction time.
+// are configured - the chain skips nil providers at construction time.
 func NewKrogerProvider(clientID, clientSecret, locationID string) *KrogerProvider {
 	if clientID == "" || clientSecret == "" {
 		return nil

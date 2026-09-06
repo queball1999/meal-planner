@@ -1,6 +1,6 @@
-// Package pricing implements the price-resolution chain (§6.1–§6.6).
+// Package pricing implements the price-resolution chain (§6.1-§6.6).
 // All five PriceProvider adapters satisfy the same interface; no provider
-// writes SQL directly — they return a PriceResult and the chain's caller
+// writes SQL directly - they return a PriceResult and the chain's caller
 // persists it to price_cache via db.Store.
 package pricing
 
@@ -43,7 +43,7 @@ type PriceResult struct {
 }
 
 // PriceProvider is the interface every pricing adapter implements (§6.2).
-// Lookup returns (nil, nil) to signal "no answer" — the chain tries the next
+// Lookup returns (nil, nil) to signal "no answer" - the chain tries the next
 // provider. A non-nil error is a hard failure (network down, DB error).
 type PriceProvider interface {
 	Lookup(ctx context.Context, term string, storeID int64, region string) (*PriceResult, error)

@@ -1,4 +1,4 @@
-{{define "title"}}Search: {{.Data.Q}} — {{.AppName}}{{end}}
+{{define "title"}}Search: {{.Data.Q}} - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "search"}} Search results</h1>
@@ -19,7 +19,7 @@
 
 {{if .Data.Empty}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🔍</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "search"}}</div>
     <h2 class="skeleton-card__title">No results for "{{.Data.Q}}"</h2>
     <p class="skeleton-card__body">Try a shorter or different term.</p>
 </div>

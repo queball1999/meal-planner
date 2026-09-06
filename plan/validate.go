@@ -66,7 +66,7 @@ func Validate(gp GeneratedPlan, profile *PreferenceProfile) error {
 		}
 		seen[key] = true
 
-		// Allergy check — hard constraint.
+		// Allergy check - hard constraint.
 		for _, ing := range m.Ingredients {
 			nameLower := strings.ToLower(ing.Name)
 			for allergen := range allergySet {

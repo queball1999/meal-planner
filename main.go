@@ -10,6 +10,7 @@ import (
 	"goeat/config"
 	"goeat/db"
 	"goeat/llm"
+	"goeat/settings"
 	"goeat/web"
 )
 
@@ -29,6 +30,17 @@ func main() {
 
 	if err := store.Migrate(); err != nil {
 		log.Fatalf("migrations: %v", err)
+	}
+
+	// Seed the settings table from .env on first boot, then apply any
+	// admin-edited values from a past Settings-page save on top of cfg -
+	// same one-time, before-subsystems-are-built timing .env itself gets.
+	seedCtx := context.Background()
+	if err := settings.Seed(seedCtx, store, cfg); err != nil {
+		log.Fatalf("settings: seed: %v", err)
+	}
+	if err := settings.Apply(seedCtx, store, cfg, log.Printf); err != nil {
+		log.Fatalf("settings: apply: %v", err)
 	}
 
 	var gen llm.Generator

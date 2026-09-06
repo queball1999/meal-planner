@@ -15,6 +15,7 @@ type pantryPageData struct {
 	Items    []*db.PantryItem
 	FilterQ  string
 	Filtered bool
+	Page     Pagination
 }
 
 func (s *Server) handlePantryPage(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +26,8 @@ func (s *Server) handlePantryPage(w http.ResponseWriter, r *http.Request) {
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	items, _ := s.store.FilterPantryItems(r.Context(), hh.ID, q)
-	s.render(w, r, "pantry", pantryPageData{Items: items, FilterQ: q, Filtered: q != ""})
+	items, page := paginate(r, items)
+	s.render(w, r, "pantry", pantryPageData{Items: items, FilterQ: q, Filtered: q != "", Page: page})
 }
 
 func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +39,7 @@ func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {
 
 	rawName := strings.TrimSpace(r.FormValue("name"))
 	if rawName == "" {
-		s.setFlash(w, "Ingredient name is required.")
+		s.setNotify(w, NotifyDanger, "Ingredient name is required.")
 		http.Redirect(w, r, "/pantry", http.StatusSeeOther)
 		return
 	}
@@ -61,9 +63,9 @@ func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {
 		Unit:           unit,
 	})
 	if err != nil {
-		s.setFlash(w, fmt.Sprintf("Error saving pantry item: %v", err))
+		s.setNotify(w, NotifyDanger, fmt.Sprintf("Error saving pantry item: %v", err))
 	} else {
-		s.setFlash(w, fmt.Sprintf("%q added to pantry.", rawName))
+		s.setNotify(w, NotifySuccess, fmt.Sprintf("%q added to pantry.", rawName))
 	}
 	http.Redirect(w, r, "/pantry", http.StatusSeeOther)
 }

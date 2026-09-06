@@ -16,11 +16,11 @@ type GenerateRequest struct {
 
 // GenerateResponse is the output from Generator.Generate.
 type GenerateResponse struct {
-	Content          string
-	InputTokens      int
-	OutputTokens     int
-	ProviderName     string
-	ModelName        string
+	Content      string
+	InputTokens  int
+	OutputTokens int
+	ProviderName string
+	ModelName    string
 }
 
 // Generator is the single interface all LLM backends implement.

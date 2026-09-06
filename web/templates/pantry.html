@@ -1,4 +1,4 @@
-{{define "title"}}Pantry — {{.AppName}}{{end}}
+{{define "title"}}Pantry - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "fridge-outline"}} Pantry</h1>
@@ -6,8 +6,6 @@
         Track ingredients you already have. Pantry items are deducted from future shopping lists.
     </p>
 </div>
-
-{{if .Flash}}<div class="alert alert--info">{{.Flash}}</div>{{end}}
 
 <form method="GET" action="/pantry" class="filter-bar" aria-label="Filter pantry" style="margin-bottom:1rem">
     <div class="field-row">
@@ -91,16 +89,17 @@
             {{end}}
         </tbody>
     </table>
+    {{template "pagination" .Data.Page}}
 </div>
 {{else if .Data.Filtered}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🔍</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "search"}}</div>
     <h2 class="skeleton-card__title">No items match "{{.Data.FilterQ}}"</h2>
     <p class="skeleton-card__body"><a href="/pantry">Clear filter</a> to see all pantry items.</p>
 </div>
 {{else}}
 <div class="skeleton-card">
-    <div class="skeleton-card__icon" aria-hidden="true">🧊</div>
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "fridge-outline"}}</div>
     <h2 class="skeleton-card__title">Pantry is empty</h2>
     <p class="skeleton-card__body">
         Add ingredients you have on hand. When you shop, items from the

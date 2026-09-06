@@ -15,7 +15,7 @@ type mealPageData struct {
 	Recipe      *db.MealRecipe
 	Steps       []string
 	Ingredients []*db.MealIngredient
-	SourceMeal  *db.Meal   // non-nil when IsLeftover
+	SourceMeal  *db.Meal // non-nil when IsLeftover
 	PlanID      int64
 	WeekStart   string
 	Feedback    int // -1, 0, or 1 for current user's rating
@@ -101,11 +101,11 @@ func (s *Server) handleMealFeedback(w http.ResponseWriter, r *http.Request) {
 
 	label := "Feedback saved."
 	if rating == 1 {
-		label = fmt.Sprintf("Liked %q — we'll include more meals like this.", meal.Title)
+		label = fmt.Sprintf("Liked %q - we'll include more meals like this.", meal.Title)
 	} else {
-		label = fmt.Sprintf("Disliked %q — we'll avoid similar meals.", meal.Title)
+		label = fmt.Sprintf("Disliked %q - we'll avoid similar meals.", meal.Title)
 	}
-	s.setFlash(w, label)
+	s.setNotify(w, NotifySuccess, label)
 	http.Redirect(w, r, fmt.Sprintf("/meals/%d", mealID), http.StatusSeeOther)
 }
 

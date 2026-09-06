@@ -8,11 +8,11 @@ import (
 )
 
 // CacheProvider reads price_cache for a fresh hit (§6.2, §6.5).
-// It carries forward the original source's confidence — a cached AI estimate
+// It carries forward the original source's confidence - a cached AI estimate
 // is never promoted to "live" just because it came from the DB.
 type CacheProvider struct {
-	store  db.Store
-	ttl    time.Duration // freshness window; zero means no expiry check
+	store db.Store
+	ttl   time.Duration // freshness window; zero means no expiry check
 }
 
 // NewCacheProvider constructs a CacheProvider with the given TTL.
@@ -32,7 +32,7 @@ func (c *CacheProvider) Lookup(ctx context.Context, term string, storeID int64, 
 	if err != nil || pc == nil {
 		return nil, err
 	}
-	// Reject stale entries — fall through to next provider.
+	// Reject stale entries - fall through to next provider.
 	if c.ttl > 0 && time.Since(pc.FetchedAt) > c.ttl {
 		return nil, nil
 	}

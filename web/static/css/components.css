@@ -1,4 +1,4 @@
-/* components.css — reusable UI components.
+/* components.css - reusable UI components.
  * Buttons, cards, badges, toggles, toasts. All values from tokens.css.
  */
 
@@ -46,7 +46,7 @@
     flex-shrink: 0;
 }
 
-/* Primary — accent fill */
+/* Primary - accent fill */
 .btn-primary {
     background: var(--accent);
     color: var(--text-inverse);
@@ -59,7 +59,7 @@
     color: var(--text-inverse);
 }
 
-/* Secondary — outlined */
+/* Secondary - outlined */
 .btn-secondary {
     background: var(--surface);
     color: var(--text);
@@ -72,7 +72,7 @@
     text-decoration: none;
 }
 
-/* Danger — destructive action */
+/* Danger - destructive action */
 .btn-danger {
     background: var(--danger-bg);
     color: var(--danger);
@@ -84,7 +84,7 @@
     text-decoration: none;
 }
 
-/* Ghost — transparent, text-only */
+/* Ghost - transparent, text-only */
 .btn-ghost {
     background: transparent;
     color: var(--text-muted);
@@ -96,7 +96,7 @@
     text-decoration: none;
 }
 
-/* Icon-only (§8.4e) — square, no visible border at rest */
+/* Icon-only (§8.4e) - square, no visible border at rest */
 .btn-icon {
     padding: var(--sp-2);
     background: transparent;
@@ -155,7 +155,7 @@
 
 /* ══════════════════════════════════════════════════════════════════════════
    BADGES / PILLS (§8.4)
-   Never solid + white — always tinted bg with matching text.
+   Never solid + white - always tinted bg with matching text.
    ══════════════════════════════════════════════════════════════════════════ */
 
 .badge {
@@ -178,7 +178,7 @@
 .badge-accent  { background: var(--accent-bg);  color: var(--accent-text); }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   ANIMATED TOGGLE SWITCH (§8.4 — every boolean setting uses this)
+   ANIMATED TOGGLE SWITCH (§8.4 - every boolean setting uses this)
    Pill track + circular thumb. No plain checkboxes for on/off state.
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -248,9 +248,11 @@
    Used on the Phase 0 dashboard to show the blank-state card.
    ══════════════════════════════════════════════════════════════════════════ */
 
+/* Empty state. It stands in for a table, so it spans the full content width
+ * rather than sitting as a narrow card beside all that empty space. */
 .skeleton-card {
-    max-width: 560px;
-    margin: var(--sp-12) auto;
+    width: 100%;
+    margin: var(--sp-6) 0;
     padding: var(--sp-10);
     background: var(--surface);
     border: 1px solid var(--border);
@@ -285,7 +287,7 @@
     justify-content: center;
 }
 
-/* Shimmer loading rows — used where async content is pending */
+/* Shimmer loading rows - used where async content is pending */
 .skeleton-row {
     height: 20px;
     border-radius: var(--radius-sm);
@@ -340,11 +342,61 @@
     color: var(--text-muted);
 }
 
+/* Settings page - one card per category, one .field per editable value */
+.settings-category .settings-field + .settings-field {
+    margin-top: var(--sp-4);
+}
+
+.settings-field .field-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+/* Password show/hide toggle (main.js wirePasswordToggle) */
+.password-field-wrap {
+    position: relative;
+    display: block;
+}
+
+.password-field-wrap .field-input {
+    width: 100%;
+    padding-right: calc(var(--sp-3) * 2 + 1.25rem);
+}
+
+.password-toggle {
+    position: absolute;
+    top: 50%;
+    right: var(--sp-2);
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: var(--sp-1);
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: var(--radius);
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+    color: var(--text);
+}
+
+.password-toggle .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
-   FLASH / TOAST MESSAGES (§8.4)
+   INLINE BANNERS (§8.4)
+   Persistent in-page notices (e.g. "no ingredients saved, re-import?").
+   One-shot notifications use the toast system instead - see main.js.
    ══════════════════════════════════════════════════════════════════════════ */
 
-.flash {
+.banner {
     display: flex;
     align-items: flex-start;
     gap: var(--sp-3);
@@ -355,21 +407,24 @@
     font-size: var(--text-sm);
 }
 
-.flash-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
-.flash-warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
-.flash-danger  { background: var(--danger-bg);  border-color: var(--danger-border);  color: var(--danger);  }
-.flash-info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info);    }
+.banner-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+.banner-warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
+.banner-danger  { background: var(--danger-bg);  border-color: var(--danger-border);  color: var(--danger);  }
+.banner-info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info);    }
 
 /* ══════════════════════════════════════════════════════════════════════════
    AUTH & SETUP (Phase 1)
    ══════════════════════════════════════════════════════════════════════════ */
 
 .auth-wrap {
+    /* No min-height here: .site-main (the parent) already reserves full
+       viewport height, so an equal min-height on this child double-counts
+       it (adding .site-main's own padding on top) and pushes the footer
+       below the fold even on the short setup/login card. */
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    min-height: calc(100vh - var(--nav-h) - 48px);
-    padding: var(--sp-10) var(--sp-4);
+    padding: var(--sp-8) var(--sp-4);
 }
 
 .auth-logo {
@@ -390,7 +445,7 @@
     margin-top: var(--sp-4);
 }
 
-/* Setup wizard card — wider than the default narrow auth card */
+/* Setup wizard card - wider than the default narrow auth card */
 .setup-card {
     max-width: 560px;
     width: 100%;
@@ -543,3 +598,482 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     background: var(--bg);
     border-top: 1px solid var(--border);
 }
+
+/* ── Settings sub-tabs ──────────────────────────────────────────────────── */
+
+.subtabs {
+    display: flex;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-6);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.subtab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+    text-decoration: none;
+    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.subtab:hover { color: var(--accent-text); text-decoration: none; }
+
+.subtab--active {
+    color: var(--accent-text);
+    border-bottom-color: var(--accent);
+}
+
+.subtab svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* ── Modal ──────────────────────────────────────────────────────────────── */
+
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: var(--sp-8) var(--sp-4);
+    overflow-y: auto;
+}
+
+.modal__backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .55);
+}
+
+.modal__panel {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    background: var(--surface, var(--bg));
+}
+
+.modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-4);
+}
+
+/* Your-stores list. It is a <ul> for semantics only - the markers and the
+ * default list indent have no place on a stack of cards. */
+.store-list {
+    list-style: none;
+    margin: 0 0 var(--sp-6);
+    padding: 0;
+    display: grid;
+    gap: var(--sp-3);
+}
+
+/* One row per store: logo, name and badges, then the actions hard right and
+ * vertically centred with the text rather than wrapped underneath it. */
+.store-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+}
+
+.store-item__icon {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.store-item__icon img,
+.store-item__icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.store-item__info {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.store-item__name { font-weight: var(--weight-semi); }
+
+.store-item__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+
+.store-item__actions form { display: inline-flex; }
+
+/* A button that reads as a link, for prose like "or add a custom one". */
+.btn-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* ── Recipe list thumbnails ─────────────────────────────────────────────── */
+
+.recipe-thumb {
+    display: block;
+    width: 56px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--surface-raised);
+}
+
+.recipe-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.recipe-thumb__placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: var(--text-muted);
+}
+
+.recipe-thumb__placeholder svg { width: 18px; height: 18px; }
+
+/* ── AI provider picker (Settings) ──────────────────────────────────────── */
+
+.ai-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+}
+
+.ai-logo {
+    flex: 0 0 auto;
+    border-radius: 7px;
+}
+
+.ai-picker {
+    position: relative;
+    max-width: 26rem;
+}
+
+.ai-picker__btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    width: 100%;
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.ai-picker__btn:hover {
+    border-color: var(--accent);
+}
+
+.ai-picker__face {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+}
+
+.ai-picker__caret {
+    color: var(--text-muted);
+}
+
+.ai-picker__menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: var(--sp-1);
+    list-style: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, .25));
+}
+
+.ai-picker__opt {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--radius-sm, 6px);
+    cursor: pointer;
+}
+
+.ai-picker__opt:hover,
+.ai-picker__opt:focus-visible {
+    background: var(--surface-2, rgba(127, 127, 127, .12));
+    outline: none;
+}
+
+.ai-picker__opt.is-selected {
+    background: var(--surface-2, rgba(127, 127, 127, .12));
+}
+
+.ai-picker__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 600;
+}
+
+.ai-panel {
+    margin-top: var(--sp-4);
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--border);
+}
+
+.ai-model-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+}
+
+.ai-model-row .ai-model-select {
+    flex: 1 1 14rem;
+}
+
+.ai-model-custom {
+    margin-top: var(--sp-2);
+}
+
+.ai-sampling {
+    margin-top: var(--sp-5);
+    border-top: 1px solid var(--border);
+    padding-top: var(--sp-4);
+}
+
+.ai-sampling__summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.ai-sampling__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: var(--sp-4);
+    margin-top: var(--sp-3);
+}
+
+/* The stacked-form rule (.form-section .field + .field) would indent every
+ * cell after the first inside its own grid row. The grid gap already spaces
+ * these, so cancel it or the labels step down across the row. */
+.ai-sampling__grid .field + .field {
+    margin-top: 0;
+}
+
+
+/* ── Pagination bar ─────────────────────────────────────────────────────── */
+
+.pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    margin-top: var(--sp-4);
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--border);
+    font-size: var(--text-sm);
+}
+
+.pager__count {
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.pager__pages {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex-wrap: wrap;
+}
+
+.pager__link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 var(--sp-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    text-decoration: none;
+}
+
+.pager__link:hover { border-color: var(--accent); }
+
+.pager__link.is-current {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-contrast, #fff);
+    font-weight: var(--weight-semi);
+}
+
+.pager__link.is-disabled {
+    opacity: .35;
+    pointer-events: none;
+}
+
+.pager__size {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-muted);
+}
+
+.pager__size .field-input {
+    width: auto;
+    padding: var(--sp-1) var(--sp-2);
+}
+
+/* A section stack: equal gaps between the widgets on a page that is a list
+ * of cards (Prices), so spacing does not depend on each card's own margins. */
+.page-stack {
+    display: grid;
+    gap: var(--sp-6);
+}
+
+/* Inline "nothing here yet" note inside a card that still has its form. */
+.empty-note {
+    color: var(--text-muted);
+    margin: var(--sp-4) 0 0;
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--border);
+}
+
+/* ── Button busy state ──────────────────────────────────────────────────── */
+
+/* A ring spinning beside the label, so a long call (asking the model, driving
+ * a headless browser) looks like it is running rather than hung. The label
+ * stays readable - replacing it with "Loading…" loses what was clicked. */
+.btn.is-loading {
+    pointer-events: none;
+    opacity: .85;
+}
+
+.btn.is-loading::before {
+    content: "";
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: btn-spin .6s linear infinite;
+}
+
+/* An icon inside a busy button would compete with the ring. */
+.btn.is-loading svg { display: none; }
+
+@keyframes btn-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btn.is-loading::before { animation-duration: 2s; }
+}
+
+/* ── Item lists (shopping list, meal ingredients) ───────────────────────── */
+
+/* These are <ul>s for semantics; the UA markers and indent are not wanted on
+ * a table-like stack of rows. */
+.shopping-list,
+.ingredient-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.shopping-item,
+.ingredient-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) 0;
+    border-top: 1px solid var(--border);
+}
+
+.shopping-list > .shopping-item:first-child,
+.ingredient-list > .ingredient-item:first-child {
+    border-top: 0;
+}
+
+/* The name takes the slack so the numbers line up on the right. */
+.shopping-item__check,
+.ingredient-name {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.shopping-item__qty,
+.shopping-item__unit-price,
+.shopping-item__total,
+.ingredient-qty {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.shopping-item__total { color: var(--text); font-weight: var(--weight-medium); }
+
+.shopping-item--checked .shopping-item__name {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+/* ── Store context (scrape config) ──────────────────────────────────────── */
+
+.store-context {
+    margin: var(--sp-4) 0;
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-raised, transparent);
+}
+
+.store-context__summary {
+    cursor: pointer;
+    font-weight: var(--weight-semi);
+}
+
+.store-context .field { margin-top: var(--sp-3); }

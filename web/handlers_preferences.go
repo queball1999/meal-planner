@@ -25,13 +25,13 @@ type hintRow struct {
 }
 
 type preferencesPageData struct {
-	Hints            []hintRow
-	DietTagOptions   []checkboxOption
-	CuisineOptions   []checkboxOption
-	AllergiesCSV     string
-	DislikesCSV      string
+	Hints             []hintRow
+	DietTagOptions    []checkboxOption
+	CuisineOptions    []checkboxOption
+	AllergiesCSV      string
+	DislikesCSV       string
 	LeftoverTolerance bool
-	HasLLM           bool
+	HasLLM            bool
 }
 
 var dietTagDefs = []struct{ value, label string }{
@@ -121,7 +121,7 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 	u := middleware.UserFromCtx(r)
 
 	if err := r.ParseForm(); err != nil {
-		s.setFlash(w, "Could not read form data.")
+		s.setNotify(w, NotifyDanger, "Could not read form data.")
 		http.Redirect(w, r, "/preferences", http.StatusSeeOther)
 		return
 	}
@@ -140,7 +140,7 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 		LeftoverTolerance: leftover,
 	}); err != nil {
 		log.Printf("preferences: upsert: %v", err)
-		s.setFlash(w, "Could not save preferences. Please try again.")
+		s.setNotify(w, NotifyDanger, "Could not save preferences. Please try again.")
 		http.Redirect(w, r, "/preferences", http.StatusSeeOther)
 		return
 	}
@@ -203,7 +203,7 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 	if parsed {
 		msg = "Preferences saved and meal descriptions parsed."
 	}
-	s.setFlash(w, msg)
+	s.setNotify(w, NotifySuccess, msg)
 	if u != nil {
 		id := u.ID
 		s.logEvent(r, &id, "update_preferences", "household", fmt.Sprintf("%d", hh.ID), "")

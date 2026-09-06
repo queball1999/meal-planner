@@ -1,5 +1,5 @@
 /**
- * barcode-camera.js — Camera-based barcode scanning (§8.4d).
+ * barcode-camera.js - Camera-based barcode scanning (§8.4d).
  *
  * Uses the native BarcodeDetector API where available (Chrome, Safari 17+).
  * Falls back to QuaggaJS if BarcodeDetector is absent and quagga.min.js is
@@ -30,8 +30,12 @@
   let pending = {}; // code → count
   let track = null;
 
-  function setStatus(msg, color) {
-    if (statusEl) statusEl.textContent = msg;
+  const ICON_CHECK = '<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/></svg>';
+  const ICON_FLASHLIGHT = '<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9,10L6,5H18L15,10H9M18,4H6V2H18V4M9,22V11H15V22H9M12,13A1,1 0 0,0 11,14A1,1 0 0,0 12,15A1,1 0 0,0 13,14A1,1 0 0,0 12,13Z"/></svg>';
+  const ICON_FLASHLIGHT_OFF = '<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2,5.27L3.28,4L20,20.72L18.73,22L15,18.27V22H9V12.27L2,5.27M18,5L15,10H11.82L6.82,5H18M18,4H6V2H18V4M15,11V13.18L12.82,11H15Z"/></svg>';
+
+  function setStatus(msg, color, iconHTML) {
+    if (statusEl) statusEl.innerHTML = (iconHTML ? iconHTML + ' ' : '') + msg;
     if (cornerSvg) {
       cornerSvg.querySelectorAll('path').forEach(p => {
         p.setAttribute('stroke', color || 'white');
@@ -43,7 +47,7 @@
     pending[code] = (pending[code] || 0) + 1;
     if (pending[code] >= CONFIRM_READS) {
       pending = {};
-      setStatus('✓ ' + code, '#4ade80');
+      setStatus(code, '#4ade80', ICON_CHECK);
       document.dispatchEvent(new CustomEvent('barcode:scanned', { detail: { code } }));
       // Navigate to /scan/<code> for server-side resolution.
       window.location.href = '/scan/' + encodeURIComponent(code);
@@ -72,7 +76,7 @@
 
   function startQuagga() {
     if (typeof Quagga === 'undefined') {
-      setStatus('Camera scanning unavailable — enter code manually.', '#f87171');
+      setStatus('Camera scanning unavailable - enter code manually.', '#f87171');
       return;
     }
     Quagga.init({
@@ -108,7 +112,7 @@
           torchBtn.addEventListener('click', async () => {
             torchOn = !torchOn;
             await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-            torchBtn.textContent = torchOn ? '🔦 Torch off' : '🔦 Torch';
+            torchBtn.innerHTML = (torchOn ? ICON_FLASHLIGHT_OFF : ICON_FLASHLIGHT) + (torchOn ? ' Torch off' : ' Torch');
           });
         }
       }

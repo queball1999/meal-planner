@@ -36,7 +36,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	results, isExact, err := search.Search(r.Context(), s.store, hh.ID, q, opts)
 	if err != nil {
-		s.setFlash(w, "Search error: "+err.Error())
+		s.setNotify(w, NotifyDanger, "Search error: "+err.Error())
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}

@@ -22,6 +22,7 @@ func Repair(
 	planID int64,
 	hh *db.Household,
 	profile *PreferenceProfile,
+	stores []*db.GroceryStore,
 	pricer Pricer,
 	maxIters int,
 ) (repaired bool, err error) {
@@ -64,7 +65,7 @@ func Repair(
 
 		weekStart := weekStartFromMeals(meals)
 		weekEnd := weekStart.AddDate(0, 0, 6)
-		sysPmt, _ := BuildPrompt(hh, profile, weekStart, weekEnd)
+		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd)
 		userPmt := buildRepairPrompt(hh, profile, targets, plan.BudgetCents, plan.TotalCents)
 
 		resp, err := gen.Generate(ctx, llm.GenerateRequest{

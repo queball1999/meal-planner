@@ -1,31 +1,42 @@
-{{define "title"}}{{.Data.Recipe.Title}} — {{.AppName}}{{end}}
+{{define "title"}}{{.Data.Recipe.Title}} - {{.AppName}}{{end}}
 {{define "content"}}
+{{$r := .Data.Recipe}}
 <div class="page-header">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
         <div>
-            <nav aria-label="Breadcrumb" style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.25rem">
-                <a href="/recipes">Recipes</a> &rsaquo; {{.Data.Recipe.Title}}
+            <nav aria-label="Breadcrumb" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.25rem">
+                <a href="/recipes">Recipes</a> &rsaquo; {{$r.Title}}
             </nav>
-            <h1 class="page-title" style="margin-bottom:0.25rem">{{.Data.Recipe.Title}}</h1>
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;font-size:0.85rem;color:var(--color-text-muted)">
-                {{if .Data.Recipe.Servings}}<span>{{.Data.Recipe.Servings}} servings</span>{{end}}
-                {{if .Data.Recipe.PrepMinutes}}<span>· {{.Data.Recipe.PrepMinutes}}m prep</span>{{end}}
-                {{if .Data.Recipe.CookMinutes}}<span>· {{.Data.Recipe.CookMinutes}}m cook</span>{{end}}
-                {{if .Data.Recipe.SourceSite}}<span>· from <a href="{{.Data.Recipe.SourceURL}}" target="_blank" rel="noopener noreferrer">{{.Data.Recipe.SourceSite}}</a></span>{{end}}
+            <h1 class="page-title" style="margin-bottom:0.25rem">{{$r.Title}}</h1>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;font-size:0.85rem;color:var(--text-muted)">
+                {{if $r.Servings}}<span>{{$r.Servings}} servings</span>{{end}}
+                {{if $r.PrepMinutes}}<span>· {{$r.PrepMinutes}}m prep</span>{{end}}
+                {{if $r.CookMinutes}}<span>· {{$r.CookMinutes}}m cook</span>{{end}}
+                {{if $r.SourceSite}}<span>· from <a href="{{$r.SourceURL}}" target="_blank" rel="noopener noreferrer">{{$r.SourceSite}}</a></span>{{end}}
             </div>
-            {{if .Data.Recipe.Tags}}
+            {{if $r.Tags}}
             <div style="margin-top:0.5rem">
-                {{range .Data.Recipe.Tags}}<span class="badge">{{.}}</span> {{end}}
+                {{range $r.Tags}}<span class="badge">{{.}}</span> {{end}}
             </div>
             {{end}}
         </div>
-        {{if .Data.Recipe.ImagePath}}
-        <img src="/recipe-images/{{.Data.Recipe.ImagePath}}"
-             alt="{{.Data.Recipe.Title}}"
-             style="width:180px;height:120px;object-fit:cover;border-radius:var(--radius-md);flex-shrink:0">
+        {{if $r.ImagePath}}
+        <img src="/recipe-images/{{$r.ImagePath}}"
+             alt="{{$r.Title}}"
+             style="width:180px;height:120px;object-fit:cover;border-radius:var(--radius-lg);flex-shrink:0">
         {{end}}
     </div>
 </div>
+
+{{if and (not .Data.Ingredients) (not .Data.Steps) $r.SourceURL}}
+<div class="banner banner-info" role="alert" style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
+    <span>This recipe has no ingredients or instructions saved. Pull them from the source page:</span>
+    <form method="POST" action="/recipes/{{$r.ID}}/reimport">
+        {{.CSRFField}}
+        <button type="submit" class="btn btn-primary btn-sm">{{icon "refresh"}} Re-import now</button>
+    </form>
+</div>
+{{end}}
 
 <div style="display:grid;grid-template-columns:1fr 2fr;gap:1.5rem;align-items:start">
 
@@ -35,7 +46,7 @@
         <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem">
             {{range .Data.Ingredients}}
             <li style="display:flex;gap:0.4rem">
-                <span style="color:var(--color-text-muted);min-width:4rem;text-align:right;flex-shrink:0">
+                <span style="color:var(--text-muted);min-width:4rem;text-align:right;flex-shrink:0">
                     {{if .Quantity}}{{.Quantity}}{{end}}{{if .Unit}} {{.Unit}}{{end}}
                 </span>
                 <span>{{.Name}}</span>
@@ -43,7 +54,7 @@
             {{end}}
         </ul>
         {{else}}
-        <p style="color:var(--color-text-muted);font-size:0.875rem">No ingredients recorded.</p>
+        <p style="color:var(--text-muted);font-size:0.875rem">No ingredients recorded.</p>
         {{end}}
     </div>
 
@@ -56,19 +67,139 @@
             {{end}}
         </ol>
         {{else}}
-        <p style="color:var(--color-text-muted);font-size:0.875rem">No instructions recorded.</p>
+        <p style="color:var(--text-muted);font-size:0.875rem">No instructions recorded.</p>
         {{end}}
     </div>
 
 </div>
 
-<div style="margin-top:1.5rem;display:flex;gap:0.75rem;align-items:center">
-    <a href="/recipes" class="btn btn--ghost">{{icon "arrow-left"}} Back</a>
+<div style="margin-top:1.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+    <a href="/recipes" class="btn btn-ghost">{{icon "arrow-left"}} Back</a>
 
-    <form method="POST" action="/recipes/{{.Data.Recipe.ID}}/delete"
+    <button type="button" class="btn btn-secondary" data-toggle-edit>{{icon "pencil"}} Edit recipe</button>
+
+    {{if $r.SourceURL}}
+    <form method="POST" action="/recipes/{{$r.ID}}/reimport">
+        {{.CSRFField}}
+        <button type="submit" class="btn btn-ghost">{{icon "refresh"}} Re-import from source</button>
+    </form>
+    {{end}}
+
+    <form method="POST" action="/recipes/{{$r.ID}}/delete"
           onsubmit="return confirm('Delete this recipe? This cannot be undone.')">
         {{.CSRFField}}
-        <button type="submit" class="btn btn--ghost btn--danger">{{icon "delete"}} Delete</button>
+        <button type="submit" class="btn btn-ghost btn-danger">{{icon "delete"}} Delete</button>
     </form>
 </div>
+
+{{/* ── Edit panel ─────────────────────────────────────────────────────────── */}}
+<div id="recipeEdit" hidden style="margin-top:1.5rem;display:grid;grid-template-columns:2fr 1fr;gap:1.5rem;align-items:start">
+    <div class="card form-section">
+        <h2 class="form-section__title">{{icon "pencil"}} Edit recipe</h2>
+        <form method="POST" action="/recipes/{{$r.ID}}/edit" class="pref-form">
+            {{.CSRFField}}
+            <div class="field">
+                <label class="field-label" for="e-title">Title</label>
+                <input class="field-input" id="e-title" name="title" type="text" value="{{$r.Title}}" required>
+            </div>
+
+            <div class="field-row" style="gap:var(--sp-3)">
+                <div class="field field--sm">
+                    <label class="field-label" for="e-servings">Servings</label>
+                    <input class="field-input" id="e-servings" name="servings" type="number" min="0" value="{{$r.Servings}}">
+                </div>
+                <div class="field field--sm">
+                    <label class="field-label" for="e-prep">Prep (min)</label>
+                    <input class="field-input" id="e-prep" name="prep_minutes" type="number" min="0" value="{{$r.PrepMinutes}}">
+                </div>
+                <div class="field field--sm">
+                    <label class="field-label" for="e-cook">Cook (min)</label>
+                    <input class="field-input" id="e-cook" name="cook_minutes" type="number" min="0" value="{{$r.CookMinutes}}">
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="e-tags">Tags</label>
+                <input class="field-input" id="e-tags" name="tags" type="text"
+                       value="{{join $r.Tags ", "}}" placeholder="dinner, indian, chicken">
+                <span class="field-hint">Comma-separated.</span>
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="e-ings">Ingredients</label>
+                <textarea class="field-input" id="e-ings" name="ingredients" rows="10"
+                          placeholder="2 tablespoons butter">{{range .Data.Ingredients}}{{if .Quantity}}{{.Quantity}} {{end}}{{if .Unit}}{{.Unit}} {{end}}{{.Name}}
+{{end}}</textarea>
+                <span class="field-hint">One per line. Quantity and unit are parsed from the front of each line.</span>
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="e-steps">Instructions</label>
+                <textarea class="field-input" id="e-steps" name="steps" rows="10"
+                          placeholder="Melt butter in a skillet.">{{range .Data.Steps}}{{.Text}}
+{{end}}</textarea>
+                <span class="field-hint">One step per line.</span>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{{icon "check"}} Save changes</button>
+                <button type="button" class="btn btn-ghost" data-toggle-edit>Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    {{/* ── Image replace ──────────────────────────────────────────────────── */}}
+    <div class="card form-section">
+        <h2 class="form-section__title">{{icon "image"}} Photo</h2>
+        {{if $r.ImagePath}}
+        <img src="/recipe-images/{{$r.ImagePath}}" alt=""
+             style="width:100%;max-height:160px;object-fit:cover;border-radius:var(--radius);margin-bottom:var(--sp-3)">
+        {{else}}
+        <p class="field-hint">No photo saved.</p>
+        {{end}}
+
+        <form method="POST" action="/recipes/{{$r.ID}}/image" enctype="multipart/form-data" class="pref-form">
+            {{.CSRFField}}
+            <div class="field">
+                <label class="field-label" for="e-file">Upload a file</label>
+                <input class="field-input" id="e-file" name="image_file" type="file"
+                       accept="image/jpeg,image/png,image/webp,image/gif">
+            </div>
+            <div class="field">
+                <label class="field-label" for="e-imgurl">…or paste an image URL</label>
+                <input class="field-input" id="e-imgurl" name="image_url" type="url"
+                       placeholder="https://example.com/photo.jpg">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{{icon "check"}} Replace photo</button>
+            </div>
+        </form>
+
+        {{if $r.ImagePath}}
+        <form method="POST" action="/recipes/{{$r.ID}}/image" style="margin-top:var(--sp-3)"
+              onsubmit="return confirm('Remove this photo?')">
+            {{.CSRFField}}
+            <input type="hidden" name="remove" value="1">
+            <button type="submit" class="btn btn-ghost btn-danger btn-sm">{{icon "delete"}} Remove photo</button>
+        </form>
+        {{end}}
+    </div>
+</div>
+
+<script>
+(function () {
+    var panel = document.getElementById('recipeEdit');
+    document.querySelectorAll('[data-toggle-edit]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            panel.hidden = !panel.hidden;
+            if (!panel.hidden) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                var t = document.getElementById('e-title');
+                if (t) t.focus();
+            }
+        });
+    });
+    if (location.hash === '#edit') panel.hidden = false;
+}());
+</script>
 {{end}}

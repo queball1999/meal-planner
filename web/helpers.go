@@ -3,13 +3,22 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"goeat/db"
 	"goeat/middleware"
 )
 
-const flashCookieName = "goeat_flash"
+const notifyCookieName = "goeat_notify"
+
+// Notify kinds map to the toast types in main.js ("danger" -> "error").
+const (
+	NotifySuccess = "success"
+	NotifyInfo    = "info"
+	NotifyWarning = "warning"
+	NotifyDanger  = "danger"
+)
 
 // ── Session cookies ──────────────────────────────────────────────────────────
 
@@ -35,14 +44,15 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-// ── Flash messages ──────────────────────────────────────────────────────────
+// ── Notify messages ──────────────────────────────────────────────────────────
 
-// setFlash stores a one-shot message in a short-lived cookie. The message is
-// read and cleared by popFlash on the next render call.
-func (s *Server) setFlash(w http.ResponseWriter, msg string) {
+// setNotify stores a one-shot message and its kind (one of the Notify*
+// constants) in a short-lived cookie, surfaced as a toast (main.js) on the
+// next page render. Read and cleared by popNotify.
+func (s *Server) setNotify(w http.ResponseWriter, kind, msg string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     flashCookieName,
-		Value:    url.QueryEscape(msg),
+		Name:     notifyCookieName,
+		Value:    kind + "|" + url.QueryEscape(msg),
 		Path:     "/",
 		MaxAge:   30,
 		HttpOnly: true,
@@ -50,21 +60,28 @@ func (s *Server) setFlash(w http.ResponseWriter, msg string) {
 	})
 }
 
-// popFlash reads and clears the flash cookie, returning its value (or "").
-func (s *Server) popFlash(w http.ResponseWriter, r *http.Request) string {
-	c, err := r.Cookie(flashCookieName)
+// popNotify reads and clears the notify cookie, returning its kind and
+// message (both "" when there is none).
+func (s *Server) popNotify(w http.ResponseWriter, r *http.Request) (kind, msg string) {
+	c, err := r.Cookie(notifyCookieName)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     flashCookieName,
+		Name:     notifyCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
-	msg, _ := url.QueryUnescape(c.Value)
-	return msg
+	kind, escaped, ok := strings.Cut(c.Value, "|")
+	if !ok {
+		// Pre-existing cookie from before notify kinds existed.
+		msg, _ = url.QueryUnescape(c.Value)
+		return NotifyInfo, msg
+	}
+	msg, _ = url.QueryUnescape(escaped)
+	return kind, msg
 }
 
 // ── Audit log helper ─────────────────────────────────────────────────────────

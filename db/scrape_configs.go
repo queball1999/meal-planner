@@ -12,11 +12,15 @@ func (s *store) CreateScrapeConfig(ctx context.Context, p CreateScrapeConfigPara
 	if p.AIAssisted {
 		aiAssisted = 1
 	}
+	contextJSON := p.ContextJSON
+	if contextJSON == "" {
+		contextJSON = "{}"
+	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO scrape_configs
-			(store_id, search_url_template, selectors_json, mode, ai_assisted)
-		VALUES (?, ?, ?, ?, ?)`,
-		p.StoreID, p.SearchURLTemplate, p.SelectorsJSON, p.Mode, aiAssisted,
+			(store_id, search_url_template, selectors_json, mode, ai_assisted, context_json)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		p.StoreID, p.SearchURLTemplate, p.SelectorsJSON, p.Mode, aiAssisted, contextJSON,
 	)
 	if err != nil {
 		return nil, err
@@ -31,10 +35,10 @@ func (s *store) GetScrapeConfigByStore(ctx context.Context, storeID int64) (*Scr
 	var aiAssisted int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, store_id, search_url_template, selectors_json, mode, ai_assisted,
-		       status, last_tested_at, created_at
+		       status, last_tested_at, created_at, context_json
 		FROM scrape_configs WHERE store_id = ?`, storeID).
 		Scan(&sc.ID, &sc.StoreID, &sc.SearchURLTemplate, &sc.SelectorsJSON,
-			&sc.Mode, &aiAssisted, &sc.Status, &sc.LastTestedAt, &createdAt)
+			&sc.Mode, &aiAssisted, &sc.Status, &sc.LastTestedAt, &createdAt, &sc.ContextJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -49,7 +53,7 @@ func (s *store) GetScrapeConfigByStore(ctx context.Context, storeID int64) (*Scr
 func (s *store) ListScrapeConfigs(ctx context.Context) ([]*ScrapeConfig, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, store_id, search_url_template, selectors_json, mode, ai_assisted,
-		       status, last_tested_at, created_at
+		       status, last_tested_at, created_at, context_json
 		FROM scrape_configs ORDER BY store_id`)
 	if err != nil {
 		return nil, err
@@ -62,7 +66,7 @@ func (s *store) ListScrapeConfigs(ctx context.Context) ([]*ScrapeConfig, error) 
 		var createdAt string
 		var aiAssisted int
 		if err := rows.Scan(&sc.ID, &sc.StoreID, &sc.SearchURLTemplate, &sc.SelectorsJSON,
-			&sc.Mode, &aiAssisted, &sc.Status, &sc.LastTestedAt, &createdAt); err != nil {
+			&sc.Mode, &aiAssisted, &sc.Status, &sc.LastTestedAt, &createdAt, &sc.ContextJSON); err != nil {
 			return nil, err
 		}
 		sc.AIAssisted = aiAssisted != 0
@@ -77,6 +81,10 @@ func (s *store) UpdateScrapeConfig(ctx context.Context, p UpdateScrapeConfigPara
 	if p.AIAssisted {
 		aiAssisted = 1
 	}
+	contextJSON := p.ContextJSON
+	if contextJSON == "" {
+		contextJSON = "{}"
+	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE scrape_configs SET
 			search_url_template = ?,
@@ -84,9 +92,11 @@ func (s *store) UpdateScrapeConfig(ctx context.Context, p UpdateScrapeConfigPara
 			mode                = ?,
 			ai_assisted         = ?,
 			status              = ?,
-			last_tested_at      = ?
+			last_tested_at      = ?,
+			context_json        = ?
 		WHERE id = ?`,
-		p.SearchURLTemplate, p.SelectorsJSON, p.Mode, aiAssisted, p.Status, p.LastTestedAt, p.ID,
+		p.SearchURLTemplate, p.SelectorsJSON, p.Mode, aiAssisted, p.Status, p.LastTestedAt,
+		contextJSON, p.ID,
 	)
 	return err
 }

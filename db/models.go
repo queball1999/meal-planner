@@ -12,6 +12,16 @@ type User struct {
 	CreatedAt    time.Time
 }
 
+// Setting is one runtime-editable configuration value (see package settings).
+// Source is "env" for a value seeded from .env at first boot, or "admin" once
+// it has been edited via the Settings page.
+type Setting struct {
+	Key       string
+	Value     string
+	Source    string
+	UpdatedAt time.Time
+}
+
 // Session is an authenticated session token (§9.3, §10.1).
 type Session struct {
 	ID        int64
@@ -60,7 +70,7 @@ type AppEvent struct {
 	Status      string // "ok" | "error"
 }
 
-// ── Phase 2 — Preferences (§4, §10.1) ────────────────────────────────────────
+// ── Phase 2 - Preferences (§4, §10.1) ────────────────────────────────────────
 
 // GroceryStore is a store the household shops at (§10.1).
 // Named GroceryStore to avoid collision with the Store interface.
@@ -77,13 +87,13 @@ type GroceryStore struct {
 // Preferences holds the household's structured preference settings (§4.2, §4.3).
 // Diet tags, cuisines, and dislikes are stored as JSON arrays in SQLite.
 type Preferences struct {
-	ID               int64
-	HouseholdID      int64
-	DietTags         []string // "vegetarian" | "vegan" | "pescatarian" | "keto" | "low-carb" | "gluten-free"
-	Cuisines         []string
-	Dislikes         []string
+	ID                int64
+	HouseholdID       int64
+	DietTags          []string // "vegetarian" | "vegan" | "pescatarian" | "keto" | "low-carb" | "gluten-free"
+	Cuisines          []string
+	Dislikes          []string
 	LeftoverTolerance bool
-	UpdatedAt        time.Time
+	UpdatedAt         time.Time
 }
 
 // MealSlotHint holds the free-text description and LLM parse for one meal slot (§4.1).
@@ -103,7 +113,7 @@ type MealFeedback struct {
 	HouseholdID  int64
 	MealID       *int64 // nil when rated outside a plan context
 	Title        string
-	Rating       int    // -1 = dislike, 1 = like
+	Rating       int // -1 = dislike, 1 = like
 	TagsSnapshot []string
 	CreatedAt    time.Time
 }
@@ -168,7 +178,7 @@ type CreateAIRunParams struct {
 	Status           string
 }
 
-// ── Phase 3 — Plans & meals (§5, §7, §10.1) ──────────────────────────────────
+// ── Phase 3 - Plans & meals (§5, §7, §10.1) ──────────────────────────────────
 
 // Plan is one week's meal plan (§10.1). Retained after the week passes (§5.5).
 type Plan struct {
@@ -254,7 +264,7 @@ type CreateMealIngredientParams struct {
 	Unit     string
 }
 
-// ── Phase 4 — Pricing (§6, §10.1) ────────────────────────────────────────────
+// ── Phase 4 - Pricing (§6, §10.1) ────────────────────────────────────────────
 
 // PriceCache is one observed price in the system-of-record (§6.0, §6.5).
 type PriceCache struct {
@@ -301,28 +311,32 @@ type ScrapeConfig struct {
 	SearchURLTemplate string // {term} placeholder
 	SelectorsJSON     string // JSON: {name, price, pack_size, availability}
 	Mode              string // "assisted"|"auto"|"auto_ai"
-	AIAssisted        bool
-	Status            string // "active"|"degraded"|"unconfigured"
-	LastTestedAt      string // ISO timestamp or ""
-	CreatedAt         time.Time
+	// ContextJSON is the store context this retailer needs before its search
+	// page shows anything: {"cookies":{…},"prewarm":[…],"wait_for":"…"}.
+	// See db/migrations/00009_scrape_context.sql.
+	ContextJSON  string
+	AIAssisted   bool
+	Status       string // "active"|"degraded"|"unconfigured"
+	LastTestedAt string // ISO timestamp or ""
+	CreatedAt    time.Time
 }
 
 // ShoppingListItem is one priced buy-line on a plan's shopping list (§5.1, §6.4).
 type ShoppingListItem struct {
-	ID                  int64
-	PlanID              int64
-	StoreID             *int64
-	MealIngredientRefs  string // JSON []int64
-	DisplayName         string
-	BuyQuantity         float64
-	PackSize            float64
-	PurchaseUnit        string
-	UnitPriceCents      int64
-	LineTotalCents      int64
-	PriceSource         string // "live"|"cache"|"manual"|"scrape"|"estimate"
-	Confidence          string
-	Checked             bool
-	InPantry            bool
+	ID                 int64
+	PlanID             int64
+	StoreID            *int64
+	MealIngredientRefs string // JSON []int64
+	DisplayName        string
+	BuyQuantity        float64
+	PackSize           float64
+	PurchaseUnit       string
+	UnitPriceCents     int64
+	LineTotalCents     int64
+	PriceSource        string // "live"|"cache"|"manual"|"scrape"|"estimate"
+	Confidence         string
+	Checked            bool
+	InPantry           bool
 }
 
 // UpsertPriceCacheParams bundles inputs for writing a price to the cache.
@@ -363,6 +377,7 @@ type CreateScrapeConfigParams struct {
 	SearchURLTemplate string
 	SelectorsJSON     string
 	Mode              string
+	ContextJSON       string
 	AIAssisted        bool
 }
 
@@ -372,6 +387,7 @@ type UpdateScrapeConfigParams struct {
 	SearchURLTemplate string
 	SelectorsJSON     string
 	Mode              string
+	ContextJSON       string
 	AIAssisted        bool
 	Status            string
 	LastTestedAt      string
@@ -392,7 +408,7 @@ type CreateShoppingListItemParams struct {
 	Confidence         string
 }
 
-// ── Phase 5.7 — Recipe catalog (§5.7, §10.1) ─────────────────────────────────
+// ── Phase 5.7 - Recipe catalog (§5.7, §10.1) ─────────────────────────────────
 
 // CatalogRecipe is one entry in the household's recipe catalog (§5.7).
 type CatalogRecipe struct {
@@ -412,13 +428,13 @@ type CatalogRecipe struct {
 
 // CatalogRecipeIngredient is one ingredient line in a catalog recipe.
 type CatalogRecipeIngredient struct {
-	ID               int64
-	CatalogRecipeID  int64
-	Name             string
-	Quantity         string
-	Unit             string
-	NormalizedTerm   string
-	Position         int
+	ID              int64
+	CatalogRecipeID int64
+	Name            string
+	Quantity        string
+	Unit            string
+	NormalizedTerm  string
+	Position        int
 }
 
 // CatalogRecipeStep is one instruction step in a catalog recipe.
@@ -450,7 +466,19 @@ type CreateCatalogRecipeParams struct {
 	Tags        []string
 }
 
-// ── Phase 5.5 — Spend stats (§5.5) ───────────────────────────────────────────
+// UpdateCatalogRecipeParams bundles the editable fields of a catalog recipe.
+// An empty ImagePath leaves the existing image untouched.
+type UpdateCatalogRecipeParams struct {
+	ID          int64
+	Title       string
+	Servings    int
+	PrepMinutes int
+	CookMinutes int
+	Tags        []string
+	ImagePath   string
+}
+
+// ── Phase 5.5 - Spend stats (§5.5) ───────────────────────────────────────────
 
 // SpendStats aggregates spend and usage numbers over a date range (§5.5).
 type SpendStats struct {
@@ -460,18 +488,18 @@ type SpendStats struct {
 	PlanCount   int
 }
 
-// ── Phase 5 — Pantry & plan-day overrides (§5.4, §5.6, §10.1) ───────────────
+// ── Phase 5 - Pantry & plan-day overrides (§5.4, §5.6, §10.1) ───────────────
 
 // PantryItem is one ingredient the household has on hand (§5.4).
 type PantryItem struct {
-	ID              int64
-	HouseholdID     int64
-	Name            string
-	NormalizedTerm  string
-	QuantityOnHand  float64
-	Unit            string
-	Barcode         string
-	UpdatedAt       time.Time
+	ID             int64
+	HouseholdID    int64
+	Name           string
+	NormalizedTerm string
+	QuantityOnHand float64
+	Unit           string
+	Barcode        string
+	UpdatedAt      time.Time
 }
 
 // PlanDay holds per-day overrides (headcount, notes) for one day of a plan (§5.6).
