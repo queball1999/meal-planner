@@ -21,7 +21,7 @@ Tables: `price_cache`, `manual_prices`, `item_product_map`, `scrape_configs`,
 ```
 db: add pricing, shopping list, and scrape config migration
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -40,7 +40,7 @@ Store interface: `UpsertPriceCache`, `GetPriceCache`, `GetManualPrice`,
 ```
 db: add pricing and shopping list models and store interface
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -51,7 +51,7 @@ Files: `db/price_cache.go`, `db/manual_prices.go`, `db/item_product_map.go`,
 ```
 db: implement pricing and shopping list query methods
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -71,7 +71,7 @@ Files: `pricing/provider.go`, `pricing/normalize.go`, `pricing/chain.go`
 ```
 pricing: add PriceProvider interface, normalizer, and resolution chain
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -85,7 +85,7 @@ Files: `pricing/cache.go`, `pricing/manual.go`
 ```
 pricing: add CacheProvider and ManualProvider adapters
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -101,7 +101,7 @@ Files: `pricing/ai_estimate.go`
 ```
 pricing: add AIEstimateProvider adapter
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -117,7 +117,7 @@ Files: `pricing/kroger.go`, `config/config.go` (add `KrogerClientID`,
 ```
 pricing: add OfficialAPIProvider (Kroger) with OAuth2 client-credentials
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -136,7 +136,7 @@ Files: `pricing/scraper.go`, `scrape/extractor.go`, `scrape/fetch.go`
 ```
 pricing: add ScraperProvider with configurable CSS/XPath extraction engine
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -158,7 +158,7 @@ Files: `pricing/quantity.go`, `pricing/costing.go`
 ```
 pricing: add quantity/pack math and plan costing call site
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -175,7 +175,7 @@ Files: `plan/generate.go` (add `CostPlan` call after persist),
 ```
 web: wire plan costing into generation and display budget meter with source badges
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -193,7 +193,7 @@ Files: `web/routes.go` (add `GET /list`), `web/handlers_shopping.go`,
 ```
 web: add shopping list page grouped by store with budget meter
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -210,7 +210,7 @@ Files: `web/routes.go` (add `GET /admin/prices`, `POST /admin/prices`,
 ```
 web: add admin manual-price entry page
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
@@ -242,4 +242,4 @@ stripped from fetched HTML before embedding; same-origin asset proxy at
 ```
 web: add scrape configuration tool with Assisted, Auto, and Auto+AI modes
 ```
-Status: ⬜
+Status: ✅
