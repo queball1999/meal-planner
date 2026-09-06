@@ -144,10 +144,12 @@ type Store interface {
 
 	UpdatePlanTotal(ctx context.Context, planID int64, totalCents int64, confidenceSummary string) error
 
-	// ── Meals — additional (§5.2, §5.6) ──────────────────────────────────────
+	// ── Meals — additional (§5.2, §5.6, §7.6) ───────────────────────────────
 
 	GetMealByID(ctx context.Context, mealID int64) (*Meal, error)
 	UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error
+	UpdateMealTitle(ctx context.Context, mealID int64, title, effort string, servings, cookedPortions int) error
+	DeleteMealIngredients(ctx context.Context, mealID int64) error
 
 	// ── Plan days (§5.6) ──────────────────────────────────────────────────────
 

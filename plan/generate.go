@@ -94,11 +94,14 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return plan.ID, fmt.Errorf("persist plan: %w", err)
 	}
 
-	// Price the plan when a pricer is provided. Failure is non-fatal — the plan
-	// is still marked ready; the user can re-cost later.
+	// Price the plan when a pricer is provided. Failure is non-fatal.
 	if pricer != nil {
 		if err := pricer(ctx, plan.ID, hh); err != nil {
 			fmt.Printf("warning: plan costing failed: %v\n", err)
+		}
+		// Budget repair loop (§7.6): attempt up to 3 swaps if over budget.
+		if _, err := Repair(ctx, store, gen, plan.ID, hh, profile, pricer, 3); err != nil {
+			fmt.Printf("warning: budget repair failed: %v\n", err)
 		}
 	}
 

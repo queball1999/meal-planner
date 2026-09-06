@@ -69,6 +69,19 @@ func (s *store) UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover
 	return err
 }
 
+func (s *store) UpdateMealTitle(ctx context.Context, mealID int64, title, effort string, servings, cookedPortions int) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE meals SET title = ?, effort = ?, servings = ?, cooked_portions = ? WHERE id = ?`,
+		title, effort, servings, cookedPortions, mealID,
+	)
+	return err
+}
+
+func (s *store) DeleteMealIngredients(ctx context.Context, mealID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM meal_ingredients WHERE meal_id = ?`, mealID)
+	return err
+}
+
 func (s *store) getMealByID(ctx context.Context, mealID int64) (*Meal, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, plan_id, day, slot, title, effort, servings, cooked_portions,
