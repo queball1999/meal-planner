@@ -28,6 +28,12 @@
 
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">Add item</h2>
+
+    <div style="margin-bottom:0.75rem;display:flex;gap:0.5rem;align-items:center">
+        <a href="/scan" class="btn btn--ghost btn--sm">{{icon "barcode"}} Scan barcode</a>
+        <span style="color:var(--color-text-muted);font-size:0.8rem">or enter manually below</span>
+    </div>
+
     <form method="POST" action="/pantry" class="pref-form">
         {{.CSRFField}}
         <div class="field-row">
@@ -102,4 +108,16 @@
     </p>
 </div>
 {{end}}
+
+<form id="hid-scan-form" method="POST" action="/pantry/scan" hidden>
+    {{.CSRFField}}
+    <input type="hidden" id="hid-scan-code" name="barcode">
+</form>
+<script src="/static/js/barcode-hid.js" defer></script>
+<script>
+document.addEventListener('barcode:scanned', function(e) {
+    document.getElementById('hid-scan-code').value = e.detail.code;
+    document.getElementById('hid-scan-form').submit();
+});
+</script>
 {{end}}
