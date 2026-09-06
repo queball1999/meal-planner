@@ -53,6 +53,22 @@ func (s *store) UpdateMealLocked(ctx context.Context, mealID int64, locked bool)
 	return err
 }
 
+func (s *store) GetMealByID(ctx context.Context, mealID int64) (*Meal, error) {
+	return s.getMealByID(ctx, mealID)
+}
+
+func (s *store) UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error {
+	v := 0
+	if isLeftover {
+		v = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE meals SET is_leftover = ?, leftover_source_meal_id = ? WHERE id = ?`,
+		v, sourceMealID, mealID,
+	)
+	return err
+}
+
 func (s *store) getMealByID(ctx context.Context, mealID int64) (*Meal, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, plan_id, day, slot, title, effort, servings, cooked_portions,

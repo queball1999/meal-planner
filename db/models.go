@@ -391,3 +391,51 @@ type CreateShoppingListItemParams struct {
 	PriceSource        string
 	Confidence         string
 }
+
+// ── Phase 5 — Pantry & plan-day overrides (§5.4, §5.6, §10.1) ───────────────
+
+// PantryItem is one ingredient the household has on hand (§5.4).
+type PantryItem struct {
+	ID              int64
+	HouseholdID     int64
+	Name            string
+	NormalizedTerm  string
+	QuantityOnHand  float64
+	Unit            string
+	Barcode         string
+	UpdatedAt       time.Time
+}
+
+// PlanDay holds per-day overrides (headcount, notes) for one day of a plan (§5.6).
+type PlanDay struct {
+	ID        int64
+	PlanID    int64
+	Date      string // YYYY-MM-DD
+	Headcount int
+	Note      string
+}
+
+// CreatePantryItemParams bundles inputs for adding a pantry item.
+type CreatePantryItemParams struct {
+	HouseholdID    int64
+	Name           string
+	NormalizedTerm string
+	QuantityOnHand float64
+	Unit           string
+	Barcode        string
+}
+
+// UpdatePantryItemParams bundles editable fields on a pantry item.
+type UpdatePantryItemParams struct {
+	ID             int64
+	QuantityOnHand float64
+	Unit           string
+}
+
+// UpsertPlanDayParams bundles inputs for setting a plan-day headcount override.
+type UpsertPlanDayParams struct {
+	PlanID    int64
+	Date      string
+	Headcount int
+	Note      string
+}

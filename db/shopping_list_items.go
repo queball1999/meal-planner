@@ -87,3 +87,12 @@ func (s *store) DeleteShoppingListItems(ctx context.Context, planID int64) error
 	_, err := s.db.ExecContext(ctx, `DELETE FROM shopping_list_items WHERE plan_id = ?`, planID)
 	return err
 }
+
+func (s *store) MarkShoppingListItemInPantry(ctx context.Context, id int64, inPantry bool) error {
+	v := 0
+	if inPantry {
+		v = 1
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE shopping_list_items SET in_pantry = ? WHERE id = ?`, v, id)
+	return err
+}

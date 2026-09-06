@@ -143,4 +143,26 @@ type Store interface {
 	// ── Plan total (§6.4) ─────────────────────────────────────────────────────
 
 	UpdatePlanTotal(ctx context.Context, planID int64, totalCents int64, confidenceSummary string) error
+
+	// ── Meals — additional (§5.2, §5.6) ──────────────────────────────────────
+
+	GetMealByID(ctx context.Context, mealID int64) (*Meal, error)
+	UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error
+
+	// ── Plan days (§5.6) ──────────────────────────────────────────────────────
+
+	ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, error)
+	UpsertPlanDay(ctx context.Context, p UpsertPlanDayParams) error
+	GetPlanDay(ctx context.Context, planID int64, date string) (*PlanDay, error)
+
+	// ── Pantry items (§5.4) ───────────────────────────────────────────────────
+
+	CreatePantryItem(ctx context.Context, p CreatePantryItemParams) (*PantryItem, error)
+	ListPantryItems(ctx context.Context, householdID int64) ([]*PantryItem, error)
+	UpdatePantryItem(ctx context.Context, p UpdatePantryItemParams) error
+	DeletePantryItem(ctx context.Context, id int64) error
+
+	// ── Shopping list — pantry flag (§5.4) ───────────────────────────────────
+
+	MarkShoppingListItemInPantry(ctx context.Context, id int64, inPantry bool) error
 }
