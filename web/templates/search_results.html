@@ -1,0 +1,71 @@
+{{define "title"}}Search: {{.Data.Q}} — {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "search"}} Search results</h1>
+</div>
+
+<form method="GET" action="/search" class="pref-form" style="margin-bottom:1.5rem">
+    <div class="field-row">
+        <div class="field" style="flex:1">
+            <input class="field-input" name="q" type="search"
+                   value="{{.Data.Q}}" placeholder="Search recipes, pantry, meals…"
+                   autofocus autocomplete="off">
+        </div>
+        <div class="field field--action">
+            <button type="submit" class="btn btn--primary">{{icon "search"}} Search</button>
+        </div>
+    </div>
+</form>
+
+{{if .Data.Empty}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">🔍</div>
+    <h2 class="skeleton-card__title">No results for "{{.Data.Q}}"</h2>
+    <p class="skeleton-card__body">Try a shorter or different term.</p>
+</div>
+{{else}}
+
+{{if .Data.Recipes}}
+<div class="card" style="margin-bottom:1rem">
+    <h2 class="search-section-label">Recipes</h2>
+    <ul class="search-result-list">
+        {{range .Data.Recipes}}
+        <li><a href="{{.URL}}" class="search-result-row">
+            <span>{{.Title}}</span>
+            <span class="search-result-extra">{{.Extra}}</span>
+        </a></li>
+        {{end}}
+    </ul>
+</div>
+{{end}}
+
+{{if .Data.Pantry}}
+<div class="card" style="margin-bottom:1rem">
+    <h2 class="search-section-label">Pantry</h2>
+    <ul class="search-result-list">
+        {{range .Data.Pantry}}
+        <li><a href="{{.URL}}" class="search-result-row">
+            <span>{{.Title}}</span>
+            <span class="search-result-extra">{{.Extra}}</span>
+        </a></li>
+        {{end}}
+    </ul>
+</div>
+{{end}}
+
+{{if .Data.Meals}}
+<div class="card" style="margin-bottom:1rem">
+    <h2 class="search-section-label">Past Meals</h2>
+    <ul class="search-result-list">
+        {{range .Data.Meals}}
+        <li><a href="{{.URL}}" class="search-result-row">
+            <span>{{.Title}}</span>
+            <span class="search-result-extra">{{.Extra}}</span>
+        </a></li>
+        {{end}}
+    </ul>
+</div>
+{{end}}
+
+{{end}}
+{{end}}

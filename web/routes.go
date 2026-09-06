@@ -78,5 +78,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/scrape/selector", requireAuth(http.HandlerFunc(s.handleScrapeSelector)))
 	mux.Handle("POST /admin/scrape/autodetect", requireAuth(http.HandlerFunc(s.handleScrapeAutodetect)))
 
+	mux.Handle("GET /search", requireAuth(http.HandlerFunc(s.handleSearch)))
+
 	mux.Handle("GET /", requireAuth(http.HandlerFunc(s.handleDashboard)))
 }

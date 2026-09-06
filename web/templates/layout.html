@@ -41,6 +41,16 @@
         {{end}}
 
         <div class="site-header-actions">
+            {{if .User}}
+            <form method="GET" action="/search" class="header-search" role="search" aria-label="Site search">
+                <input class="header-search__input" id="header-search" name="q"
+                       type="search" placeholder="Search…" autocomplete="off"
+                       aria-label="Search recipes, pantry, and meals">
+                <button type="submit" class="btn btn-icon" aria-label="Search">
+                    {{icon "search"}}
+                </button>
+            </form>
+            {{end}}
             <button class="btn btn-icon theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode" id="themeToggle">
                 <span class="theme-icon" aria-hidden="true">🌙</span>
             </button>
