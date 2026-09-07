@@ -25,6 +25,9 @@ type hintRow struct {
 }
 
 type preferencesPageData struct {
+	Members           []memberRow
+	PortionPresets    []portionPreset
+	TotalPortions     float64
 	Hints             []hintRow
 	DietTagOptions    []checkboxOption
 	CuisineOptions    []checkboxOption
@@ -54,7 +57,7 @@ var slotLabels = map[string]string{
 	"dinner":    "Dinner",
 }
 
-func buildPreferencesPageData(prefs *db.Preferences, allergies []string, hints []*db.MealSlotHint, hasLLM bool) preferencesPageData {
+func buildPreferencesPageData(prefs *db.Preferences, allergies []string, hints []*db.MealSlotHint, members []*db.HouseholdMember, hasLLM bool) preferencesPageData {
 	// Diet tag checkboxes
 	tagSet := sliceToSet(prefs.DietTags)
 	tagOpts := make([]checkboxOption, len(dietTagDefs))
@@ -76,6 +79,9 @@ func buildPreferencesPageData(prefs *db.Preferences, allergies []string, hints [
 	}
 
 	return preferencesPageData{
+		Members:           memberRows(members),
+		PortionPresets:    portionPresets,
+		TotalPortions:     totalPortions(members),
 		Hints:             rows,
 		DietTagOptions:    tagOpts,
 		CuisineOptions:    cuisineOpts,
@@ -105,8 +111,9 @@ func (s *Server) handlePreferencesPage(w http.ResponseWriter, r *http.Request) {
 	prefs, _ := s.store.GetPreferences(ctx, hh.ID)
 	allergies, _ := s.store.ListAllergies(ctx, hh.ID)
 	hints, _ := s.store.GetMealSlotHints(ctx, hh.ID)
+	members, _ := s.store.ListHouseholdMembers(ctx, hh.ID)
 
-	s.render(w, r, "preferences", buildPreferencesPageData(prefs, allergies, hints, s.gen != nil))
+	s.render(w, r, "preferences", buildPreferencesPageData(prefs, allergies, hints, members, s.gen != nil))
 }
 
 // handlePreferences saves all preference data and optionally parses free-text

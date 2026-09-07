@@ -1,5 +1,11 @@
 package plan
 
+import (
+	"math"
+
+	"goeat/db"
+)
+
 // GeneratedIngredient is one ingredient line in the LLM's JSON output (§7.4).
 type GeneratedIngredient struct {
 	Name          string  `json:"name"`
@@ -40,4 +46,32 @@ type PreferenceProfile struct {
 	EffortDinner      string
 	FeedbackLiked     []string // recent liked meal titles
 	FeedbackDisliked  []string // recent disliked meal titles
+
+	// Members is who the household actually cooks for. Servings come from the
+	// sum of their portion factors, not from a headcount, so two adults and
+	// two toddlers is 3 servings rather than 4. Empty for a household that has
+	// not set members up, in which case household size stands in.
+	Members []*db.HouseholdMember
+}
+
+// TotalPortions is what every meal in a generated plan should serve: the sum
+// of the members' portion factors, or the plain household size when no members
+// have been set up. Rounded to the nearest whole serving because that is what
+// a recipe card can state.
+func (p *PreferenceProfile) TotalPortions(householdSize int) int {
+	if len(p.Members) == 0 {
+		if householdSize < 1 {
+			return 1
+		}
+		return householdSize
+	}
+	var total float64
+	for _, m := range p.Members {
+		total += m.PortionFactor
+	}
+	n := int(math.Round(total))
+	if n < 1 {
+		n = 1
+	}
+	return n
 }

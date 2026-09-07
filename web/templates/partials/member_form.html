@@ -1,0 +1,47 @@
+{{/* The fields shared by the add-a-person and edit-a-person modals.
+
+     Called with dict "M" <*memberRow or nil> "Presets" <[]portionPreset>
+     "Prefix" <string>. Prefix keeps element ids unique when several of these
+     render on one page - the members list puts one edit modal per row. */}}
+{{define "partials/member_form.html"}}
+{{$m := .M}}
+{{$p := .Prefix}}
+<div class="field">
+  <label class="field-label" for="{{$p}}-name">Name</label>
+  <input class="field-input" id="{{$p}}-name" name="name" type="text" required
+         value="{{if $m}}{{$m.Name}}{{end}}" placeholder="e.g. Sam">
+</div>
+
+<div class="field">
+  <label class="field-label" for="{{$p}}-portion">How much do they eat?</label>
+  <select class="field-input" id="{{$p}}-portion" name="portion_factor">
+    {{range .Presets}}
+    <option value="{{.Value}}"
+            {{if $m}}{{if eq .Label (printf "%s" $m.PresetLabel)}}selected{{end}}{{else if eq .Value 1.0}}selected{{end}}>
+      {{.Label}} - {{.Hint}}
+    </option>
+    {{end}}
+  </select>
+  <p class="field-hint">
+    Relative to one standard adult serving. Two adults and two toddlers is
+    about 3 servings' worth of food, not 4 - that is the number your plan and
+    shopping list are built from.
+  </p>
+</div>
+
+<div class="field">
+  <label class="field-label" for="{{$p}}-custom">Exact amount (optional)</label>
+  <input class="field-input" id="{{$p}}-custom" name="portion_factor_custom"
+         type="number" step="0.05" min="0.05" max="5"
+         value="{{if $m}}{{$m.PortionFactor}}{{end}}"
+         placeholder="leave blank to use the choice above">
+  <p class="field-hint">Overrides the picker when set.</p>
+</div>
+
+<div class="field">
+  <label class="field-label" for="{{$p}}-notes">Notes for the meal planner (optional)</label>
+  <textarea class="field-input field-input--textarea" id="{{$p}}-notes" name="notes" rows="2"
+            placeholder="e.g. no shellfish, soft textures only, packs lunch on Tuesdays">{{if $m}}{{$m.Notes}}{{end}}</textarea>
+  <p class="field-hint">Sent to the meal generator alongside the household's own preferences.</p>
+</div>
+{{end}}

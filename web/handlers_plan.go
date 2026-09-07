@@ -369,11 +369,50 @@ func (s *Server) handlePlanGeneratePage(w http.ResponseWriter, r *http.Request) 
 	s.render(w, r, "plan_generate", nil)
 }
 
-// handlePlanHeadcount saves a per-day headcount override (§5.6) and rescales
-// that day's meals to match: servings, cooked portions, the recipe yield, and
-// every ingredient quantity are recomputed from the as-generated baseline
-// (db.ScaleMealsForDay). The shopping list is then rebuilt in the background,
-// since the quantities it aggregates have just changed.
+// dayPortions works out what a day should be scaled to from a submitted form.
+//
+// Two shapes are accepted. `member[]` ids are the real one: the portion total
+// is the sum of those members' factors, so two adults and two toddlers is 3.0
+// portions rather than 4. A bare `headcount` is the fallback for a household
+// that has never set members up, and means that many standard portions - which
+// is exactly what this endpoint did before members existed.
+//
+// Returns the portion total, the count of people it represents, and a message
+// to show the user when the input was unusable.
+func (s *Server) dayPortions(ctx context.Context, householdID int64, r *http.Request) (float64, int, string) {
+	raw := r.Form["member"]
+	if len(raw) > 0 {
+		ids := make([]int64, 0, len(raw))
+		for _, v := range raw {
+			id, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				continue
+			}
+			ids = append(ids, id)
+		}
+		portions, n, err := s.store.SumPortionFactors(ctx, householdID, ids)
+		if err != nil {
+			log.Printf("day portions: sum factors: %v", err)
+			return 0, 0, "Couldn't work out portions for those people. Try again."
+		}
+		if n == 0 {
+			return 0, 0, "Pick at least one person eating that day."
+		}
+		return portions, n, ""
+	}
+
+	headcount, err := strconv.Atoi(r.FormValue("headcount"))
+	if err != nil || headcount < 1 {
+		return 0, 0, "Headcount must be at least 1."
+	}
+	return float64(headcount), headcount, ""
+}
+
+// handlePlanHeadcount saves who is eating on one day of the plan (§5.6) and
+// rescales that day's meals to match: servings, cooked portions, the recipe
+// yield, and every ingredient quantity are recomputed from the as-generated
+// baseline (db.ScaleMealsForDay). The shopping list is then rebuilt in the
+// background, since the quantities it aggregates have just changed.
 func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
@@ -385,15 +424,26 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing date", http.StatusBadRequest)
 		return
 	}
-	hcStr := r.FormValue("headcount")
-	headcount, err := strconv.Atoi(hcStr)
-	if err != nil || headcount < 1 {
-		s.setNotify(w, NotifyDanger, "Headcount must be at least 1.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
 
 	ctx := r.Context()
+	portions, headcount, msg := s.dayPortions(ctx, hh.ID, r)
+	if msg != "" {
+		s.setNotify(w, NotifyDanger, msg)
+		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		return
+	}
+
+	memberIDs := make([]int64, 0, len(r.Form["member"]))
+	for _, v := range r.Form["member"] {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			memberIDs = append(memberIDs, id)
+		}
+	}
+
 	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
 	if p == nil {
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
@@ -403,6 +453,8 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		PlanID:    p.ID,
 		Date:      date,
 		Headcount: headcount,
+		MemberIDs: memberIDs,
+		Portions:  portions,
 	}); err != nil {
 		log.Printf("headcount: save plan day %s: %v", date, err)
 		s.setNotify(w, NotifyDanger, "Couldn't save that headcount. Try again.")
@@ -410,12 +462,12 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scaled, err := s.store.ScaleMealsForDay(ctx, p.ID, date, headcount)
+	scaled, err := s.store.ScaleMealsForDay(ctx, p.ID, date, portions)
 	if err != nil {
 		// The headcount itself is saved; only the rescale failed. Say so
 		// rather than implying the portions moved.
 		log.Printf("headcount: scale meals for %s: %v", date, err)
-		s.setNotify(w, NotifyDanger, "Headcount saved, but the portions couldn't be rescaled. Check the logs.")
+		s.setNotify(w, NotifyDanger, "Saved who's eating, but the portions couldn't be rescaled. Check the logs.")
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
 		return
 	}

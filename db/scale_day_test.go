@@ -121,9 +121,9 @@ func TestScaleMealsForDayIsIdempotent(t *testing.T) {
 	store, hh := newPlansTestStore(t)
 	planID, mealID := seedScalableDay(t, store, hh.ID)
 
-	for _, hc := range []int{6, 3, 7, 1, 3} {
+	for _, hc := range []float64{6, 3, 7, 1, 3} {
 		if _, err := store.ScaleMealsForDay(ctx, planID, "2026-01-05", hc); err != nil {
-			t.Fatalf("scale to %d: %v", hc, err)
+			t.Fatalf("scale to %v: %v", hc, err)
 		}
 	}
 
@@ -163,12 +163,44 @@ func TestScaleMealsForDaySkipsLeftovers(t *testing.T) {
 	}
 }
 
-func TestScaleMealsForDayRejectsZeroHeadcount(t *testing.T) {
+func TestScaleMealsForDayRejectsZeroPortions(t *testing.T) {
 	ctx := context.Background()
 	store, hh := newPlansTestStore(t)
 	planID, _ := seedScalableDay(t, store, hh.ID)
 
 	if _, err := store.ScaleMealsForDay(ctx, planID, "2026-01-05", 0); err == nil {
-		t.Fatal("want an error for headcount 0, got nil")
+		t.Fatal("want an error for 0 portions, got nil")
+	}
+}
+
+// A household is people, not a number: two adults and two toddlers is 3.0
+// portions, and the ingredient quantities have to reflect that rather than
+// rounding up to four mouths' worth of food.
+func TestScaleMealsForDayHandlesFractionalPortions(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newPlansTestStore(t)
+	planID, mealID := seedScalableDay(t, store, hh.ID)
+
+	// The seed day is 4 base servings with 2.0 of "ground beef".
+	if _, err := store.ScaleMealsForDay(ctx, planID, "2026-01-05", 3.0); err != nil {
+		t.Fatalf("scale to 3.0: %v", err)
+	}
+	q := qtyByName(t, store, mealID)
+	if math.Abs(q["ground beef"]-1.5) > 1e-9 {
+		t.Errorf("ground beef = %v, want 1.5", q["ground beef"])
+	}
+
+	// 2.5 portions is exactly half the base: the integer servings column
+	// rounds (to 3, the printable number), the ingredients do not.
+	if _, err := store.ScaleMealsForDay(ctx, planID, "2026-01-05", 2.5); err != nil {
+		t.Fatalf("scale to 2.5: %v", err)
+	}
+	q = qtyByName(t, store, mealID)
+	if math.Abs(q["ground beef"]-1.25) > 1e-9 {
+		t.Errorf("ground beef = %v, want 1.25", q["ground beef"])
+	}
+	m, _ := store.GetMealByID(ctx, mealID)
+	if m.Servings != 3 {
+		t.Errorf("servings = %d, want 3 (2.5 rounded)", m.Servings)
 	}
 }

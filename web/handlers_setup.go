@@ -30,6 +30,7 @@ type setupPageData struct {
 	Stores         []KnownStore
 	DietTagOptions []checkboxOption
 	CuisineOptions []checkboxOption
+	PortionPresets []portionPreset
 	KrogerReady    bool // true when Kroger API keys are configured
 	HasLLM         bool // true when an LLM is configured (free-text parsing)
 }
@@ -60,6 +61,7 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 		Stores:         KnownStores,
 		DietTagOptions: dietOpts,
 		CuisineOptions: cuisineOpts,
+		PortionPresets: portionPresets,
 		KrogerReady:    s.cfg.KrogerClientID != "",
 		HasLLM:         s.gen != nil,
 	})
@@ -117,8 +119,20 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	budgetCents := int64(math.Round(budget * 100))
 
-	hSize, err := strconv.Atoi(sizeStr)
-	if err != nil || hSize < 1 || hSize > 20 {
+	// The wizard lists people by name, and household size is however many of
+	// them there are. The bare household_size field is still read as a
+	// fallback: a browser with JS disabled never gets the dynamic member rows.
+	setupMembers := parseSetupMembers(r)
+	hSize := len(setupMembers)
+	if hSize == 0 {
+		hSize, err = strconv.Atoi(sizeStr)
+		if err != nil || hSize < 1 || hSize > 20 {
+			s.setNotify(w, NotifyDanger, "Household size must be between 1 and 20")
+			http.Redirect(w, r, "/setup", http.StatusSeeOther)
+			return
+		}
+	}
+	if hSize > 20 {
 		s.setNotify(w, NotifyDanger, "Household size must be between 1 and 20")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
@@ -157,6 +171,21 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+
+	// ── Household members ────────────────────────────────────────────────────
+	// Non-fatal: a household with no members falls back to household_size with
+	// everyone eating a standard portion, which is what the app did before
+	// members existed. Losing the whole setup over one bad name would be worse.
+	for i, m := range setupMembers {
+		if _, merr := s.store.CreateHouseholdMember(ctx, db.CreateHouseholdMemberParams{
+			HouseholdID:   hh.ID,
+			Name:          m.Name,
+			PortionFactor: m.PortionFactor,
+			SortOrder:     i + 1,
+		}); merr != nil {
+			log.Printf("setup: create member %q: %v", m.Name, merr)
+		}
 	}
 
 	// ── Seed the grocery-item catalog for the new household ──────────────────
@@ -283,4 +312,40 @@ func (s *Server) saveSetupMealHabits(r *http.Request, householdID int64) {
 	if err := s.store.SetSetting(ctx, "meals_out_per_week", strconv.Itoa(mealsOut)); err != nil {
 		log.Printf("setup: meals out: %v", err)
 	}
+}
+
+// setupMember is one person named in the setup wizard's household step.
+type setupMember struct {
+	Name          string
+	PortionFactor float64
+}
+
+// parseSetupMembers reads the wizard's parallel member_name / member_portion
+// fields. They are parallel arrays rather than indexed names because the rows
+// are added and removed client-side, so their indices are not stable between
+// render and submit - only their order is.
+//
+// A row with a blank name is skipped rather than rejected: the wizard starts
+// with one empty row, and someone who ignores it should not be blocked from
+// finishing setup. A missing or unparseable portion is one standard serving,
+// the same default the field itself shows.
+func parseSetupMembers(r *http.Request) []setupMember {
+	names := r.Form["member_name"]
+	portions := r.Form["member_portion"]
+
+	out := make([]setupMember, 0, len(names))
+	for i, raw := range names {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		factor := 1.0
+		if i < len(portions) {
+			if f, err := strconv.ParseFloat(portions[i], 64); err == nil && f > 0 && f <= db.PortionFactorMax {
+				factor = f
+			}
+		}
+		out = append(out, setupMember{Name: name, PortionFactor: factor})
+	}
+	return out
 }

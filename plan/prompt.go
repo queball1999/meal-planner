@@ -77,7 +77,25 @@ func storeNames(stores []*db.GroceryStore) (names []string, hasWarehouse bool) {
 func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time) (system, user string) {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "Household size: %d people - every meal must have servings = %d\n", hh.HouseholdSize, hh.HouseholdSize)
+	// Servings come from what the household eats, not from how many people it
+	// contains: two adults and two toddlers is three servings' worth of food,
+	// and asking for four would over-buy every week.
+	servings := profile.TotalPortions(hh.HouseholdSize)
+	if len(profile.Members) > 0 {
+		fmt.Fprintf(&b, "Household: %d people, eating %d standard servings between them - every meal must have servings = %d\n",
+			len(profile.Members), servings, servings)
+		b.WriteString("Who eats here:\n")
+		for _, m := range profile.Members {
+			fmt.Fprintf(&b, "- %s: eats %.2g of a standard adult serving", m.Name, m.PortionFactor)
+			if m.Notes != "" {
+				fmt.Fprintf(&b, " (%s)", m.Notes)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("Respect any note above as a constraint on that person's meals; where a note conflicts with a household preference, the note wins for that person only.\n")
+	} else {
+		fmt.Fprintf(&b, "Household size: %d people - every meal must have servings = %d\n", servings, servings)
+	}
 	fmt.Fprintf(&b, "Weekly budget: $%.0f\n", float64(hh.WeeklyBudgetCents)/100)
 	fmt.Fprintf(&b, "Week: %s through %s\n", weekStart.Format("2006-01-02 (Monday)"), weekEnd.Format("2006-01-02 (Monday)"))
 

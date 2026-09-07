@@ -165,9 +165,18 @@ is read from the plan row rather than summed from the current lines, so it is
 stale whenever lines are repriced without a plan-level recompute
 (`recomputeTotals` at :594 writes it, but not on every path).
 
+Also adds a per-line **"I already have this"** checkbox: ticking it excludes
+that line from the estimated total and marks it as not needing to be bought,
+distinct from the existing "checked off while shopping" state. Being distinct
+matters - one means "already in the cupboard, never buy it", the other means
+"picked up on this trip".
+
 Files: `web/handlers_shopping.go`, `plan/…` reprice path,
+`db/migrations/00022_list_have.sql` (new, `already_have` column),
+`db/shopping_list_items.go`,
+`web/templates/partials/shopping_list_body.html`,
 `web/shopping_list_render_test.go` (regression test asserting a non-zero
-total for priced lines).
+total for priced lines, and that an already-have line is excluded from it).
 
 ```
 web: recompute shopping list total from current lines
@@ -216,7 +225,25 @@ Depends on commit 1 (member add/edit dialogs).
 ```
 db: add household members with per-person portion sizing
 ```
-Status: ⬜
+Status: ✅
+
+**What actually shipped, vs. the sketch above.**
+
+* No separate wizard step. Members went into the existing "Your household"
+  step as a dynamic list of name + portion rows, which avoided renumbering
+  steps 3-6 and reads better than splitting one topic across two screens. A
+  `<noscript>` household-size field remains, since the rows are built
+  client-side.
+* `ScaleMealsForDay` now takes `portions float64` rather than
+  `headcount int`. Ingredient quantities scale by the raw total (2.5 portions
+  really is half of a 5-serving base) while `servings` and `cooked_portions`
+  take the rounded value, because a recipe card cannot state 2.6 servings.
+* `plan_days` stores both `member_ids` and the `portions` total. The total is
+  stored rather than recomputed on read, so editing a member's factor next
+  month does not silently restate what an existing plan was scaled to - there
+  is a test for exactly that.
+* The `/plan/days/{date}/headcount` endpoint accepts either `member` ids or a
+  bare `headcount`, so commit 7 only has to change the form.
 
 ---
 
@@ -360,7 +387,7 @@ Status: ⬜
 | 4 | Item modals + quick add | 1 |
 | 5 | Item aliases + link status | 1, 3 |
 | 6 | Shopping total fix | — |
-| 6b | Household members + portion sizing | 1 |
+| 6b | ✅ Household members + portion sizing | 1 |
 | 7 | Day headcount autosave + day status | 1, 2, 6b |
 | 8 | Dashboard hover cards + chip cleanup | 1 |
 | 9 | About connectivity live | — |
@@ -369,7 +396,7 @@ Status: ⬜
 | 12 | Responsive pass | all |
 
 Migrations are claimed in commit order: `00018` household members (6b),
-`00019` item aliases (5), `00020` day status (7), `00021` chat history (11).
+`00019` item aliases (5), `00020` day status (7), `00021` chat history (11), `00022` already-have (6).
 
 Commits 1–3 are the shared platform and should land first. Commits 6 and 9 are
 independent bug fixes and can be pulled forward if a release is needed sooner.

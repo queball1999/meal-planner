@@ -78,12 +78,33 @@
                            name="household_name" value="My Household" required>
                 </div>
 
-                <div class="field">
-                    <label class="field-label" for="household_size">Number of people</label>
-                    <input class="field-input" type="number" id="household_size"
-                           name="household_size" min="1" max="20" value="2" required>
-                    <span class="field-hint">How many people are you planning meals for?</span>
-                </div>
+                <fieldset class="field wizard-members">
+                    <legend class="field-label">Who are you cooking for?</legend>
+                    <span class="field-hint">
+                        Portions are what plans and shopping lists are built from, so
+                        two adults and two toddlers comes out around 3 servings of
+                        food rather than 4. You can change any of this later under
+                        Preferences.
+                    </span>
+
+                    <div id="member-rows">
+                        <!-- Row template lives in the script below so a row added
+                             after load is identical to the first one. -->
+                    </div>
+
+                    <button type="button" class="btn btn-ghost btn-sm" id="member-add-row">
+                        {{icon "plus"}} Add another person
+                    </button>
+
+                    <!-- Fallback for a browser with no JS: the member rows above are
+                         built client-side, so without them the handler falls back to
+                         this count with everyone eating a standard portion. -->
+                    <noscript>
+                        <label class="field-label" for="household_size">Number of people</label>
+                        <input class="field-input" type="number" id="household_size"
+                               name="household_size" min="1" max="20" value="2">
+                    </noscript>
+                </fieldset>
 
                 <div class="field">
                     <label class="field-label" for="budget">Weekly food budget ($)</label>
@@ -358,6 +379,66 @@
     'use strict';
 
     const form  = document.getElementById('setup-form');
+    // ── Household member rows ────────────────────────────────────────────
+    // Built here rather than server-rendered because the count is open-ended:
+    // the fields submit as parallel member_name / member_portion arrays, whose
+    // order is the only thing the handler relies on (indices are not stable
+    // when a middle row is removed).
+    const memberRows = document.getElementById('member-rows');
+    const memberPresets = [
+{{range .Data.PortionPresets}}        { value: {{.Value}}, label: "{{.Label}} - {{.Hint}}" },
+{{end}}    ];
+
+    function addMemberRow(name) {
+        const row = document.createElement('div');
+        row.className = 'wizard-member-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.className = 'field-input';
+        nameInput.type = 'text';
+        nameInput.name = 'member_name';
+        nameInput.placeholder = 'Name';
+        nameInput.value = name || '';
+        nameInput.setAttribute('aria-label', 'Name');
+
+        const portion = document.createElement('select');
+        portion.className = 'field-input';
+        portion.name = 'member_portion';
+        portion.setAttribute('aria-label', 'How much they eat');
+        memberPresets.forEach(function (p) {
+            const opt = document.createElement('option');
+            opt.value = p.value;
+            opt.textContent = p.label;
+            if (p.value === 1) opt.selected = true;
+            portion.appendChild(opt);
+        });
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn btn-ghost btn-sm';
+        remove.textContent = 'Remove';
+        remove.setAttribute('aria-label', 'Remove this person');
+        remove.addEventListener('click', function () {
+            row.remove();
+            // Never leave the fieldset empty - an empty list reads as a broken
+            // form rather than as a deliberate choice.
+            if (!memberRows.children.length) addMemberRow('');
+        });
+
+        row.appendChild(nameInput);
+        row.appendChild(portion);
+        row.appendChild(remove);
+        memberRows.appendChild(row);
+    }
+
+    if (memberRows) {
+        addMemberRow('');
+        addMemberRow('');
+        document.getElementById('member-add-row').addEventListener('click', function () {
+            addMemberRow('');
+        });
+    }
+
     const steps = Array.from(form.querySelectorAll('.wizard-step'));
     const indicators = Array.from(document.querySelectorAll('[data-step-indicator]'));
     const progress = document.querySelector('.wizard-progress');

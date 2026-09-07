@@ -170,9 +170,17 @@ type Store interface {
 	// ── Plan days (§5.6) ──────────────────────────────────────────────────────
 
 	ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, error)
+	ListHouseholdMembers(ctx context.Context, householdID int64) ([]*HouseholdMember, error)
+	GetHouseholdMember(ctx context.Context, householdID, id int64) (*HouseholdMember, error)
+	CreateHouseholdMember(ctx context.Context, p CreateHouseholdMemberParams) (int64, error)
+	UpdateHouseholdMember(ctx context.Context, p UpdateHouseholdMemberParams) error
+	DeleteHouseholdMember(ctx context.Context, householdID, id int64) error
+	SumPortionFactors(ctx context.Context, householdID int64, ids []int64) (float64, int, error)
+	CountHouseholdMembers(ctx context.Context, householdID int64) (int, error)
+
 	UpsertPlanDay(ctx context.Context, p UpsertPlanDayParams) error
 	GetPlanDay(ctx context.Context, planID int64, date string) (*PlanDay, error)
-	ScaleMealsForDay(ctx context.Context, planID int64, date string, headcount int) (ScaleDayResult, error)
+	ScaleMealsForDay(ctx context.Context, planID int64, date string, portions float64) (ScaleDayResult, error)
 
 	// ── Pantry items (§5.4) ───────────────────────────────────────────────────
 

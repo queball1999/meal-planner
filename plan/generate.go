@@ -127,12 +127,12 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return plan.ID, fmt.Errorf("persist plan: %w", err)
 	}
 
-	// Seed one plan_days row per day at the household's own size. The plan
-	// page used to fall back to household size for days with no row, which
-	// worked for display but left nothing to scale against - now every day has
-	// an explicit headcount from the moment the plan exists, and changing one
-	// rescales that day's meals.
-	seedPlanDays(ctx, store, plan.ID, weekStart, hh.HouseholdSize)
+	// Seed one plan_days row per day with everyone eating. The plan page used
+	// to fall back to household size for days with no row, which worked for
+	// display but left nothing to scale against - now every day has an
+	// explicit portion total from the moment the plan exists, and changing who
+	// is eating rescales that day's meals.
+	seedPlanDays(ctx, store, plan.ID, weekStart, hh.HouseholdSize, profile.Members)
 
 	// Mark leftover slots based on cooked-portions surplus (§5.6).
 	if err := PlanLeftovers(ctx, store, plan.ID, profile.LeftoverTolerance); err != nil {
@@ -233,19 +233,41 @@ func persistPlan(ctx context.Context, store db.Store, planID, aiRunID int64, wee
 	return nil
 }
 
-// seedPlanDays writes a headcount row for each of the week's seven days.
-// Failures are logged, not fatal: a missing row only means the plan page falls
-// back to household size for that day.
-func seedPlanDays(ctx context.Context, store db.Store, planID int64, weekStart time.Time, householdSize int) {
-	if householdSize < 1 {
-		householdSize = 1
+// seedPlanDays writes a row for each of the week's seven days, defaulting to
+// everyone in the household eating. Failures are logged, not fatal: a missing
+// row only means the plan page falls back to household size for that day.
+//
+// The portion total, not the headcount, is what the day is scaled to - two
+// adults and two toddlers is 3.0 portions - so a household with members seeded
+// gets the right quantities from the moment the plan exists rather than only
+// after someone touches the day's people picker.
+func seedPlanDays(ctx context.Context, store db.Store, planID int64, weekStart time.Time, householdSize int, members []*db.HouseholdMember) {
+	headcount := len(members)
+	if headcount == 0 {
+		headcount = householdSize
 	}
+	if headcount < 1 {
+		headcount = 1
+	}
+
+	ids := make([]int64, 0, len(members))
+	var portions float64
+	for _, m := range members {
+		ids = append(ids, m.ID)
+		portions += m.PortionFactor
+	}
+	if portions <= 0 {
+		portions = float64(headcount)
+	}
+
 	for i := 0; i < 7; i++ {
 		date := weekStart.AddDate(0, 0, i).Format("2006-01-02")
 		if err := store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
 			PlanID:    planID,
 			Date:      date,
-			Headcount: householdSize,
+			Headcount: headcount,
+			MemberIDs: ids,
+			Portions:  portions,
 		}); err != nil {
 			log.Printf("plan: seed plan day %s: %v", date, err)
 		}

@@ -7,6 +7,74 @@
 {{template "settingsTabs" .}}
 
 
+<!-- ── Household members (§4.5) ────────────────────────────────────────── -->
+<!-- Outside the big preferences form on purpose: each member is its own POST,
+     and a form cannot be nested inside another. -->
+<section class="card form-section" aria-labelledby="members-heading">
+    <div class="form-section__head">
+        <div>
+            <h2 class="form-section__title" id="members-heading">
+                {{icon "account-group"}} Who eats here
+            </h2>
+            <p class="form-section__desc">
+                Plans are scaled to what your household actually eats, not to a
+                headcount. Two adults and two toddlers is about
+                <strong>3 servings</strong> of food, not 4.
+            </p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" data-modal-open="member-add">
+            {{icon "plus"}} Add person
+        </button>
+    </div>
+
+    {{if .Data.Members}}
+    <table class="data-table" aria-label="Household members">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Eats</th>
+                <th>Notes</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Data.Members}}
+            <tr>
+                <td data-label="Name">{{.Name}}</td>
+                <td data-label="Eats">
+                    <span class="badge {{pill "portion" .PresetLabel}}">{{.PresetLabel}}</span>
+                    <span class="text-muted">&times;{{printf "%.2g" .PortionFactor}}</span>
+                </td>
+                <td data-label="Notes">{{if .Notes}}{{.Notes}}{{else}}<span class="text-muted">-</span>{{end}}</td>
+                <td data-label="">
+                    <button type="button" class="btn btn-ghost btn-sm"
+                            data-modal-open="member-edit-{{.ID}}"
+                            aria-label="Edit {{.Name}}" title="Edit">{{icon "pencil"}}</button>
+                    <form method="POST" action="/preferences/members/{{.ID}}/delete" style="display:inline"
+                          data-confirm="Remove {{.Name}} from this household? Plans already generated keep the portions they were built with."
+                          data-confirm-title="Remove person" data-confirm-label="Remove" data-confirm-danger>
+                        {{$.CSRFField}}
+                        <button type="submit" class="btn btn-ghost btn-danger btn-sm"
+                                aria-label="Remove {{.Name}}" title="Remove">{{icon "delete"}}</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    <p class="form-section__desc" style="margin-top:var(--sp-3)">
+        Meals are planned for <strong>{{printf "%.3g" .Data.TotalPortions}} servings</strong>
+        across {{len .Data.Members}} {{if eq (len .Data.Members) 1}}person{{else}}people{{end}}.
+    </p>
+    {{else}}
+    <p class="form-section__desc">
+        No one added yet, so plans fall back to your household size with everyone
+        eating a standard portion. Add the people you cook for to get portions
+        and shopping quantities that match.
+    </p>
+    {{end}}
+</section>
+
 <form method="POST" action="/preferences" class="pref-form" novalidate>
     {{.CSRFField}}
 
@@ -130,4 +198,30 @@
         </button>
     </div>
 </form>
+
+{{/* ── Member modals ─────────────────────────────────────────────────── */}}
+{{template "partials/modal_open.html" dict "ID" "member-add" "Title" "Add a person" "Form" true}}
+  <form method="POST" action="/preferences/members" class="pref-form" novalidate>
+    {{.CSRFField}}
+    {{template "partials/member_form.html" dict "M" nil "Presets" .Data.PortionPresets "Prefix" "member-add"}}
+    <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "plus"}} Add person</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
+
+{{range .Data.Members}}
+{{template "partials/modal_open.html" dict "ID" (printf "member-edit-%d" .ID) "Title" (printf "Edit %s" .Name) "Form" true}}
+  <form method="POST" action="/preferences/members/{{.ID}}" class="pref-form" novalidate>
+    {{$.CSRFField}}
+    {{template "partials/member_form.html" dict "M" . "Presets" $.Data.PortionPresets "Prefix" (printf "member-edit-%d" .ID)}}
+    <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "check"}} Save</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" $}}
+{{end}}
+
 {{end}}

@@ -43,6 +43,14 @@ func Resolve(ctx context.Context, store db.Store, householdID int64) (*Preferenc
 		return "standard"
 	}
 
+	// Who the household actually cooks for. A household that has never set
+	// members up gets none, and the prompt falls back to household size with
+	// everyone eating a standard portion.
+	members, err := store.ListHouseholdMembers(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Feedback digest: up to 20 most recent entries.
 	feedback, err := store.ListFeedbackDigest(ctx, householdID, 20)
 	if err != nil {
@@ -71,5 +79,6 @@ func Resolve(ctx context.Context, store db.Store, householdID int64) (*Preferenc
 		EffortDinner:      slotEffort("dinner"),
 		FeedbackLiked:     liked,
 		FeedbackDisliked:  disliked,
+		Members:           members,
 	}, nil
 }

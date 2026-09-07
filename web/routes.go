@@ -34,6 +34,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.Handle("GET /preferences", requireAuth(http.HandlerFunc(s.handlePreferencesPage)))
 	mux.Handle("POST /preferences", requireAuth(http.HandlerFunc(s.handlePreferences)))
+	mux.Handle("POST /preferences/members", requireAuth(http.HandlerFunc(s.handleMemberCreate)))
+	mux.Handle("POST /preferences/members/{id}", requireAuth(http.HandlerFunc(s.handleMemberUpdate)))
+	mux.Handle("POST /preferences/members/{id}/delete", requireAuth(http.HandlerFunc(s.handleMemberDelete)))
 
 	mux.Handle("GET /stores", requireAuth(http.HandlerFunc(s.handleStoresPage)))
 	mux.Handle("POST /stores", requireAuth(http.HandlerFunc(s.handleStoreCreate)))

@@ -661,8 +661,53 @@ type PlanDay struct {
 	ID        int64
 	PlanID    int64
 	Date      string // YYYY-MM-DD
-	Headcount int
+	Headcount int    // count of people eating - the number shown to the user
 	Note      string
+
+	// Which household members are eating, and the portion total their factors
+	// add up to. Portions is what the serving maths actually uses; Headcount is
+	// len(MemberIDs) when members are chosen, and stands alone for a household
+	// that has never set any up.
+	//
+	// Portions is stored rather than recomputed from MemberIDs on read:
+	// editing a member's portion factor next month must not silently restate
+	// what a plan from last month was scaled to.
+	MemberIDs []int64
+	Portions  float64
+}
+
+// HouseholdMember is one person the household cooks for (§4.5). PortionFactor
+// is how much they eat relative to one standard adult serving - a small child
+// near 0.5, a light eater 0.8, a big eater 1.4 - so a plan for two adults and
+// two toddlers budgets 3.0 portions rather than 4.
+type HouseholdMember struct {
+	ID            int64
+	HouseholdID   int64
+	Name          string
+	PortionFactor float64
+	Notes         string
+	SortOrder     int
+	CreatedAt     time.Time
+}
+
+// CreateHouseholdMemberParams bundles the inputs for adding a member.
+type CreateHouseholdMemberParams struct {
+	HouseholdID   int64
+	Name          string
+	PortionFactor float64
+	Notes         string
+	SortOrder     int
+}
+
+// UpdateHouseholdMemberParams bundles the editable fields on a member.
+// HouseholdID is carried so the UPDATE is scoped to the caller's household and
+// an id from another one cannot be edited by guessing it.
+type UpdateHouseholdMemberParams struct {
+	ID            int64
+	HouseholdID   int64
+	Name          string
+	PortionFactor float64
+	Notes         string
 }
 
 // CreatePantryItemParams bundles inputs for adding a pantry item.
@@ -688,4 +733,11 @@ type UpsertPlanDayParams struct {
 	Date      string
 	Headcount int
 	Note      string
+
+	// MemberIDs is who is eating; Portions is what their factors add up to.
+	// A zero Portions means "no member selection was made", and the upsert
+	// falls back to Headcount standard portions so a caller that predates
+	// members (or a household with none) keeps working unchanged.
+	MemberIDs []int64
+	Portions  float64
 }

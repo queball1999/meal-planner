@@ -3,13 +3,44 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
 )
 
+// memberIDsJSON round-trips PlanDay.MemberIDs through the plan_days.member_ids
+// TEXT column. A JSON array rather than a join table: the list is small, it is
+// only ever read whole with its day, and it is deliberately a *snapshot* -
+// deleting a household member must not silently rewrite which days they were
+// counted on.
+func memberIDsJSON(ids []int64) string {
+	if len(ids) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(ids)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+// A row written before migration 00018, or by hand, can hold "" as easily as
+// "[]"; both mean "nobody chosen", and neither is an error worth failing a
+// page render over.
+func parseMemberIDs(raw string) []int64 {
+	if raw == "" || raw == "[]" {
+		return nil
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return nil
+	}
+	return ids
+}
+
 func (s *store) ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, plan_id, date, headcount, note
+		SELECT id, plan_id, date, headcount, note, member_ids, portions
 		FROM plan_days WHERE plan_id = ?
 		ORDER BY date`, planID)
 	if err != nil {
@@ -20,45 +51,64 @@ func (s *store) ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, err
 	var out []*PlanDay
 	for rows.Next() {
 		var d PlanDay
-		if err := rows.Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note); err != nil {
+		var memberIDs string
+		if err := rows.Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions); err != nil {
 			return nil, err
 		}
+		d.MemberIDs = parseMemberIDs(memberIDs)
 		out = append(out, &d)
 	}
 	return out, rows.Err()
 }
 
 func (s *store) UpsertPlanDay(ctx context.Context, p UpsertPlanDayParams) error {
+	// A caller that knows nothing about members (plan generation, the legacy
+	// headcount form) sends Portions 0; that is Headcount standard portions,
+	// which is exactly the behaviour those callers had before members existed.
+	portions := p.Portions
+	if portions <= 0 {
+		portions = float64(p.Headcount)
+	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO plan_days (plan_id, date, headcount, note)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO plan_days (plan_id, date, headcount, note, member_ids, portions)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(plan_id, date) DO UPDATE SET
-		  headcount = excluded.headcount,
-		  note      = excluded.note`,
-		p.PlanID, p.Date, p.Headcount, p.Note,
+		  headcount  = excluded.headcount,
+		  note       = excluded.note,
+		  member_ids = excluded.member_ids,
+		  portions   = excluded.portions`,
+		p.PlanID, p.Date, p.Headcount, p.Note, memberIDsJSON(p.MemberIDs), portions,
 	)
 	return err
 }
 
 func (s *store) GetPlanDay(ctx context.Context, planID int64, date string) (*PlanDay, error) {
 	var d PlanDay
+	var memberIDs string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, plan_id, date, headcount, note
+		SELECT id, plan_id, date, headcount, note, member_ids, portions
 		FROM plan_days WHERE plan_id = ? AND date = ?`, planID, date).
-		Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note)
+		Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	d.MemberIDs = parseMemberIDs(memberIDs)
 	return &d, nil
 }
 
 // ScaleMealsForDay rewrites every non-leftover meal on one day of a plan to
-// serve headcount people: servings, cooked portions, the recipe's stated yield,
-// and every ingredient quantity are all recomputed as
-// base × headcount / base_servings.
+// serve `portions` adult-equivalent servings: servings, cooked portions, the
+// recipe's stated yield, and every ingredient quantity are all recomputed as
+// base × portions / base_servings.
+//
+// Portions rather than a headcount because a household is people, not a
+// number: two adults and two toddlers is 3.0 portions, not 4 (see
+// household_members.portion_factor). A caller with no member data passes the
+// headcount, which is that many standard portions and behaves exactly as
+// before.
 //
 // Scaling from the as-generated base (00017) rather than from the current
 // values is what makes this idempotent - 2 → 6 → 3 people lands on exactly the
@@ -68,10 +118,19 @@ func (s *store) GetPlanDay(ctx context.Context, planID int64, date string) (*Pla
 //
 // The whole day moves in one transaction, so a failure part-way cannot leave a
 // day with half-scaled recipes.
-func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string, headcount int) (ScaleDayResult, error) {
+func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string, portions float64) (ScaleDayResult, error) {
 	var res ScaleDayResult
-	if headcount < 1 {
-		return res, errors.New("headcount must be at least 1")
+	if portions < 1 {
+		return res, errors.New("portions must be at least 1")
+	}
+
+	// Ingredient quantities scale by the raw portion total, so two adults and
+	// two toddlers (3.0) really do buy three servings' worth of food. The
+	// integer columns - servings, cooked_portions - take the rounded value,
+	// because "2.6 servings" is not a thing to print on a recipe card.
+	servings := int(math.Round(portions))
+	if servings < 1 {
+		servings = 1
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -112,24 +171,24 @@ func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string,
 		if t.baseServings < 1 {
 			continue // nothing sane to scale from
 		}
-		factor := float64(headcount) / float64(t.baseServings)
+		factor := portions / float64(t.baseServings)
 
 		// Cooked portions keep their generated surplus ratio (a batch-cook meal
 		// that made 1.5× its servings still does after scaling), but can never
-		// drop below the number of people actually eating.
+		// drop below what the people eating actually need.
 		cooked := int(math.Round(float64(t.baseCookedPortions) * factor))
-		if cooked < headcount {
-			cooked = headcount
+		if cooked < servings {
+			cooked = servings
 		}
 
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE meals SET servings = ?, cooked_portions = ? WHERE id = ?`,
-			headcount, cooked, t.id); err != nil {
+			servings, cooked, t.id); err != nil {
 			return res, err
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE meal_recipes SET servings = ? WHERE meal_id = ?`,
-			headcount, t.id); err != nil {
+			servings, t.id); err != nil {
 			return res, err
 		}
 

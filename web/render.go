@@ -87,7 +87,7 @@ func templateFuncs() template.FuncMap {
 			}
 			return m, nil
 		},
-		"slots":    func() []string { return []string{"breakfast", "lunch", "dinner"} },
+		"slots": func() []string { return []string{"breakfast", "lunch", "dinner"} },
 		"titleCase": func(s string) string {
 			if s == "" {
 				return s
