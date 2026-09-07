@@ -4,12 +4,15 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gorilla/csrf"
 
 	"goeat/config"
+	"goeat/cryptbox"
 	"goeat/db"
+	"goeat/homeassistant"
 	"goeat/llm"
 	"goeat/middleware"
 	"goeat/plan"
@@ -20,34 +23,62 @@ import (
 
 // Server holds shared dependencies and the fully-wired HTTP handler.
 type Server struct {
-	cfg      *config.Config
-	store    db.Store
-	gen      llm.Generator // nil when no LLM is configured
-	chain    *pricing.Chain
-	jobs     *plan.JobManager
-	version  string
-	imageDir string // writable dir for recipe images (§5.7); "" = skip download
-	handler  http.Handler
+	cfg          *config.Config
+	store        db.Store
+	gen          llm.Generator // nil when no LLM is configured
+	chain        *pricing.Chain
+	jobs         *plan.JobManager
+	haScheduler  *homeassistant.Scheduler
+	version      string
+	imageDir     string        // writable dir for recipe images (§5.7); "" = skip download
+	itemImageDir string        // writable dir for catalog-item images (00010); "" = skip download
+	box          *cryptbox.Box // seals/opens secrets at rest (HA token)
+	handler      http.Handler
+
+	startedAt time.Time // process start, for the About page's uptime tile
+
+	autoPlanMu        sync.Mutex
+	autoPlanCheckedAt time.Time // last RunAutoPlanScheduler tick, whether or not it fired
+
+	// repriceMu guards repricing, keyed by plan id. Rebuilding a shopping list
+	// can take minutes (a price lookup per ingredient), and a user nudging
+	// several days' headcounts in a row would otherwise start overlapping
+	// rebuilds that race each other's DELETE-then-INSERT.
+	repriceMu      sync.Mutex
+	repricingPlans map[int64]bool
 }
 
 // NewServer wires up routes, session loading, and CSRF middleware, then
 // returns a ready-to-run Server.
-func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string) *Server {
+func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string, box *cryptbox.Box) *Server {
 	chain := buildChain(cfg, store, gen)
 	if gen != nil {
 		gen = llm.NewDebugLogger(gen) // captures every call into llm.GlobalDebugLog
 	}
 	s := &Server{
-		cfg:      cfg,
-		store:    store,
-		gen:      gen,
-		chain:    chain,
-		jobs:     plan.NewJobManager(),
-		version:  version,
-		imageDir: cfg.RecipeImageDir,
+		cfg:            cfg,
+		store:          store,
+		gen:            gen,
+		chain:          chain,
+		jobs:           plan.NewJobManager(),
+		haScheduler:    homeassistant.NewScheduler(store, cfg, box),
+		version:        version,
+		imageDir:       cfg.RecipeImageDir,
+		itemImageDir:   cfg.ItemImageDir,
+		box:            box,
+		startedAt:      time.Now(),
+		repricingPlans: make(map[int64]bool),
 	}
 	s.handler = s.buildHandler()
 	return s
+}
+
+// RunHAScheduler runs the Home Assistant shopping-list pull loop until ctx is
+// cancelled; no-ops until HA is configured with a non-zero interval. Owned by
+// Server (rather than constructed ad hoc in main.go) so the About page can
+// read its last-run state through the same instance that's actually ticking.
+func (s *Server) RunHAScheduler(ctx context.Context) {
+	s.haScheduler.Run(ctx)
 }
 
 // buildChain constructs the five-provider resolution chain in §6.1 order:

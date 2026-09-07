@@ -40,15 +40,23 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /stores/select", requireAuth(http.HandlerFunc(s.handleStoreSelect)))
 	mux.Handle("POST /stores/{id}/delete", requireAuth(http.HandlerFunc(s.handleStoreDelete)))
 
-	mux.Handle("GET /list", requireAuth(http.HandlerFunc(s.handleShoppingListPage)))
+	mux.Handle("GET /list", requireAuth(http.HandlerFunc(s.handleShoppingListRedirect)))
+	mux.Handle("GET /list/export", requireAuth(http.HandlerFunc(s.handleShoppingListExport)))
+	mux.Handle("POST /list/sync", requireAuth(http.HandlerFunc(s.handleListSync)))
+	mux.Handle("GET /list/sync/status", requireAuth(http.HandlerFunc(s.handleListSyncStatus)))
 	mux.Handle("POST /list/{id}/check", requireAuth(http.HandlerFunc(s.handleShoppingListCheck)))
+	mux.Handle("GET /list/{id}/price", requireAuth(http.HandlerFunc(s.handleShoppingItemPriceGet)))
+	mux.Handle("POST /list/{id}/price", requireAuth(http.HandlerFunc(s.handleShoppingItemPriceSet)))
+	mux.Handle("POST /list/ai-cost", requireAuth(http.HandlerFunc(s.handleShoppingAICostAnalysis)))
 
 	mux.Handle("GET /plan", requireAuth(http.HandlerFunc(s.handlePlanPage)))
+	mux.Handle("GET /plan/list", requireAuth(http.HandlerFunc(s.handlePlanPage)))
 	mux.Handle("GET /plan/history", requireAuth(http.HandlerFunc(s.handlePlanHistory)))
 	mux.Handle("POST /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGenerate)))
 	mux.Handle("GET /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGeneratePage)))
 	mux.Handle("GET /plan/generate/status", requireAuth(http.HandlerFunc(s.handlePlanGenerateStatus)))
 	mux.Handle("POST /plan/days/{date}/headcount", requireAuth(http.HandlerFunc(s.handlePlanHeadcount)))
+	mux.Handle("POST /plan/{id}/delete", requireAuth(http.HandlerFunc(s.handlePlanDelete)))
 
 	mux.Handle("GET /admin/prices", requireAuth(http.HandlerFunc(s.handleAdminPricesPage)))
 	mux.Handle("POST /admin/prices", requireAuth(http.HandlerFunc(s.handleAdminPriceCreate)))
@@ -56,6 +64,19 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.Handle("GET /pantry", requireAuth(http.HandlerFunc(s.handlePantryPage)))
 	mux.Handle("POST /pantry", requireAuth(http.HandlerFunc(s.handlePantryAdd)))
+
+	// Items catalog - literal routes before /pantry/{id} wildcards (§8.2)
+	mux.Handle("GET /pantry/items", requireAuth(http.HandlerFunc(s.handleItemsPage)))
+	mux.Handle("POST /pantry/items", requireAuth(http.HandlerFunc(s.handleItemCreate)))
+	mux.Handle("GET /pantry/items/{id}", requireAuth(http.HandlerFunc(s.handleItemDetail)))
+	mux.Handle("POST /pantry/items/{id}/edit", requireAuth(http.HandlerFunc(s.handleItemEdit)))
+	mux.Handle("POST /pantry/items/{id}/delete", requireAuth(http.HandlerFunc(s.handleItemDelete)))
+	mux.Handle("POST /pantry/items/{id}/image", requireAuth(http.HandlerFunc(s.handleItemImageReplace)))
+	mux.Handle("POST /pantry/items/{id}/packages", requireAuth(http.HandlerFunc(s.handleItemPackageUpsert)))
+	mux.Handle("POST /pantry/items/{id}/packages/{pkgID}/delete", requireAuth(http.HandlerFunc(s.handleItemPackageDelete)))
+	mux.Handle("POST /pantry/items/{id}/conversions", requireAuth(http.HandlerFunc(s.handleItemConversionUpsert)))
+	mux.Handle("POST /pantry/items/{id}/conversions/{cid}/delete", requireAuth(http.HandlerFunc(s.handleItemConversionDelete)))
+
 	mux.Handle("POST /pantry/{id}/delete", requireAuth(http.HandlerFunc(s.handlePantryDelete)))
 	mux.Handle("POST /pantry/{id}/stock", requireAuth(http.HandlerFunc(s.handlePantryStock)))
 
@@ -74,6 +95,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /recipes/{id}/image", requireAuth(http.HandlerFunc(s.handleRecipeImageReplace)))
 	mux.Handle("POST /recipes/{id}/delete", requireAuth(http.HandlerFunc(s.handleRecipeDelete)))
 	mux.Handle("GET /recipe-images/{name}", requireAuth(http.HandlerFunc(s.handleRecipeImageServe)))
+	mux.Handle("GET /item-images/{name}", requireAuth(http.HandlerFunc(s.handleItemImageServe)))
 
 	mux.Handle("GET /admin/scrape", requireAuth(http.HandlerFunc(s.handleScrapeConfigPage)))
 	mux.Handle("POST /admin/scrape/{storeID}/save", requireAuth(http.HandlerFunc(s.handleScrapeConfigSave)))
@@ -85,15 +107,21 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/scrape/autodetect", requireAuth(http.HandlerFunc(s.handleScrapeAutodetect)))
 
 	mux.Handle("GET /settings", requireAuth(http.HandlerFunc(s.handleSettingsPage)))
+	mux.Handle("POST /settings/danger/{target}", requireAuth(http.HandlerFunc(s.handleDangerWipe)))
+	mux.Handle("GET /about", requireAuth(http.HandlerFunc(s.handleAbout)))
 	mux.Handle("POST /settings/save", requireAuth(http.HandlerFunc(s.handleSettingsSave)))
 	mux.Handle("POST /settings/test-render", requireAuth(http.HandlerFunc(s.handleSettingsTestRender)))
 	mux.Handle("POST /settings/test-ai", requireAuth(http.HandlerFunc(s.handleSettingsTestAI)))
+	mux.Handle("POST /settings/ha/test", requireAuth(http.HandlerFunc(s.handleHATest)))
+	mux.Handle("POST /settings/ha/entities", requireAuth(http.HandlerFunc(s.handleHAEntities)))
+	mux.Handle("POST /settings/ha/save", requireAuth(http.HandlerFunc(s.handleHASave)))
 	// TODO: mux.Handle("POST /settings/ai/models", requireAuth(http.HandlerFunc(s.handleAIModels)))
 	// handleAIModels doesn't exist yet and nothing in the UI calls this route -
 	// commented out so the build isn't broken; wire it up when that handler lands.
 	mux.Handle("GET /admin/llm-debug", requireAuth(http.HandlerFunc(s.handleLLMDebugLog)))
 	mux.Handle("GET /admin/llm-log", requireAuth(http.HandlerFunc(s.handleLLMLogPage)))
 	mux.Handle("GET /search", requireAuth(http.HandlerFunc(s.handleSearch)))
+	mux.Handle("GET /attributions", requireAuth(http.HandlerFunc(s.handleAttributionsPage)))
 
 	mux.Handle("GET /scan", requireAuth(http.HandlerFunc(s.handleScanPage)))
 	mux.Handle("GET /scan/{code}", requireAuth(http.HandlerFunc(s.handleScanCode)))

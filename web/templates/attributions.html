@@ -1,0 +1,37 @@
+{{define "title"}}Attributions - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "image"}} Photo attributions</h1>
+    <p class="page-subtitle">
+        Credit lines required by the sources of catalog-item photos.
+    </p>
+</div>
+
+<div class="card">
+    <p class="form-section__desc">
+        Some catalog-item photos come from
+        <a href="https://www.freefoodphotos.com/" rel="noopener" target="_blank">freefoodphotos.com</a>,
+        used under their
+        <a href="https://www.freefoodphotos.com/imagelicense.html" rel="noopener" target="_blank">image licence</a>,
+        which asks for a visible credit with a link back. Those credits are listed here.
+    </p>
+
+    {{if .Data.Rows}}
+    <table class="data-table">
+        <thead>
+            <tr><th>Item</th><th>Credit</th></tr>
+        </thead>
+        <tbody>
+            {{range .Data.Rows}}
+            <tr>
+                <td data-label="Item">{{.Name}}</td>
+                <td data-label="Credit">{{.Text}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="form-section__desc">No attributed photos yet.</p>
+    {{end}}
+</div>
+{{end}}

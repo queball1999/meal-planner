@@ -55,6 +55,10 @@ type Definition struct {
 	// "key" | "model" | "url". Empty for everything else.
 	Role string
 
+	// Encrypted marks a KindSecret whose value is stored in the `secrets`
+	// table (cryptbox-sealed) instead of the plaintext `settings` table.
+	Encrypted bool
+
 	// FromConfig returns the setting's current value (from cfg, i.e. from
 	// .env) as a string, used to seed the settings table on first boot.
 	FromConfig func(cfg *config.Config) string
@@ -150,6 +154,11 @@ var Defs = []Definition{
 		Options:    []string{"sunday", "monday"},
 		Help:       "First day of the planning week.",
 		FromConfig: func(c *config.Config) string { return c.WeekStartDay }},
+	{Key: "AUTO_PLAN_HOUR", Label: "Auto-generate hour", Category: "Calendar", Kind: KindInt,
+		Help: "Local hour (0-23) the Saturday night before the week starts to automatically generate " +
+			"next week's plan. Set to -1 to disable auto-generation - the Regenerate/Plan my week " +
+			"button in the app always works regardless.",
+		FromConfig: func(c *config.Config) string { return strconv.Itoa(c.AutoPlanHour) }},
 
 	{Key: "KROGER_CLIENT_ID", Label: "Client ID", Category: "Kroger", Kind: KindString,
 		Help:       "Enables live Kroger pricing when set along with Client secret and Location ID.",
@@ -183,6 +192,26 @@ var Defs = []Definition{
 	{Key: "RECIPE_IMAGE_DIR", Label: "Recipe image directory", Category: "Storage", Kind: KindString,
 		Help:       "Writable directory for downloaded recipe images, served at /recipe-images/. Empty disables image download.",
 		FromConfig: func(c *config.Config) string { return c.RecipeImageDir }},
+	{Key: "ITEM_IMAGE_DIR", Label: "Item image directory", Category: "Storage", Kind: KindString,
+		Help:       "Writable directory for catalog-item images, served at /item-images/. Empty disables image download.",
+		FromConfig: func(c *config.Config) string { return c.ItemImageDir }},
+
+	{Key: "HA_BASE_URL", Label: "Base URL", Category: "Home Assistant", Kind: KindString,
+		Help:       "e.g. http://homeassistant.local:8123 - the address of your Home Assistant instance.",
+		FromConfig: func(c *config.Config) string { return c.HABaseURL }},
+	{Key: "HA_TOKEN", Label: "Long-lived access token", Category: "Home Assistant", Kind: KindSecret, Encrypted: true,
+		Help:       "Create one under your HA profile - Security - Long-lived access tokens. Stored encrypted.",
+		FromConfig: func(c *config.Config) string { return c.HAToken }},
+	{Key: "HA_TODO_ENTITY", Label: "To-do entity", Category: "Home Assistant", Kind: KindString,
+		Help:       "The todo entity to sync with. Default todo.shopping_list.",
+		FromConfig: func(c *config.Config) string { return c.HATodoEntity }},
+	{Key: "HA_SYNC_INTERVAL_MINUTES", Label: "Pull interval (minutes)", Category: "Home Assistant", Kind: KindInt,
+		Help:       "How often to pull completed items back from HA. 0 disables the background pull (push on demand still works).",
+		FromConfig: func(c *config.Config) string { return strconv.Itoa(c.HASyncIntervalMinutes) }},
+	{Key: "HA_ITEM_FORMAT", Label: "Item text", Category: "Home Assistant", Kind: KindSelect,
+		Options:    []string{"name", "name_qty"},
+		Help:       "name = just the item; name_qty = quantity + unit + item (e.g. \"2 lb chicken thighs\").",
+		FromConfig: func(c *config.Config) string { return c.HAItemFormat }},
 }
 
 // ByKey looks up a Definition by its Key, or reports ok=false for an unknown key.
@@ -331,6 +360,13 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 	if v, ok := get("WEEK_START_DAY"); ok {
 		cfg.WeekStartDay = v
 	}
+	if v, ok := get("AUTO_PLAN_HOUR"); ok {
+		if n, err := strconv.Atoi(v); err == nil && n >= -1 && n <= 23 {
+			cfg.AutoPlanHour = n
+		} else {
+			warnBad("AUTO_PLAN_HOUR", v, err)
+		}
+	}
 	if v, ok := get("KROGER_CLIENT_ID"); ok {
 		cfg.KrogerClientID = v
 	}
@@ -354,6 +390,25 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 	}
 	if v, ok := get("RECIPE_IMAGE_DIR"); ok {
 		cfg.RecipeImageDir = v
+	}
+	if v, ok := get("ITEM_IMAGE_DIR"); ok {
+		cfg.ItemImageDir = v
+	}
+	if v, ok := get("HA_BASE_URL"); ok {
+		cfg.HABaseURL = v
+	}
+	if v, ok := get("HA_TODO_ENTITY"); ok {
+		cfg.HATodoEntity = v
+	}
+	if v, ok := get("HA_ITEM_FORMAT"); ok {
+		cfg.HAItemFormat = v
+	}
+	if v, ok := get("HA_SYNC_INTERVAL_MINUTES"); ok {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.HASyncIntervalMinutes = n
+		} else {
+			warnBad("HA_SYNC_INTERVAL_MINUTES", v, err)
+		}
 	}
 
 	return nil

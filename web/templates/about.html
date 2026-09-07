@@ -1,0 +1,107 @@
+{{define "title"}}About - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "information"}} About</h1>
+    <p class="page-subtitle">Build info, plus this process's live runtime, connectivity, and background jobs.</p>
+</div>
+{{template "settingsTabs" .}}
+
+{{with .Data}}
+<div class="page-stack">
+
+<div class="card">
+    <h2 class="form-section__title" style="margin-top:0">Build</h2>
+    <div class="stats-strip">
+        <div class="stats-chip">
+            <span class="stats-chip__label">Version</span>
+            <span class="stats-chip__value">{{.Version}}</span>
+            <span class="stats-chip__hint">{{.AppName}}</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Revision</span>
+            {{if .VCSRevision}}
+            <span class="stats-chip__value" title="{{.VCSRevision}}"><code>{{.VCSRevisionShort}}</code>{{if .VCSModified}} <span class="badge badge-warning">modified</span>{{end}}</span>
+            <span class="stats-chip__hint">{{if .VCSTime}}committed {{.VCSTime}}{{else}}from the embedded VCS build info{{end}}</span>
+            {{else}}
+            <span class="stats-chip__value">unknown</span>
+            <span class="stats-chip__hint">not built from a VCS checkout</span>
+            {{end}}
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Go</span>
+            <span class="stats-chip__value">{{.GoVersion}}</span>
+            <span class="stats-chip__hint">toolchain this binary was built with</span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="form-section__title" style="margin-top:0">Connectivity</h2>
+    <div class="stats-strip">
+        <div class="stats-chip">
+            <span class="stats-chip__label">Database</span>
+            <span class="stats-chip__value {{if .DBReachable}}badge-success{{else}}badge-danger{{end}}">
+                {{if .DBReachable}}Reachable{{else}}Unreachable{{end}}
+            </span>
+            <span class="stats-chip__hint">{{if not .DBReachable}}{{.DBError}}{{end}}</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">AI provider</span>
+            <span class="stats-chip__value {{if .LLMConfigured}}badge-success{{else}}badge-muted{{end}}">
+                {{if .LLMConfigured}}{{.LLMProvider}}{{else}}Not configured{{end}}
+            </span>
+            <span class="stats-chip__hint">{{if .LLMConfigured}}{{.LLMModel}}{{else}}set a provider in Settings → AI Provider{{end}}</span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="form-section__title" style="margin-top:0">Runtime</h2>
+    <div class="stats-strip">
+        <div class="stats-chip">
+            <span class="stats-chip__label">Uptime</span>
+            <span class="stats-chip__value">{{.Uptime}}</span>
+            <span class="stats-chip__hint">since this process started</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Goroutines</span>
+            <span class="stats-chip__value">{{.NumGoroutine}}</span>
+            <span class="stats-chip__hint">{{.NumCPU}} CPU{{if ne .NumCPU 1}}s{{end}} available</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Heap in use</span>
+            <span class="stats-chip__value">{{printf "%.1f" .MemAllocMB}} MB</span>
+            <span class="stats-chip__hint">{{printf "%.1f" .MemSysMB}} MB reserved from the OS</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">GC runs</span>
+            <span class="stats-chip__value">{{.NumGC}}</span>
+            <span class="stats-chip__hint">since process start</span>
+        </div>
+    </div>
+
+    <h3 style="margin-top:var(--sp-6)">Background processes</h3>
+    <table class="data-table" aria-label="Background processes">
+        <thead>
+            <tr><th>Status</th><th>Process</th><th>Description</th><th>Detail</th></tr>
+        </thead>
+        <tbody>
+            {{range .Processes}}
+            <tr>
+                <td data-label="Status">
+                    <span class="badge {{if eq .Status "ok"}}badge-success{{else if eq .Status "warn"}}badge-warning{{else}}badge-muted{{end}}">
+                        {{.StatusLabel}}
+                    </span>
+                </td>
+                <td data-label="Process">{{.Name}}</td>
+                <td data-label="Description" class="text-muted">{{.Description}}</td>
+                <td data-label="Detail" class="text-muted">{{.Detail}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+
+</div>
+{{end}}
+{{end}}

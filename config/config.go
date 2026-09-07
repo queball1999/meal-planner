@@ -55,6 +55,12 @@ type Config struct {
 
 	// Calendar (SS11.1)
 	WeekStartDay string // "sunday" (default) | "monday"
+	// AutoPlanHour is the local hour (0-23, household timezone) the night
+	// before the week starts to automatically generate next week's plan.
+	// -1 (default) disables auto-generation; the manual generate/regenerate
+	// button always works regardless. The trigger day is always Saturday -
+	// plan.Generate's week always starts the following Sunday.
+	AutoPlanHour int
 	// Kroger OfficialAPIProvider (§6.2)
 	KrogerClientID     string
 	KrogerClientSecret string
@@ -77,6 +83,20 @@ type Config struct {
 	// RecipeImageDir is the writable directory for downloaded recipe images (§5.7).
 	// Served at /recipe-images/{name}. If empty, image download is skipped.
 	RecipeImageDir string
+
+	// ItemImageDir is the writable directory for catalog-item images
+	// (00010_items.sql). Served at /item-images/{name}. If empty, image
+	// download is skipped.
+	ItemImageDir string
+
+	// ── Home Assistant shopping-list sync (00012_ha_sync.sql) ─────────────
+	// HAToken is normally set from the Settings page (encrypted at rest via
+	// package cryptbox); an .env value is honoured as a fallback.
+	HABaseURL             string
+	HAToken               string
+	HATodoEntity          string // default "todo.shopping_list"
+	HASyncIntervalMinutes int    // 0 = pull disabled
+	HAItemFormat          string // "name" | "name_qty" (default)
 }
 
 // Load reads configuration from .env then the environment, applies defaults,
@@ -162,6 +182,19 @@ func Load() (*Config, error) {
 		RenderURL:          os.Getenv("RENDER_URL"),
 		RenderToken:        os.Getenv("RENDER_TOKEN"),
 		RecipeImageDir:     getenv("RECIPE_IMAGE_DIR", "./data/recipe-images"),
+		ItemImageDir:       getenv("ITEM_IMAGE_DIR", "./data/item-images"),
+
+		HABaseURL:    os.Getenv("HA_BASE_URL"),
+		HAToken:      os.Getenv("HA_TOKEN"),
+		HATodoEntity: getenv("HA_TODO_ENTITY", "todo.shopping_list"),
+		HASyncIntervalMinutes: func() int {
+			v, _ := strconv.Atoi(os.Getenv("HA_SYNC_INTERVAL_MINUTES"))
+			if v < 0 {
+				return 0
+			}
+			return v
+		}(),
+		HAItemFormat: getenv("HA_ITEM_FORMAT", "name_qty"),
 
 		WeekStartDay: func() string {
 			d := os.Getenv("WEEK_START_DAY")
@@ -169,6 +202,13 @@ func Load() (*Config, error) {
 				return "monday"
 			}
 			return "sunday"
+		}(),
+		AutoPlanHour: func() int {
+			v, err := strconv.Atoi(os.Getenv("AUTO_PLAN_HOUR"))
+			if err != nil || v < 0 || v > 23 {
+				return -1
+			}
+			return v
 		}(),
 	}
 

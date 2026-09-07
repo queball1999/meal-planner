@@ -7,7 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"goeat/catalog"
 	"goeat/config"
+	"goeat/cryptbox"
 	"goeat/db"
 	"goeat/llm"
 	"goeat/settings"
@@ -43,6 +45,23 @@ func main() {
 		log.Fatalf("settings: apply: %v", err)
 	}
 
+	// Items catalog: seed global unit conversions, then (if setup is done) seed
+	// the household's starter catalog and link any pre-existing ingredient /
+	// pantry rows to catalog items (00010_items.sql backfill).
+	if err := catalog.SeedGlobalConversions(seedCtx, store); err != nil {
+		log.Printf("catalog: seed global conversions: %v", err)
+	}
+	if hh, err := store.GetHousehold(seedCtx); err != nil {
+		log.Printf("catalog: household lookup: %v", err)
+	} else if hh != nil {
+		if err := catalog.SeedHousehold(seedCtx, store, hh.ID); err != nil {
+			log.Printf("catalog: seed household: %v", err)
+		}
+		if err := catalog.BackfillHousehold(seedCtx, store, hh.ID); err != nil {
+			log.Printf("catalog: backfill household: %v", err)
+		}
+	}
+
 	var gen llm.Generator
 	if cfg.Provider != "" {
 		g, err := llm.NewGenerator(cfg)
@@ -54,10 +73,19 @@ func main() {
 		}
 	}
 
-	srv := web.NewServer(cfg, store, gen, version)
+	box := cryptbox.New(cfg.SessionSecret)
+	srv := web.NewServer(cfg, store, gen, version, box)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Home Assistant shopping-list pull loop; no-ops until HA is configured
+	// with a non-zero interval.
+	go srv.RunHAScheduler(ctx)
+
+	// Auto-plan generation the night before the week starts; no-ops until
+	// AUTO_PLAN_HOUR is set (Settings → Calendar).
+	go srv.RunAutoPlanScheduler(ctx)
 
 	log.Printf("go-eat %s listening on %s", version, cfg.ListenAddr)
 	if err := srv.Run(ctx); err != nil {
