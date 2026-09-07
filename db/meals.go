@@ -7,11 +7,16 @@ import (
 )
 
 func (s *store) CreateMeal(ctx context.Context, p CreateMealParams) (*Meal, error) {
+	// A freshly created meal is by definition unscaled, so its base yield is
+	// whatever it was generated with (00017). Everything that later rescales a
+	// day's portions reads these columns, never the live ones.
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO meals
-		  (plan_id, day, slot, title, effort, servings, cooked_portions, ai_run_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		  (plan_id, day, slot, title, effort, servings, cooked_portions,
+		   base_servings, base_cooked_portions, ai_run_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.PlanID, p.Day, p.Slot, p.Title, p.Effort,
+		p.Servings, p.CookedPortions,
 		p.Servings, p.CookedPortions, p.AIRunID,
 	)
 	if err != nil {
@@ -24,10 +29,41 @@ func (s *store) CreateMeal(ctx context.Context, p CreateMealParams) (*Meal, erro
 func (s *store) ListMealsByPlan(ctx context.Context, planID int64) ([]*Meal, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, plan_id, day, slot, title, effort, servings, cooked_portions,
+		       base_servings, base_cooked_portions,
 		       is_leftover, leftover_source_meal_id, locked, ai_run_id
 		FROM meals WHERE plan_id = ?
 		ORDER BY day, CASE slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END`,
 		planID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Meal
+	for rows.Next() {
+		m, err := scanMeal(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ListMealsByHouseholdRange returns every meal scheduled between from and to
+// (inclusive, YYYY-MM-DD) across all of the household's plans. Used by the
+// dashboard calendar, which spans weeks/months rather than a single plan.
+func (s *store) ListMealsByHouseholdRange(ctx context.Context, householdID int64, from, to string) ([]*Meal, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.plan_id, m.day, m.slot, m.title, m.effort, m.servings,
+		       m.cooked_portions, m.base_servings, m.base_cooked_portions,
+		       m.is_leftover, m.leftover_source_meal_id,
+		       m.locked, m.ai_run_id
+		FROM meals m
+		JOIN plans p ON p.id = m.plan_id
+		WHERE p.household_id = ? AND m.day >= ? AND m.day <= ?
+		ORDER BY m.day, CASE m.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END`,
+		householdID, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +121,7 @@ func (s *store) DeleteMealIngredients(ctx context.Context, mealID int64) error {
 func (s *store) getMealByID(ctx context.Context, mealID int64) (*Meal, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, plan_id, day, slot, title, effort, servings, cooked_portions,
+		       base_servings, base_cooked_portions,
 		       is_leftover, leftover_source_meal_id, locked, ai_run_id
 		FROM meals WHERE id = ?`, mealID)
 	return scanMealRow(row)
@@ -102,6 +139,7 @@ func scanMeal(sc scanner) (*Meal, error) {
 	err := sc.Scan(
 		&m.ID, &m.PlanID, &m.Day, &m.Slot, &m.Title, &m.Effort,
 		&m.Servings, &m.CookedPortions,
+		&m.BaseServings, &m.BaseCookedPortions,
 		&isLeftover, &m.LeftoverSourceMealID,
 		&locked, &m.AIRunID,
 	)
@@ -122,6 +160,7 @@ func scanMealRow(row *sql.Row) (*Meal, error) {
 	err := row.Scan(
 		&m.ID, &m.PlanID, &m.Day, &m.Slot, &m.Title, &m.Effort,
 		&m.Servings, &m.CookedPortions,
+		&m.BaseServings, &m.BaseCookedPortions,
 		&isLeftover, &m.LeftoverSourceMealID,
 		&locked, &m.AIRunID,
 	)

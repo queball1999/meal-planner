@@ -6,14 +6,37 @@
     <p class="page-subtitle">
         {{if .Data.ReadOnly}}<a href="/" class="btn btn--ghost btn--sm" style="margin-right:.5rem">{{icon "arrow-left"}} Dashboard</a>{{end}}
         {{.Data.WeekStart}} - {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}
-        {{if .Data.ReadOnly}}<span class="badge badge--muted" style="margin-left:.5rem">Past plan - read only</span>{{end}}
+        {{if .Data.Canceled}}<span class="badge badge--muted" style="margin-left:.5rem" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled - archived, read only</span>
+        {{else if .Data.ReadOnly}}<span class="badge badge--muted" style="margin-left:.5rem">Past plan - read only</span>{{end}}
     </p>
     {{else}}
     <p class="page-subtitle">No plan yet for this week.</p>
     {{end}}
 </div>
 
+<nav class="subtabs no-print" aria-label="Plan sections">
+    <a href="/plan"      class="subtab{{if eq .Data.Tab "plan"}} subtab--active{{end}}"{{if eq .Data.Tab "plan"}} aria-current="page"{{end}}>{{icon "calendar"}} Plan</a>
+    <a href="/plan/list" class="subtab{{if eq .Data.Tab "list"}} subtab--active{{end}}"{{if eq .Data.Tab "list"}} aria-current="page"{{end}}>{{icon "cart"}} Shopping list</a>
+</nav>
+
+{{if eq .Data.Tab "list"}}
+{{template "shoppingListBody" .}}
+{{else}}
+
 {{if .Data.HasPlan}}
+
+{{if eq .Data.Status "generating"}}
+<div class="plan-banner plan-banner--generating">
+    <span class="icon-spin" aria-hidden="true">{{icon "autorenew"}}</span>
+    <span>Still generating - meals below may be incomplete. <a href="/plan/generate">View progress</a>.</span>
+</div>
+{{else if eq .Data.Status "error"}}
+<div class="plan-banner plan-banner--error">
+    <span aria-hidden="true">{{icon "alert"}}</span>
+    <span>Generation ended with an error. These meals were saved before it stopped. <a href="/settings">Check AI Logs</a>.</span>
+</div>
+{{end}}
+
 <div class="plan-actions">
     {{if .Data.TotalLabel}}
     <div class="plan-budget-meter{{if .Data.OverBudget}} plan-budget-meter--over{{end}}">
@@ -28,7 +51,8 @@
     </div>
     {{end}}
     {{if and .Data.HasLLM (not .Data.ReadOnly)}}
-    <form method="POST" action="/plan/generate">
+    <form method="POST" action="/plan/generate"
+          onsubmit="return confirm('This replaces your current plan for {{.Data.WeekStart}} - {{.Data.WeekEnd}} with a new one. The current plan will be canceled but kept in Plan History for reference. Continue?');">
         {{.CSRFField}}
         <button type="submit" class="btn btn--outline btn--sm">
             {{icon "autorenew"}} Regenerate plan
@@ -37,134 +61,62 @@
     {{end}}
 </div>
 
-<div class="plan-calendar" role="grid" aria-label="Weekly meal calendar">
-    <div class="plan-calendar__header" role="row">
-        <div class="plan-calendar__corner" role="columnheader"></div>
-        <div class="plan-calendar__slot-label" role="columnheader">Breakfast</div>
-        <div class="plan-calendar__slot-label" role="columnheader">Lunch</div>
-        <div class="plan-calendar__slot-label" role="columnheader">Dinner</div>
-    </div>
-
+<div class="plan-board" aria-label="Weekly meal plan">
     {{range .Data.Days}}
     {{$day := .}}
-    <div class="plan-calendar__row" role="row">
-        <div class="plan-calendar__day-label" role="rowheader">
-            <div>{{$day.DateLabel}}</div>
+    <section class="plan-col">
+        <header class="plan-col__head">
+            <span class="plan-col__day">{{$day.DateLabel}}</span>
             {{if not $.Data.ReadOnly}}
-            <form method="POST" action="/plan/days/{{$day.Date}}/headcount"
-                  style="display:flex;align-items:center;gap:.25rem;margin-top:.25rem">
+            <form method="POST" action="/plan/days/{{$day.Date}}/headcount" class="plan-col__headcount">
                 {{$.CSRFField}}
-                <input type="number" name="headcount" value="{{$day.Headcount}}"
-                       min="1" max="20" class="field-input" style="width:3rem;padding:.2rem .4rem;font-size:.8rem"
-                       title="People eating this day">
-                <button type="submit" class="btn btn--ghost btn--sm" title="Save headcount">
-                    {{icon "account-group"}}
-                </button>
+                <input type="number" name="headcount" value="{{$day.Headcount}}" min="1" max="20"
+                       class="field-input"
+                       title="People eating this day - saving rescales this day's recipes and shopping list"
+                       aria-label="Headcount for {{$day.DateLabel}}">
+                <button type="submit" class="btn-icon" title="Save headcount" aria-label="Save headcount">{{icon "check"}}</button>
             </form>
             {{else}}
-            <span class="plan-cell__meta" style="font-size:.8rem;margin-top:.2rem">{{$day.Headcount}} people</span>
+            <span class="plan-col__meta">{{$day.Headcount}} people</span>
             {{end}}
-        </div>
+        </header>
 
-        {{with index $day.Slots "breakfast"}}
-        <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
-            {{if .IsEmpty}}<span class="plan-cell--empty"> - </span>{{else}}
-            <div class="plan-cell">
-                <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
-                <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
-                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">{{icon "recycle"}}</span>{{end}}
-                {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
-                {{if not $.Data.ReadOnly}}
-                <div class="plan-cell__actions">
-                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="rating" value="1">
-                        <button type="submit" class="btn-icon" title="Like this meal" aria-label="Like {{.Title}}">{{icon "thumb-up"}}</button>
-                    </form>
-                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="rating" value="-1">
-                        <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{.Title}}">{{icon "thumb-down"}}</button>
-                    </form>
-                    <form method="POST" action="/meals/{{.MealID}}/lock" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="locked" value="{{if .Locked}}0{{else}}1{{end}}">
-                        <button type="submit" class="btn-icon" title="{{if .Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if .Locked}}Unlock{{else}}Lock{{end}} {{.Title}}">
-                            {{if .Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
-                        </button>
-                    </form>
-                </div>
-                {{end}}
-            </div>{{end}}
-        </div>
+        {{range $slot := slots}}
+        {{$cell := index $day.Slots $slot}}
+        <article class="meal-card meal-card--{{$slot}}{{if $cell.IsEmpty}} meal-card--empty{{end}}{{if $cell.Locked}} meal-card--locked{{end}}">
+            <span class="meal-card__slot">{{titleCase $slot}}</span>
+            {{if $cell.IsEmpty}}
+            <span class="meal-card__empty">No meal</span>
+            {{else}}
+            <a href="/meals/{{$cell.MealID}}" class="meal-card__title">{{$cell.Title}}</a>
+            <div class="meal-card__meta">
+                <span>{{$cell.Effort}}</span>
+                <span>&middot; {{$cell.Servings}} srv</span>
+                {{if $cell.IsLeftover}}<span class="badge badge--dim" title="Leftovers">{{icon "recycle"}}</span>{{end}}
+                {{if $cell.Locked}}<span title="Locked">{{icon "lock"}}</span>{{end}}
+            </div>
+            {{if not $.Data.ReadOnly}}
+            <div class="meal-card__actions">
+                <form method="POST" action="/meals/{{$cell.MealID}}/feedback">
+                    {{$.CSRFField}}<input type="hidden" name="rating" value="1">
+                    <button type="submit" class="btn-icon" title="Like this meal" aria-label="Like {{$cell.Title}}">{{icon "thumb-up"}}</button>
+                </form>
+                <form method="POST" action="/meals/{{$cell.MealID}}/feedback">
+                    {{$.CSRFField}}<input type="hidden" name="rating" value="-1">
+                    <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{$cell.Title}}">{{icon "thumb-down"}}</button>
+                </form>
+                <form method="POST" action="/meals/{{$cell.MealID}}/lock">
+                    {{$.CSRFField}}<input type="hidden" name="locked" value="{{if $cell.Locked}}0{{else}}1{{end}}">
+                    <button type="submit" class="btn-icon" title="{{if $cell.Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if $cell.Locked}}Unlock{{else}}Lock{{end}} {{$cell.Title}}">
+                        {{if $cell.Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
+                    </button>
+                </form>
+            </div>
+            {{end}}
+            {{end}}
+        </article>
         {{end}}
-
-        {{with index $day.Slots "lunch"}}
-        <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
-            {{if .IsEmpty}}<span class="plan-cell--empty"> - </span>{{else}}
-            <div class="plan-cell">
-                <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
-                <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
-                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">{{icon "recycle"}}</span>{{end}}
-                {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
-                {{if not $.Data.ReadOnly}}
-                <div class="plan-cell__actions">
-                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="rating" value="1">
-                        <button type="submit" class="btn-icon" title="Like this meal" aria-label="Like {{.Title}}">{{icon "thumb-up"}}</button>
-                    </form>
-                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="rating" value="-1">
-                        <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{.Title}}">{{icon "thumb-down"}}</button>
-                    </form>
-                    <form method="POST" action="/meals/{{.MealID}}/lock" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="locked" value="{{if .Locked}}0{{else}}1{{end}}">
-                        <button type="submit" class="btn-icon" title="{{if .Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if .Locked}}Unlock{{else}}Lock{{end}} {{.Title}}">
-                            {{if .Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
-                        </button>
-                    </form>
-                </div>
-                {{end}}
-            </div>{{end}}
-        </div>
-        {{end}}
-
-        {{with index $day.Slots "dinner"}}
-        <div class="plan-calendar__cell{{if .Locked}} plan-calendar__cell--locked{{end}}" role="gridcell">
-            {{if .IsEmpty}}<span class="plan-cell--empty"> - </span>{{else}}
-            <div class="plan-cell">
-                <a href="/meals/{{.MealID}}" class="plan-cell__title">{{.Title}}</a>
-                <span class="plan-cell__meta">{{.Effort}} &middot; {{.Servings}} srv</span>
-                {{if .IsLeftover}}<span class="badge badge--dim" style="font-size:.7rem">{{icon "recycle"}}</span>{{end}}
-                {{if .Locked}}<span class="plan-cell__lock" title="Locked">{{icon "lock"}}</span>{{end}}
-                {{if not $.Data.ReadOnly}}
-                <div class="plan-cell__actions">
-                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="rating" value="1">
-                        <button type="submit" class="btn-icon" title="Like this meal" aria-label="Like {{.Title}}">{{icon "thumb-up"}}</button>
-                    </form>
-                    <form method="POST" action="/meals/{{.MealID}}/feedback" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="rating" value="-1">
-                        <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{.Title}}">{{icon "thumb-down"}}</button>
-                    </form>
-                    <form method="POST" action="/meals/{{.MealID}}/lock" style="display:inline">
-                        {{$.CSRFField}}
-                        <input type="hidden" name="locked" value="{{if .Locked}}0{{else}}1{{end}}">
-                        <button type="submit" class="btn-icon" title="{{if .Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if .Locked}}Unlock{{else}}Lock{{end}} {{.Title}}">
-                            {{if .Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
-                        </button>
-                    </form>
-                </div>
-                {{end}}
-            </div>{{end}}
-        </div>
-        {{end}}
-    </div>
+    </section>
     {{end}}
 </div>
 
@@ -188,4 +140,6 @@
     {{end}}
 </div>
 {{end}}
+
+{{end}}{{/* end tab branch */}}
 {{end}}

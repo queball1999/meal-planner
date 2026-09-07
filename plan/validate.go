@@ -50,8 +50,12 @@ func Validate(gp GeneratedPlan, profile *PreferenceProfile) error {
 		if m.Servings <= 0 {
 			return fmt.Errorf("meal %d (%s): servings must be > 0", i, m.Title)
 		}
+		// Default through the slice, not the loop copy: m is a value copy, so
+		// the old assignment was discarded and meals kept landing in the DB
+		// with cooked_portions 0 - which then gave portion scaling nothing to
+		// scale from.
 		if m.CookedPortions <= 0 {
-			m.CookedPortions = m.Servings
+			gp.Meals[i].CookedPortions = m.Servings
 		}
 		if len(m.Ingredients) == 0 {
 			return fmt.Errorf("meal %d (%s): no ingredients", i, m.Title)
@@ -68,6 +72,17 @@ func Validate(gp GeneratedPlan, profile *PreferenceProfile) error {
 
 		// Allergy check - hard constraint.
 		for _, ing := range m.Ingredients {
+			if strings.TrimSpace(ing.Unit) == "" {
+				return fmt.Errorf("meal %q: ingredient %q is missing a unit", m.Title, ing.Name)
+			}
+			// Negative is a real error, but 0 is not: "salt to taste", "garnish",
+			// "cooking spray" and the like are routinely expressed as quantity 0
+			// by the LLM, and always have been - rejecting the whole 21-meal
+			// plan over one seasoning line is a much worse failure mode than
+			// the cosmetic "0 pinch salt" it would otherwise show.
+			if ing.Quantity < 0 {
+				return fmt.Errorf("meal %q: ingredient %q has a negative quantity", m.Title, ing.Name)
+			}
 			nameLower := strings.ToLower(ing.Name)
 			for allergen := range allergySet {
 				if strings.Contains(nameLower, allergen) {

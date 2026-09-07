@@ -15,6 +15,7 @@
         {{.Data.Meal.Slot}} · {{.Data.Meal.Day}}
         {{if .Data.WeekStart}} · Week of {{.Data.WeekStart}}{{end}}
         · {{.Data.Meal.Effort}} · {{.Data.Meal.Servings}} servings
+        {{if gt .Data.Meal.CookedPortions .Data.Meal.Servings}}({{.Data.Meal.CookedPortions}} portions cooked){{end}}
     </p>
 </div>
 
@@ -34,7 +35,16 @@
 
 <!-- Ingredients -->
 <section class="card" aria-labelledby="ingredients-heading">
-    <h2 class="form-section__title" id="ingredients-heading">{{icon "food-variant"}} Ingredients</h2>
+    <h2 class="form-section__title" id="ingredients-heading">
+        {{icon "food-variant"}} Ingredients
+        <span class="form-section__desc" style="font-weight:var(--weight-normal)">for {{.Data.Meal.Servings}} servings</span>
+    </h2>
+    {{if and .Data.Meal.BaseServings (ne .Data.Meal.BaseServings .Data.Meal.Servings)}}
+    <p class="form-section__desc">
+        {{icon "information"}}
+        Scaled from the original {{.Data.Meal.BaseServings}}-serving recipe to match this day's headcount.
+    </p>
+    {{end}}
     {{if .Data.Ingredients}}
     <ul class="ingredient-list">
         {{range .Data.Ingredients}}
@@ -93,10 +103,15 @@
 <!-- Steps -->
 {{if .Data.Steps}}
 <section class="card" aria-labelledby="steps-heading">
-    <h2 class="form-section__title" id="steps-heading">{{icon "chef-hat"}} Instructions</h2>
+    <h2 class="form-section__title" id="steps-heading">
+        {{icon "chef-hat"}} Instructions
+        {{with .Data.Recipe}}{{if .Servings}}
+        <span class="form-section__desc" style="font-weight:var(--weight-normal)">makes {{.Servings}} servings</span>
+        {{end}}{{end}}
+    </h2>
     <ol class="step-list">
         {{range .Data.Steps}}
-        <li class="step-item">{{.}}</li>
+        <li class="step-item">{{stepText .}}</li>
         {{end}}
     </ol>
 </section>
