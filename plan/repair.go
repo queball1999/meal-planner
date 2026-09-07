@@ -25,6 +25,7 @@ func Repair(
 	stores []*db.GroceryStore,
 	pricer Pricer,
 	maxIters int,
+	j *Job,
 ) (repaired bool, err error) {
 	for iter := 0; iter < maxIters; iter++ {
 		plan, err := store.GetPlanByID(ctx, planID)
@@ -68,10 +69,16 @@ func Repair(
 		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd)
 		userPmt := buildRepairPrompt(hh, profile, targets, plan.BudgetCents, plan.TotalCents)
 
+		j.EmitStatus(fmt.Sprintf(
+			"$%.2f over budget - asking the AI for %d cheaper meal(s) (round %d of %d)…",
+			float64(plan.TotalCents-plan.BudgetCents)/100, len(targets), iter+1, maxIters))
+
+		// Reasoning stays on here - swapping a meal is a judgement call, not a
+		// lookup - so the budget has to cover the thinking as well as the JSON.
 		resp, err := gen.Generate(ctx, llm.GenerateRequest{
 			System:    sysPmt,
 			Prompt:    userPmt,
-			MaxTokens: 4096,
+			MaxTokens: 8192,
 		})
 		if err != nil {
 			fmt.Printf("repair iter %d: generate: %v\n", iter+1, err)
@@ -98,6 +105,7 @@ func Repair(
 		}
 
 		if pricer != nil {
+			j.EmitStatus(fmt.Sprintf("Re-pricing after round %d swaps…", iter+1))
 			if err := pricer(ctx, planID, hh); err != nil {
 				fmt.Printf("repair iter %d: pricer: %v\n", iter+1, err)
 			}
@@ -168,10 +176,11 @@ func replaceMeal(ctx context.Context, store db.Store, meals []*db.Meal, gm Gener
 	}
 	for _, ing := range gm.Ingredients {
 		if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
-			MealID:   target.ID,
-			Name:     ing.Name,
-			Quantity: ing.Quantity,
-			Unit:     ing.Unit,
+			MealID:        target.ID,
+			Name:          ing.Name,
+			Quantity:      ing.Quantity,
+			Unit:          ing.Unit,
+			EstPriceCents: ing.EstPriceCents,
 		}); err != nil {
 			return fmt.Errorf("create ingredient: %w", err)
 		}
@@ -230,6 +239,14 @@ func validateSingleMeal(gm GeneratedMeal, profile *PreferenceProfile) error {
 	allergySet := toLowerSet(profile.Allergies)
 	dietRules := dietIngredientRules(profile.DietTags)
 	for _, ing := range gm.Ingredients {
+		if strings.TrimSpace(ing.Unit) == "" {
+			return fmt.Errorf("ingredient %q is missing a unit", ing.Name)
+		}
+		// See validate.go's identical check: 0 is a legitimate "to taste"/
+		// garnish quantity, only negative is a real error.
+		if ing.Quantity < 0 {
+			return fmt.Errorf("ingredient %q has a negative quantity", ing.Name)
+		}
 		nameLower := strings.ToLower(ing.Name)
 		for allergen := range allergySet {
 			if strings.Contains(nameLower, allergen) {

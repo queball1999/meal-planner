@@ -6,7 +6,7 @@
 </div>
 
 <div class="skeleton-card" id="gen-card">
-    <div class="skeleton-card__icon" aria-hidden="true" id="gen-icon">{{icon "autorenew"}}</div>
+    <div class="skeleton-card__icon icon-spin" aria-hidden="true" id="gen-icon">{{icon "autorenew"}}</div>
     <h2 class="skeleton-card__title" id="gen-title">Working…</h2>
     <p class="skeleton-card__body" id="gen-status">Connecting to generation service…</p>
 </div>
@@ -26,15 +26,25 @@
     var title  = document.getElementById('gen-title');
     var status = document.getElementById('gen-status');
     var icon   = document.getElementById('gen-icon');
+    // Once the job reports done/error and we close the connection ourselves,
+    // the browser still notices the stream ended and fires its own native
+    // 'error' Event right behind our custom one - that event carries no
+    // .data, so without this guard it would immediately overwrite the real
+    // failure reason with the generic fallback text. Once settled, ignore
+    // every subsequent 'error' dispatch instead of re-rendering from it.
+    var settled = false;
 
     es.addEventListener('status', function (e) {
+        if (settled) return;
         status.textContent = e.data;
     });
 
     es.addEventListener('done', function (e) {
+        settled = true;
         es.close();
         stopDebugPoll();
         refreshDebugLog();
+        icon.classList.remove('icon-spin');
         icon.innerHTML     = document.getElementById('gen-icon-check').innerHTML;
         title.textContent  = 'Plan ready!';
         status.textContent = 'Redirecting to your plan…';
@@ -42,16 +52,25 @@
     });
 
     es.addEventListener('error', function (e) {
+        if (settled) return;
+        // EventSource dispatches its own native 'error' Event at this same
+        // target whenever the connection drops, and it carries no .data. Only
+        // a server-sent "event: error" arrives as a MessageEvent with a
+        // string payload; anything else is a transient network blip that
+        // EventSource will retry on its own, so don't declare failure.
+        if (typeof e.data !== 'string') return;
+        settled = true;
         es.close();
         stopDebugPoll();
         refreshDebugLog();
+        icon.classList.remove('icon-spin');
         icon.innerHTML     = document.getElementById('gen-icon-close').innerHTML;
         title.textContent  = 'Generation failed';
-        status.textContent = e.data || 'An error occurred. Check the server logs.';
+        status.textContent = e.data;
     });
 
     es.onerror = function () {
-        if (es.readyState === EventSource.CLOSED) return;
+        if (settled || es.readyState === EventSource.CLOSED) return;
         status.textContent = 'Connection lost - retrying…';
     };
 
@@ -71,12 +90,15 @@
         return s.length > n ? s.slice(0, n) + '…' : s;
     }
 
+    var lastDebugHTML = null;
+
     function refreshDebugLog() {
         fetch('/admin/llm-debug')
         .then(function (r) { return r.json(); })
         .then(function (entries) {
             if (!entries || entries.length === 0) {
-                debugLog.innerHTML = '<p style="color:var(--text-muted);font-size:var(--text-sm)">Waiting for AI activity…</p>';
+                var empty = '<p style="color:var(--text-muted);font-size:var(--text-sm)">Waiting for AI activity…</p>';
+                if (lastDebugHTML !== empty) { debugLog.innerHTML = empty; lastDebugHTML = empty; }
                 return;
             }
 
@@ -91,15 +113,13 @@
                 sawManualState = true;
                 openKeys[key] = el.open;
             });
-            var scrollX = window.scrollX, scrollY = window.scrollY;
 
             var html = entries.map(function (e, i) {
                 var isErr = !!e.error;
                 var time  = new Date(e.at).toLocaleTimeString();
                 var border = isErr ? 'var(--color-danger,#ef4444)' : 'var(--accent)';
                 var key = String(e.at) + '|' + i;
-                var isOpen = sawManualState ? !!openKeys[key] : (i === 0);
-                return '<details class="llm-debug-entry" data-key="' + esc(key) + '"' + (isOpen ? ' open' : '') + ' style="border-left-color:' + border + '">' +
+                return '<details class="llm-debug-entry" data-key="' + esc(key) + '" style="border-left-color:' + border + '">' +
                     '<summary class="llm-debug-summary">' +
                         '<span class="llm-debug-time">' + time + '</span>' +
                         (isErr ? '<span class="badge badge-danger">error</span>' : '') +
@@ -115,7 +135,20 @@
                     (e.error ? '<div class="llm-debug-row"><span class="llm-debug-label">Error</span><pre class="llm-debug-pre llm-debug-pre--error">' + esc(e.error) + '</pre></div>' : '') +
                     '</details>';
             }).join('');
+
+            /* Only touch the DOM when the log content actually changed. A
+             * blind innerHTML rewrite every 1.5s collapses open entries and
+             * fights the user's scroll; skipping the no-op write fixes that. */
+            if (html === lastDebugHTML) return;
+            lastDebugHTML = html;
+
+            var scrollX = window.scrollX, scrollY = window.scrollY;
             debugLog.innerHTML = html;
+            /* Re-apply the user's open/closed choices (or default: newest open). */
+            debugLog.querySelectorAll('.llm-debug-entry').forEach(function (el, i) {
+                var key = el.getAttribute('data-key');
+                el.open = sawManualState ? !!openKeys[key] : (i === 0);
+            });
             window.scrollTo(scrollX, scrollY);
         })
         .catch(function () { /* keep last-rendered log on transient fetch errors */ });
