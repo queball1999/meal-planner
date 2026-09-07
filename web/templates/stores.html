@@ -114,14 +114,7 @@
 
 {{/* ── Per-store scraping modals ──────────────────────────────────────────── */}}
 {{range .Data.Stores}}
-<div class="modal" id="store-cfg-{{.Store.ID}}" hidden role="dialog" aria-modal="true"
-     aria-label="Scraping settings for {{.Store.Name}}">
-    <div class="modal__backdrop" data-modal-close></div>
-    <div class="modal__panel card">
-        <div class="modal__head">
-            <h2 class="form-section__title" style="margin:0">{{icon "cog"}} {{.Store.Name}} - scraping</h2>
-            <button type="button" class="btn btn-ghost btn-sm" data-modal-close aria-label="Close">{{icon "close"}}</button>
-        </div>
+{{template "partials/modal_open.html" dict "ID" (printf "store-cfg-%d" .Store.ID) "Title" (printf "%s - scraping" .Store.Name) "Large" true}}
 
         {{if and .Known .Known.HasAPI}}
         <p class="field-hint">This store has an official price API. Scraping is only used as a fallback.</p>
@@ -231,18 +224,7 @@
 {{end}}
 
 {{/* ── Add a custom store (opened from the header) ─────────────────────────── */}}
-<div class="modal" id="add-store-modal" hidden role="dialog" aria-modal="true"
-     aria-labelledby="add-store-title">
-    <div class="modal__backdrop" data-modal-close></div>
-    <div class="modal__panel card">
-        <div class="modal__head">
-            <h2 class="form-section__title" id="add-store-title" style="margin:0">
-                {{icon "plus"}} Add a custom store
-            </h2>
-            <button type="button" class="btn btn-ghost btn-sm" data-modal-close aria-label="Close">
-                {{icon "close"}}
-            </button>
-        </div>
+{{template "partials/modal_open.html" dict "ID" "add-store-modal" "Title" "Add a custom store" "Form" true}}
         <form method="POST" action="/stores" novalidate>
             {{.CSRFField}}
             <div class="field">
@@ -259,18 +241,15 @@
                     <option value="online">Online</option>
                 </select>
             </div>
-            <div class="form-actions">
-                <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+            <div class="modal-dialog__footer">
+                <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
                 <button type="submit" class="btn btn-primary">{{icon "plus"}} Add store</button>
             </div>
         </form>
-    </div>
-</div>
+{{template "partials/modal_close.html" .}}
 
 <script>
 (function () {
-    function close(m) { m.hidden = true; document.body.style.overflow = ''; }
-
     // Out-of-area chains are hidden, not removed: a household near a state
     // line can still opt in.
     var showAll = document.getElementById('store_show_all');
@@ -280,30 +259,9 @@
         });
     });
 
-    // One opener for every modal on the page: the per-store scraping panels
-    // and the header's "Add custom store".
-    document.querySelectorAll('[data-modal-open]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var m = document.getElementById(btn.dataset.modalOpen);
-            if (!m) return;
-            m.hidden = false;
-            document.body.style.overflow = 'hidden';
-            var first = m.querySelector('input,textarea,select,button');
-            if (first) first.focus();
-        });
-    });
-
-    document.querySelectorAll('[data-modal-close]').forEach(function (el) {
-        el.addEventListener('click', function () {
-            var m = el.closest('.modal');
-            if (m) close(m);
-        });
-    });
-
-    document.addEventListener('keydown', function (e) {
-        if (e.key !== 'Escape') return;
-        document.querySelectorAll('.modal:not([hidden])').forEach(close);
-    });
+    // Opening, closing, Escape and the focus trap all come from modal.js now
+    // that these panels use the shared chrome - this page used to carry its
+    // own copy of all four.
 }());
 </script>
 {{end}}

@@ -451,3 +451,41 @@ function goeatCSRF() {
         });
     });
 })();
+
+// ── Item quick-add ────────────────────────────────────────────────────────
+// One dialog for the page, retargeted per row: a catalog can run to hundreds
+// of items, and one overlay each would be hundreds of overlays in the DOM for
+// a control most of them never open.
+//
+// The two footer buttons are both submits; whichever was clicked sets the
+// destination. Using two buttons rather than a radio pair means the choice and
+// the commit are one gesture instead of two.
+
+(function initQuickAdd() {
+    const form = document.getElementById('quick-add-form');
+    if (!form) return;
+
+    const dest = document.getElementById('quick-add-destination');
+    const qty = document.getElementById('quick-add-qty');
+    const price = document.getElementById('quick-add-price');
+    const nameEl = document.getElementById('quick-add-name');
+    const unitEl = document.getElementById('quick-add-unit');
+
+    document.querySelectorAll('[data-quick-add]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            form.action = '/pantry/items/' + btn.dataset.id + '/quick-add';
+            // textContent: item names are user-supplied.
+            nameEl.textContent = btn.dataset.name;
+            unitEl.textContent = 'Measured in ' + (btn.dataset.unit || 'each') + '.';
+            qty.value = btn.dataset.qty || '1';
+            price.value = '';
+            window.goeat.openModal('quick-add');
+        });
+    });
+
+    form.querySelectorAll('[data-quick-dest]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            dest.value = btn.dataset.quickDest;
+        });
+    });
+})();

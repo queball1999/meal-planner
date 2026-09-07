@@ -54,10 +54,12 @@ page-local opener script, and the native `<dialog class="modal">` panels
 (`partials/ha_setup_dialog.html`, the price editor in
 `partials/shopping_list_body.html`).
 
-Files: `web/templates/stores.html` (drop the inline opener/closer script),
-`web/templates/partials/ha_setup_dialog.html`,
-`web/templates/partials/shopping_list_body.html`,
-`web/static/css/components.css` (remove `.modal:not(dialog)`, `.modal__*`),
+**Reduced scope**: stores.html and the `.modal:not(dialog)` overlay were done
+in commit 4, which had to touch that file anyway. What is left is the two
+native `<dialog class="modal">` panels.
+
+Files: `web/templates/partials/ha_setup_dialog.html`,
+`web/templates/partials/shopping_list_body.html` (the price editor),
 `web/static/css/wizard.css` (remove `dialog.modal` rules).
 Depends on commit 1.
 
@@ -132,7 +134,26 @@ Depends on commit 1.
 ```
 web: add item modals and quick add-to-list/on-hand actions
 ```
-Status: ⬜
+Status: ✅
+
+**Absorbed commit 1b's stores.html migration.** stores.html carried its own
+modal system - markup, opener, closer and Escape handler - and it was already
+the last consumer of the `hidden`-toggled `.modal:not(dialog)` overlay. Moving
+it onto the shared chrome in the same commit let that CSS be deleted rather
+than left behind as a trap, so 1b is now only the two native `<dialog>`
+panels.
+
+**Price is optional and does not block on the network.** With the field left
+blank the quick-add does *not* run the live pricing chain - a lookup takes
+seconds and this is a button press - it falls back to a manual price, then the
+price cache, then goes on unpriced with the line saying so. The normal
+re-price fills it in.
+
+**One handler for both destinations.** List and pantry share the item lookup,
+the quantity handling and the price handling; only the final write differs, and
+splitting them would mean maintaining that agreement twice. The two footer
+buttons are both submits that set the destination, so choosing and committing
+is one gesture.
 
 ---
 
@@ -593,7 +614,7 @@ Status: ⬜
 | 1b | Migrate legacy modals | 1 |
 | 2 | ✅ Auto-filter + skeletons | — |
 | 3 | ✅ Colored pills | — |
-| 4 | Item modals + quick add | 1 |
+| 4 | ✅ Item modals + quick add (absorbed 1b's stores.html) | 1 |
 | 5 | ✅ Item aliases + link status | 1, 3 |
 | 6 | ✅ Shopping total fix + already-have | — |
 | 6b | ✅ Household members + portion sizing | 1 |

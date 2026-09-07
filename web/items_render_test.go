@@ -80,3 +80,85 @@ func TestItemDetailPageExecutes(t *testing.T) {
 		}
 	}
 }
+
+// "Add item" moved out of an inline card into a modal opened from the top
+// right, matching the recipes page, and every row gained a quick-add action.
+func TestItemsPageUsesAddModalAndQuickAdd(t *testing.T) {
+	out := renderPage(t, "items", pageData{
+		AppName: "Go Eat",
+		Page:    "items",
+		Data: itemsPageData{
+			Categories: []string{"Dairy & Eggs"},
+			Items: []itemRow{
+				{Item: &db.Item{ID: 7, Name: "Sharp cheddar cheese", StockUnit: "g", DefaultPurchaseQty: 200, Source: "builtin"}},
+			},
+		},
+	})
+
+	for _, want := range []string{
+		`data-modal-open="add-item"`,
+		`id="add-item"`,
+		`page-header--actions`,
+		// The quick-add control carries what the dialog needs to prefill.
+		`data-quick-add`,
+		`data-id="7"`,
+		`data-unit="g"`,
+		`data-qty="200"`,
+		`id="quick-add"`,
+		`id="quick-add-form"`,
+		`data-quick-dest="pantry"`,
+		`data-quick-dest="list"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("items page missing %q", want)
+		}
+	}
+
+	// The old always-visible add card is gone.
+	if strings.Contains(out, `<h2 class="form-section__title">Add item</h2>`) {
+		t.Error("the inline Add item card is still rendered")
+	}
+}
+
+func TestPantryPageUsesAddModal(t *testing.T) {
+	out := renderPage(t, "pantry", pageData{
+		AppName: "Go Eat",
+		Page:    "pantry",
+		Data:    pantryPageData{},
+	})
+
+	for _, want := range []string{
+		`data-modal-open="add-pantry"`,
+		`id="add-pantry"`,
+		`page-header--actions`,
+		// The barcode scanner keeps its place in the header rather than being
+		// buried in the modal.
+		`href="/scan"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pantry page missing %q", want)
+		}
+	}
+}
+
+// stores.html carried its own modal system - markup, opener, closer, Escape
+// handler. It now uses the shared chrome, so modal.js owns all four.
+func TestStoresPageUsesSharedModalChrome(t *testing.T) {
+	out := renderPage(t, "stores", pageData{
+		AppName: "Go Eat",
+		Page:    "stores",
+		Data:    storesPageData{},
+	})
+
+	if !strings.Contains(out, `id="add-store-modal"`) {
+		t.Error("the add-store dialog is missing")
+	}
+	if !strings.Contains(out, `class="modal-overlay"`) {
+		t.Error("the add-store dialog is not on the shared chrome")
+	}
+	for _, dead := range []string{"modal__backdrop", "modal__panel", "modal__head", "document.body.style.overflow"} {
+		if strings.Contains(out, dead) {
+			t.Errorf("stores page still carries its old modal system (%q)", dead)
+		}
+	}
+}

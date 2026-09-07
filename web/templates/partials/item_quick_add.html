@@ -1,0 +1,47 @@
+{{/* The shared quick-add dialog: put a catalog item straight onto the
+     shopping list or into the pantry.
+
+     One dialog for the page, retargeted per row by main.js's quick-add
+     wiring - a catalog can run to hundreds of items, and one overlay each
+     would be hundreds of overlays in the DOM for a control most of them never
+     open.
+
+     Called with the full pageData as dot. `RedirectTo` says where the POST
+     comes back to, so the button works the same from the catalog and from the
+     pantry. */}}
+{{define "itemQuickAdd"}}
+{{template "partials/modal_open.html" dict "ID" "quick-add" "Title" "Add to list or pantry"}}
+  <form method="POST" id="quick-add-form" action="">
+    {{.CSRFField}}
+    <input type="hidden" name="redirect_to" value="{{.RedirectTo}}">
+    <input type="hidden" name="destination" id="quick-add-destination" value="list">
+
+    <p id="quick-add-name" class="text-muted"></p>
+
+    <div class="field-row">
+      <div class="field" style="flex:1">
+        <label class="field-label" for="quick-add-qty">How much?</label>
+        <input class="field-input" id="quick-add-qty" name="quantity"
+               type="number" step="any" min="0.01">
+        <p class="field-hint" id="quick-add-unit"></p>
+      </div>
+      <div class="field" style="flex:1">
+        <label class="field-label" for="quick-add-price">Price each (optional)</label>
+        <input class="field-input" id="quick-add-price" name="price"
+               type="number" step="0.01" min="0" placeholder="e.g. 3.49">
+        <p class="field-hint">Left blank, the last price the app knows is used.</p>
+      </div>
+    </div>
+
+    <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-ghost" value="pantry" data-quick-dest="pantry">
+        {{icon "fridge-outline"}} Add to pantry
+      </button>
+      <button type="submit" class="btn btn-primary" value="list" data-quick-dest="list">
+        {{icon "cart"}} Add to list
+      </button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
+{{end}}

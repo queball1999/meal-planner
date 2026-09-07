@@ -1,10 +1,18 @@
 {{define "title"}}Pantry - {{.AppName}}{{end}}
 {{define "content"}}
-<div class="page-header">
-    <h1 class="page-title">{{icon "fridge-outline"}} Pantry</h1>
-    <p class="page-subtitle">
-        Track ingredients you already have. Pantry items are deducted from future shopping lists.
-    </p>
+<div class="page-header page-header--actions">
+    <div>
+        <h1 class="page-title">{{icon "fridge-outline"}} Pantry</h1>
+        <p class="page-subtitle">
+            Track ingredients you already have. Pantry items are deducted from future shopping lists.
+        </p>
+    </div>
+    <div class="page-header__actions">
+        <a href="/scan" class="btn btn-ghost">{{icon "barcode"}} Scan barcode</a>
+        <button type="button" class="btn btn-primary" data-modal-open="add-pantry">
+            {{icon "plus"}} Add item
+        </button>
+    </div>
 </div>
 
 {{template "pantryTabs" .}}
@@ -24,38 +32,6 @@
     </div>
 </form>
 
-<div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">Add item</h2>
-
-    <div style="margin-bottom:0.75rem;display:flex;gap:0.5rem;align-items:center">
-        <a href="/scan" class="btn btn--ghost btn--sm">{{icon "barcode"}} Scan barcode</a>
-        <span style="color:var(--color-text-muted);font-size:0.8rem">or enter manually below</span>
-    </div>
-
-    <form method="POST" action="/pantry" class="pref-form">
-        {{.CSRFField}}
-        <div class="field-row">
-            <div class="field" style="flex:2">
-                <label class="field-label" for="pantry-name">Ingredient</label>
-                <input class="field-input" id="pantry-name" name="name"
-                       type="text" placeholder="e.g. chicken breast" autocomplete="off" required>
-            </div>
-            <div class="field field--sm">
-                <label class="field-label" for="pantry-qty">Quantity</label>
-                <input class="field-input" id="pantry-qty" name="quantity"
-                       type="number" min="0.01" step="0.01" placeholder="2" value="1">
-            </div>
-            <div class="field field--sm">
-                <label class="field-label" for="pantry-unit">Unit</label>
-                <input class="field-input" id="pantry-unit" name="unit"
-                       type="text" placeholder="lb" value="each">
-            </div>
-            <div class="field field--action">
-                <button type="submit" class="btn btn--primary">{{icon "plus"}} Add</button>
-            </div>
-        </div>
-    </form>
-</div>
 
 {{if .Data.Items}}
 <div class="card">
@@ -119,4 +95,32 @@ document.addEventListener('barcode:scanned', function(e) {
     document.getElementById('hid-scan-form').submit();
 });
 </script>
+
+{{template "partials/modal_open.html" dict "ID" "add-pantry" "Title" "Add to the pantry" "Form" true}}
+  <form method="POST" action="/pantry" class="pref-form">
+{{.CSRFField}}
+        <div class="field-row">
+            <div class="field" style="flex:2">
+                <label class="field-label" for="pantry-name">Ingredient</label>
+                <input class="field-input" id="pantry-name" name="name"
+                       type="text" placeholder="e.g. chicken breast" autocomplete="off" required>
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="pantry-qty">Quantity</label>
+                <input class="field-input" id="pantry-qty" name="quantity"
+                       type="number" min="0.01" step="0.01" placeholder="2" value="1">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="pantry-unit">Unit</label>
+                <input class="field-input" id="pantry-unit" name="unit"
+                       type="text" placeholder="lb" value="each">
+            </div>
+        </div>
+        <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "plus"}} Add item</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
+
 {{end}}

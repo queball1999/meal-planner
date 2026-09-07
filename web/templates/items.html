@@ -1,11 +1,16 @@
 {{define "title"}}Items catalog - {{.AppName}}{{end}}
 {{define "content"}}
-<div class="page-header">
-    <h1 class="page-title">{{icon "tag"}} Items catalog</h1>
-    <p class="page-subtitle">
-        Canonical grocery items - photo, category, stock unit, and per-store packages.
-        Recipes, meals, the pantry, and the shopping list all resolve to these.
-    </p>
+<div class="page-header page-header--actions">
+    <div>
+        <h1 class="page-title">{{icon "tag"}} Items catalog</h1>
+        <p class="page-subtitle">
+            Canonical grocery items - photo, category, stock unit, and per-store packages.
+            Recipes, meals, the pantry, and the shopping list all resolve to these.
+        </p>
+    </div>
+    <button type="button" class="btn btn-primary" data-modal-open="add-item">
+        {{icon "plus"}} Add item
+    </button>
 </div>
 
 {{template "pantryTabs" .}}
@@ -33,40 +38,6 @@
     </div>
 </form>
 
-<div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">Add item</h2>
-    <form method="POST" action="/pantry/items" class="pref-form">
-        {{.CSRFField}}
-        <div class="field-row">
-            <div class="field" style="flex:2">
-                <label class="field-label" for="item-name">Name</label>
-                <input class="field-input" id="item-name" name="name" type="text"
-                       placeholder="e.g. Sharp cheddar cheese" autocomplete="off" required>
-            </div>
-            <div class="field field--sm">
-                <label class="field-label" for="item-category">Category</label>
-                <input class="field-input" id="item-category" name="category" type="text"
-                       placeholder="Dairy & Eggs" list="item-categories" autocomplete="off">
-                <datalist id="item-categories">
-                    {{range .Data.Categories}}<option value="{{.}}"></option>{{end}}
-                </datalist>
-            </div>
-            <div class="field field--sm">
-                <label class="field-label" for="item-unit">Stock unit</label>
-                <input class="field-input" id="item-unit" name="stock_unit" type="text"
-                       placeholder="g" value="each">
-            </div>
-            <div class="field field--sm">
-                <label class="field-label" for="item-qty">Default buy qty</label>
-                <input class="field-input" id="item-qty" name="default_purchase_qty"
-                       type="number" min="0.01" step="0.01" value="1">
-            </div>
-            <div class="field field--action">
-                <button type="submit" class="btn btn-primary">{{icon "plus"}} Add</button>
-            </div>
-        </div>
-    </form>
-</div>
 
 {{if .Data.Items}}
 <div class="card">
@@ -99,6 +70,11 @@
                     <span class="badge {{pill "source" .Source}}">{{.Source}}</span>
                 </td>
                 <td data-label="">
+                    <button type="button" class="btn btn-ghost btn-sm"
+                            data-quick-add data-id="{{.ID}}" data-name="{{.Name}}"
+                            data-unit="{{.StockUnit}}" data-qty="{{.DefaultPurchaseQty}}"
+                            aria-label="Add {{.Name}} to the list or pantry"
+                            title="Add to list or pantry">{{icon "cart"}}</button>
                     <a href="/pantry/items/{{.ID}}" class="btn btn-ghost btn-sm"
                        aria-label="Edit {{.Name}}" title="Edit">{{icon "pencil"}}</a>
                     <form method="POST" action="/pantry/items/{{.ID}}/delete" style="display:inline"
@@ -127,4 +103,42 @@
     <p class="skeleton-card__body">Add an item above, or generate a plan - ingredients auto-create items.</p>
 </div>
 {{end}}
+
+{{template "partials/modal_open.html" dict "ID" "add-item" "Title" "Add a catalog item" "Form" true}}
+  <form method="POST" action="/pantry/items" class="pref-form">
+{{.CSRFField}}
+        <div class="field-row">
+            <div class="field" style="flex:2">
+                <label class="field-label" for="item-name">Name</label>
+                <input class="field-input" id="item-name" name="name" type="text"
+                       placeholder="e.g. Sharp cheddar cheese" autocomplete="off" required>
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="item-category">Category</label>
+                <input class="field-input" id="item-category" name="category" type="text"
+                       placeholder="Dairy & Eggs" list="item-categories" autocomplete="off">
+                <datalist id="item-categories">
+                    {{range .Data.Categories}}<option value="{{.}}"></option>{{end}}
+                </datalist>
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="item-unit">Stock unit</label>
+                <input class="field-input" id="item-unit" name="stock_unit" type="text"
+                       placeholder="g" value="each">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="item-qty">Default buy qty</label>
+                <input class="field-input" id="item-qty" name="default_purchase_qty"
+                       type="number" min="0.01" step="0.01" value="1">
+            </div>
+        </div>
+        <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "plus"}} Add item</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
+
+{{template "itemQuickAdd" dict "CSRFField" .CSRFField "RedirectTo" "/pantry/items"}}
+
 {{end}}

@@ -85,6 +85,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /pantry/items/{id}", requireAuth(http.HandlerFunc(s.handleItemDetail)))
 	mux.Handle("POST /pantry/items/{id}/edit", requireAuth(http.HandlerFunc(s.handleItemEdit)))
 	mux.Handle("POST /pantry/items/{id}/delete", requireAuth(http.HandlerFunc(s.handleItemDelete)))
+	mux.Handle("POST /pantry/items/{id}/quick-add", requireAuth(http.HandlerFunc(s.handleItemQuickAdd)))
 	mux.Handle("POST /pantry/items/{id}/image", requireAuth(http.HandlerFunc(s.handleItemImageReplace)))
 	mux.Handle("POST /pantry/items/{id}/packages", requireAuth(http.HandlerFunc(s.handleItemPackageUpsert)))
 	mux.Handle("POST /pantry/items/{id}/packages/{pkgID}/delete", requireAuth(http.HandlerFunc(s.handleItemPackageDelete)))
