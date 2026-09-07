@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 )
 
@@ -40,7 +41,7 @@ func parseMemberIDs(raw string) []int64 {
 
 func (s *store) ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, plan_id, date, headcount, note, member_ids, portions
+		SELECT id, plan_id, date, headcount, note, member_ids, portions, status
 		FROM plan_days WHERE plan_id = ?
 		ORDER BY date`, planID)
 	if err != nil {
@@ -52,7 +53,7 @@ func (s *store) ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, err
 	for rows.Next() {
 		var d PlanDay
 		var memberIDs string
-		if err := rows.Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions); err != nil {
+		if err := rows.Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions, &d.Status); err != nil {
 			return nil, err
 		}
 		d.MemberIDs = parseMemberIDs(memberIDs)
@@ -86,9 +87,9 @@ func (s *store) GetPlanDay(ctx context.Context, planID int64, date string) (*Pla
 	var d PlanDay
 	var memberIDs string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, plan_id, date, headcount, note, member_ids, portions
+		SELECT id, plan_id, date, headcount, note, member_ids, portions, status
 		FROM plan_days WHERE plan_id = ? AND date = ?`, planID, date).
-		Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions)
+		Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions, &d.Status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -210,4 +211,61 @@ func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string,
 		return res, err
 	}
 	return res, nil
+}
+
+// SetPlanDayStatus marks a day cooking / eating out / skipped.
+//
+// Deliberately separate from UpsertPlanDay rather than a field on it: the
+// upsert runs on plan generation and on every headcount change, and a status
+// carried on those params would be "cooking" by default at each of those call
+// sites, silently un-marking a day the user had marked eating out.
+//
+// The row is created if the day has none, so a status can be set on a plan
+// generated before this column existed.
+func (s *store) SetPlanDayStatus(ctx context.Context, planID int64, date, status string) error {
+	if !ValidDayStatus(status) {
+		return fmt.Errorf("unknown day status %q", status)
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO plan_days (plan_id, date, headcount, status)
+		VALUES (?, ?, 0, ?)
+		ON CONFLICT(plan_id, date) DO UPDATE SET status = excluded.status`,
+		planID, date, status)
+	return err
+}
+
+// ListLeftoversSourcedFrom returns the meals that eat leftovers cooked on the
+// given day - the meals that lose their food if that day stops being cooked.
+//
+// This is the dependency the day-status dialog has to surface: marking Tuesday
+// "eating out" silently empties Wednesday's dinner if Wednesday was living off
+// Tuesday's batch, and a plan that quietly loses a meal is worse than one that
+// asks.
+func (s *store) ListLeftoversSourcedFrom(ctx context.Context, planID int64, date string) ([]*Meal, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.plan_id, m.day, m.slot, m.title, m.effort, m.servings,
+		       m.cooked_portions, m.is_leftover, m.leftover_source_meal_id,
+		       m.locked, m.ai_run_id
+		FROM meals m
+		JOIN meals src ON src.id = m.leftover_source_meal_id
+		WHERE m.plan_id = ? AND m.is_leftover = 1 AND src.day = ?
+		ORDER BY m.day, m.slot`, planID, date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Meal
+	for rows.Next() {
+		var m Meal
+		var isLeftover int
+		if err := rows.Scan(&m.ID, &m.PlanID, &m.Day, &m.Slot, &m.Title, &m.Effort,
+			&m.Servings, &m.CookedPortions, &isLeftover, &m.LeftoverSourceMealID,
+			&m.Locked, &m.AIRunID); err != nil {
+			return nil, err
+		}
+		m.IsLeftover = isLeftover != 0
+		out = append(out, &m)
+	}
+	return out, rows.Err()
 }

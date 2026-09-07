@@ -4,7 +4,7 @@ Date: 2026-09-06
 Spec ref: §4 (UI), §5.5/§5.7 (plan lifecycle), §6.3 (items), §7 (shopping list), §9 (AI)
 Baseline: `d916d02` (Phase 8 complete, tree clean)
 
-Phase 9 turns the backlog into **14 commits**, ordered so shared UI
+Phase 9 turns the backlog into **16 commits**, ordered so shared UI
 primitives land before the features that depend on them.
 
 Legend: ✅ done · 🔨 in progress · ⬜ not started
@@ -295,7 +295,55 @@ Files: `db/migrations/00020_day_status.sql` (new), `db/plan_days.go`
 Depends on commits 1, 2, 6b.
 
 ```
-plan: autosave day headcount and add eating-out/skip/leftovers day status
+plan: autosave day headcount and add eating-out/skip day status
+```
+Status: ✅
+
+**Three statuses, not four.** A day you eat leftovers is already visible as
+leftover meal cards on that day (`meals.is_leftover`), so `leftovers` as a
+day status would be a second, separately-editable copy of the same fact. The
+dropdown is cooking / eating out / skipped.
+
+**Where the filter lives.** A non-cooking day contributes nothing to the
+shopping list, and that is enforced once in `ListIngredientsByPlan` - every
+list-building path (CostPlan, EnsureShoppingList, a reprice after a rescale)
+reads its ingredients through it, so a day taken off the plan disappears from
+the list whichever runs next. LEFT JOIN, so a plan with no day rows is not
+silently emptied.
+
+**Status is not on UpsertPlanDayParams**, deliberately: that upsert runs on
+plan generation and on every people-picker save, and a status field on it
+would default to "cooking" at each of those call sites and silently un-mark a
+day. `SetPlanDayStatus` is separate, and there is a test for the interaction.
+
+**Deferred to 7b: "pick a replacement meal".** The dialog offers *cascade the
+status* and *clear the slot*, both complete. Materialising a replacement from
+a saved recipe needs a recipe→meal path (meal + meal_recipe + scaled
+meal_ingredients, then a reprice) that does not exist yet, and the same engine
+is what commit 11's `swap_meal` tool needs - so it is built once, properly, in
+its own commit rather than half-built here.
+
+---
+
+### 7b. plan: materialise a meal from a saved recipe
+The one piece commit 7 left out: filling an emptied slot with an actual meal.
+
+Creates a `meals` row plus its `meal_recipes` and `meal_ingredients` from a
+`catalog_recipes` entry, scaled to the day's portion total, then reprices.
+Surfaces as a "pick a replacement" option in the day-status dialog and as a
+per-slot "add a meal" action on an empty card.
+
+Built as its own commit because commit 11's `swap_meal` / `edit_meal` tools
+need exactly this engine, and building it twice - once inline in a dialog,
+once for the agent - is how the two drift apart.
+
+Files: `plan/materialize.go` (new), `plan/materialize_test.go` (new),
+`db/meals.go`, `db/meal_ingredients.go`, `web/handlers_plan.go`,
+`web/templates/plan.html`, `web/routes.go`.
+Depends on commits 6b, 7.
+
+```
+plan: create a meal from a saved recipe, scaled to the day
 ```
 Status: ⬜
 
@@ -412,7 +460,8 @@ Status: ⬜
 | 5 | Item aliases + link status | 1, 3 |
 | 6 | ✅ Shopping total fix + already-have | — |
 | 6b | ✅ Household members + portion sizing | 1 |
-| 7 | Day headcount autosave + day status | 1, 2, 6b |
+| 7 | ✅ Day headcount autosave + day status | 1, 2, 6b |
+| 7b | Meal from saved recipe | 6b, 7 |
 | 8 | Dashboard hover cards + chip cleanup | 1 |
 | 9 | About connectivity live | — |
 | 10 | Persist generated recipes | 5 |

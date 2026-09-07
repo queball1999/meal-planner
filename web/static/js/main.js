@@ -423,3 +423,31 @@ function goeatCSRF() {
 
     restoreFocus();
 })();
+
+// ── Auto-submit ───────────────────────────────────────────────────────────
+// A form marked data-autosubmit saves itself on a debounce instead of waiting
+// for a Save button, and navigates to the server's response the way a normal
+// submit would.
+//
+// Distinct from data-autosave above, which posts in the background and shows a
+// toast: this is for a form whose result changes the page around it - the plan
+// day's people picker rescales that day's recipes and rebuilds the shopping
+// list, so the page has to come back rendered from the new state.
+//
+// Distinct from data-autofilter too: that is a GET navigation that restores the
+// caret afterwards; this is a POST whose response is a redirect.
+
+(function initAutoSubmit() {
+    const DEBOUNCE_MS = 700;
+
+    document.querySelectorAll('form[data-autosubmit]').forEach(function (form) {
+        let timer;
+        form.addEventListener('change', function () {
+            clearTimeout(timer);
+            // Longer than the filter debounce on purpose: ticking three people
+            // off a list is one intent, and firing a rescale between each tick
+            // would be three round trips and two wrong shopping lists.
+            timer = setTimeout(function () { form.submit(); }, DEBOUNCE_MS);
+        });
+    });
+})();

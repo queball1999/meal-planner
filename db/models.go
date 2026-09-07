@@ -674,6 +674,25 @@ type PlanDay struct {
 	// what a plan from last month was scaled to.
 	MemberIDs []int64
 	Portions  float64
+
+	// Status is "cooking" (the default), "eating_out", or "skipped". A day
+	// that is not being cooked contributes nothing to the shopping list.
+	Status string
+}
+
+// Day statuses for PlanDay.Status. Mirrors the CHECK constraint in
+// migrations/00019_day_status.sql.
+const (
+	DayCooking   = "cooking"
+	DayEatingOut = "eating_out"
+	DaySkipped   = "skipped"
+)
+
+// ValidDayStatus reports whether s is a status the plan_days CHECK will
+// accept, so a bad form value comes back as a message rather than a raw
+// SQLite constraint error.
+func ValidDayStatus(s string) bool {
+	return s == DayCooking || s == DayEatingOut || s == DaySkipped
 }
 
 // HouseholdMember is one person the household cooks for (§4.5). PortionFactor

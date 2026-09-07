@@ -60,6 +60,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGeneratePage)))
 	mux.Handle("GET /plan/generate/status", requireAuth(http.HandlerFunc(s.handlePlanGenerateStatus)))
 	mux.Handle("POST /plan/days/{date}/headcount", requireAuth(http.HandlerFunc(s.handlePlanHeadcount)))
+	mux.Handle("GET /plan/days/{date}/status-impact", requireAuth(http.HandlerFunc(s.handleDayStatusImpact)))
+	mux.Handle("POST /plan/days/{date}/status", requireAuth(http.HandlerFunc(s.handleDayStatus)))
 	mux.Handle("POST /plan/{id}/delete", requireAuth(http.HandlerFunc(s.handlePlanDelete)))
 
 	mux.Handle("GET /admin/prices", requireAuth(http.HandlerFunc(s.handleAdminPricesPage)))

@@ -163,6 +163,7 @@ type Store interface {
 	// ── Meals - additional (§5.2, §5.6, §7.6) ───────────────────────────────
 
 	GetMealByID(ctx context.Context, mealID int64) (*Meal, error)
+	DeleteMeal(ctx context.Context, mealID int64) error
 	UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error
 	UpdateMealTitle(ctx context.Context, mealID int64, title, effort string, servings, cookedPortions int) error
 	DeleteMealIngredients(ctx context.Context, mealID int64) error
@@ -180,6 +181,8 @@ type Store interface {
 
 	UpsertPlanDay(ctx context.Context, p UpsertPlanDayParams) error
 	GetPlanDay(ctx context.Context, planID int64, date string) (*PlanDay, error)
+	SetPlanDayStatus(ctx context.Context, planID int64, date, status string) error
+	ListLeftoversSourcedFrom(ctx context.Context, planID int64, date string) ([]*Meal, error)
 	ScaleMealsForDay(ctx context.Context, planID int64, date string, portions float64) (ScaleDayResult, error)
 
 	// ── Pantry items (§5.4) ───────────────────────────────────────────────────

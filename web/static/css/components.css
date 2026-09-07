@@ -1557,3 +1557,95 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     text-decoration: line-through;
     color: var(--text-muted);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PLAN DAY CONTROLS
+   Who is eating, and whether the day is being cooked at all. Both autosave -
+   there is no Save button to press.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.plan-col__controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    align-items: stretch;
+}
+
+.plan-col__headcount {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.field-input--sm {
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--text-xs);
+}
+
+/* A day that is not being cooked: dimmed, so a week with two nights out reads
+ * at a glance. Its meals stay visible - the plan is still a record of what was
+ * planned, and the day can be switched back. */
+.plan-col--off {
+    opacity: 0.55;
+}
+
+/* ── People picker ────────────────────────────────────────────────────────
+ * A <details> rather than a <select multiple>: multi-selects are unusable on
+ * touch, and this needs to show each person's portion size next to their name.
+ * The menu is absolutely positioned so opening it does not push the day's meal
+ * cards down the column.
+ */
+
+.people-picker {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.people-picker__summary {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    list-style: none;
+}
+
+.people-picker__summary::-webkit-details-marker { display: none; }
+
+.people-picker__summary:hover { border-color: var(--accent); }
+
+.people-picker__summary svg { width: 14px; height: 14px; }
+
+.people-picker__menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: max(100%, 12rem);
+    padding: var(--sp-2);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+}
+
+.people-picker__option {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.people-picker__option:hover { background: var(--accent-bg); }
+
+/* The name takes the slack so every portion multiplier lines up on the right. */
+.people-picker__option > span:first-of-type { flex: 1; }

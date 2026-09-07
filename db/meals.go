@@ -174,3 +174,31 @@ func scanMealRow(row *sql.Row) (*Meal, error) {
 	m.Locked = locked == 1
 	return &m, nil
 }
+
+// DeleteMeal removes one meal and everything hanging off it.
+//
+// meal_recipes and meal_ingredients cascade (00004_plans.sql), but
+// leftover_source_meal_id does not: it is a plain reference, so deleting a
+// meal that some later day was eating leftovers from would leave that day
+// pointing at a row that no longer exists. Those references are cleared first,
+// turning any such meal back into an ordinary one rather than a dangling
+// leftover.
+//
+// Both steps run in one transaction so a failure cannot leave half of it done.
+func (s *store) DeleteMeal(ctx context.Context, mealID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE meals SET is_leftover = 0, leftover_source_meal_id = NULL
+		WHERE leftover_source_meal_id = ?`, mealID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM meals WHERE id = ?`, mealID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

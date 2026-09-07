@@ -32,6 +32,15 @@ type calendarDay struct {
 	DateLabel string // "Mon Jan 2"
 	Headcount int
 	Slots     map[string]calendarSlot // "breakfast"|"lunch"|"dinner"
+
+	// Status is "cooking" | "eating_out" | "skipped"; StatusLabel is how it
+	// reads in the day header. A non-cooking day contributes nothing to the
+	// shopping list.
+	Status      string
+	StatusLabel string
+	// EatingIDs is which household members are down to eat that day, used to
+	// pre-tick the people picker.
+	EatingIDs map[int64]bool
 }
 
 type planPageData struct {
@@ -44,6 +53,7 @@ type planPageData struct {
 	OverBudget        bool
 	ConfidenceSummary string
 	Days              []calendarDay
+	Members           []*db.HouseholdMember // household people picker; empty falls back to a headcount box
 	HasLLM            bool
 	ReadOnly          bool   // true when viewing a past or canceled plan
 	Canceled          bool   // true when viewing a plan superseded by a regenerate
@@ -195,12 +205,13 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Load per-day headcount overrides.
+	// Load per-day overrides: who is eating and whether the day is cooked.
 	planDays, _ := s.store.ListPlanDays(ctx, p.ID)
-	headcountByDate := make(map[string]int, len(planDays))
+	dayByDate := make(map[string]*db.PlanDay, len(planDays))
 	for _, pd := range planDays {
-		headcountByDate[pd.Date] = pd.Headcount
+		dayByDate[pd.Date] = pd
 	}
+	members, _ := s.store.ListHouseholdMembers(ctx, hh.ID)
 
 	// Build the 7-day column slice ordered by date.
 	weekStart, _ := time.Parse("2006-01-02", p.WeekStart)
@@ -218,14 +229,35 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		hc := hh.HouseholdSize
-		if override, ok := headcountByDate[dateStr]; ok && override > 0 {
-			hc = override
+		status := db.DayCooking
+		eating := map[int64]bool{}
+		if pd, ok := dayByDate[dateStr]; ok {
+			if pd.Headcount > 0 {
+				hc = pd.Headcount
+			}
+			if pd.Status != "" {
+				status = pd.Status
+			}
+			for _, id := range pd.MemberIDs {
+				eating[id] = true
+			}
+		}
+		// A day with members but no recorded selection means "everyone" -
+		// which is what generation seeds, and what an unticked picker would
+		// otherwise misrepresent as nobody.
+		if len(eating) == 0 {
+			for _, m := range members {
+				eating[m.ID] = true
+			}
 		}
 		days[i] = calendarDay{
-			Date:      dateStr,
-			DateLabel: date.Format("Mon Jan 2"),
-			Headcount: hc,
-			Slots:     slots,
+			Date:        dateStr,
+			DateLabel:   date.Format("Mon Jan 2"),
+			Headcount:   hc,
+			Slots:       slots,
+			Status:      status,
+			StatusLabel: dayStatusLabel[status],
+			EatingIDs:   eating,
 		}
 	}
 
@@ -236,6 +268,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 
 	s.renderWithPage(w, r, "plan", planNavSlug(tab), planPageData{
 		HasPlan:           true,
+		Members:           members,
 		PlanID:            p.ID,
 		WeekStart:         p.WeekStart,
 		WeekEnd:           p.WeekEnd,
