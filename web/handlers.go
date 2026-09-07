@@ -45,6 +45,104 @@ type dashPageData struct {
 	StatsPlans      int
 	RecentPlans     []*db.Plan // up to 8 for the history strip
 	HasLLM          bool
+	Calendar        dashCalendar
+}
+
+// dashCalendar is the dashboard's schedule widget: a week (default) or month
+// grid of scheduled meals.
+type dashCalendar struct {
+	Mode     string         // "week" | "month"
+	Title    string         // "Sep 1 – Sep 7" or "September 2026"
+	PrevURL  string         // link to the previous week/month
+	NextURL  string         // link to the next week/month
+	TodayURL string         // link back to the current week/month
+	WeekURL  string         // toggle target for week mode
+	MonthURL string         // toggle target for month mode
+	Rows     [][]calDayCell // one inner slice per calendar row (7 cells)
+	Empty    bool           // true when no meals fall in the visible range
+}
+
+type calDayCell struct {
+	Date    string // YYYY-MM-DD
+	DayNum  int    // day-of-month
+	Weekday string // "Mon"
+	InScope bool   // month view: day belongs to the displayed month
+	IsToday bool
+	Meals   []calMeal
+}
+
+type calMeal struct {
+	MealID int64
+	Slot   string // breakfast | lunch | dinner
+	Title  string
+}
+
+// buildDashCalendar assembles the calendar widget from the ?cal / ?calref query
+// params and the meals visible in the resulting date range.
+func buildDashCalendar(r *http.Request, store db.Store, householdID int64, weekStartDay string, now time.Time) dashCalendar {
+	mode := r.URL.Query().Get("cal")
+	if mode != "month" {
+		mode = "week"
+	}
+	today := now.UTC().Truncate(24 * time.Hour)
+	ref := today
+	if v := r.URL.Query().Get("calref"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			ref = t.UTC().Truncate(24 * time.Hour)
+		}
+	}
+
+	cal := dashCalendar{Mode: mode}
+	var gridStart time.Time
+	var rowCount int
+
+	if mode == "month" {
+		monthStart := time.Date(ref.Year(), ref.Month(), 1, 0, 0, 0, 0, time.UTC)
+		gs, _ := plan.WeekBounds(monthStart, weekStartDay)
+		gridStart = gs
+		rowCount = 6
+		cal.Title = ref.Format("January 2006")
+		cal.PrevURL = "/?cal=month&calref=" + monthStart.AddDate(0, -1, 0).Format("2006-01-02")
+		cal.NextURL = "/?cal=month&calref=" + monthStart.AddDate(0, 1, 0).Format("2006-01-02")
+	} else {
+		ws, we := plan.WeekBounds(ref, weekStartDay)
+		gridStart = ws
+		rowCount = 1
+		cal.Title = ws.Format("Jan 2") + " – " + we.Format("Jan 2")
+		cal.PrevURL = "/?cal=week&calref=" + ws.AddDate(0, 0, -7).Format("2006-01-02")
+		cal.NextURL = "/?cal=week&calref=" + ws.AddDate(0, 0, 7).Format("2006-01-02")
+	}
+	cal.TodayURL = "/?cal=" + mode
+	cal.WeekURL = "/?cal=week&calref=" + ref.Format("2006-01-02")
+	cal.MonthURL = "/?cal=month&calref=" + ref.Format("2006-01-02")
+
+	gridEnd := gridStart.AddDate(0, 0, rowCount*7-1)
+	meals, _ := store.ListMealsByHouseholdRange(r.Context(), householdID,
+		gridStart.Format("2006-01-02"), gridEnd.Format("2006-01-02"))
+	byDay := make(map[string][]calMeal, len(meals))
+	for _, m := range meals {
+		byDay[m.Day] = append(byDay[m.Day], calMeal{MealID: m.ID, Slot: m.Slot, Title: m.Title})
+	}
+	cal.Empty = len(meals) == 0
+
+	cal.Rows = make([][]calDayCell, rowCount)
+	for row := 0; row < rowCount; row++ {
+		cells := make([]calDayCell, 7)
+		for col := 0; col < 7; col++ {
+			d := gridStart.AddDate(0, 0, row*7+col)
+			ds := d.Format("2006-01-02")
+			cells[col] = calDayCell{
+				Date:    ds,
+				DayNum:  d.Day(),
+				Weekday: d.Format("Mon"),
+				InScope: mode == "week" || d.Month() == ref.Month(),
+				IsToday: ds == today.Format("2006-01-02"),
+				Meals:   byDay[ds],
+			}
+		}
+		cal.Rows[row] = cells
+	}
+	return cal
 }
 
 // handleDashboard serves the main dashboard. RequireAuth middleware guarantees
@@ -70,7 +168,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	if p, _ := s.store.GetLatestPlan(ctx, hh.ID); p != nil {
 		data.HasPlan = true
-		data.PlanStatus = p.Status
+		data.PlanStatus = s.reconcilePlanStatus(ctx, hh.ID, p)
 		data.WeekLabel = fmt.Sprintf("%s - %s",
 			fmtMonthDay(p.WeekStart), fmtMonthDay(p.WeekEnd))
 		data.BudgetLabel = fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100)
@@ -96,6 +194,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 		data.RecentPlans = all
 	}
+
+	data.Calendar = buildDashCalendar(r, s.store, hh.ID, s.cfg.WeekStartDay, time.Now())
 
 	s.render(w, r, "index", data)
 }

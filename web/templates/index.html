@@ -12,7 +12,7 @@
     {{if $d.HasPlan}}
         {{if eq $d.PlanStatus "generating"}}
         <div class="plan-status plan-status--generating">
-            <span class="plan-status__icon" aria-hidden="true">{{icon "autorenew"}}</span>
+            <span class="plan-status__icon icon-spin" aria-hidden="true">{{icon "autorenew"}}</span>
             <div>
                 <strong>Generating your plan…</strong>
                 <p class="plan-status__sub">This usually takes under a minute.</p>
@@ -39,7 +39,8 @@
             <div class="plan-status__actions">
                 <a href="/plan" class="btn btn--primary btn--sm">{{icon "calendar-week"}} View plan</a>
                 {{if $d.HasLLM}}
-                <form method="POST" action="/plan/generate" style="display:inline">
+                <form method="POST" action="/plan/generate" style="display:inline"
+                      onsubmit="return confirm('This replaces your current plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference. Continue?');">
                     {{$.CSRFField}}
                     <button type="submit" class="btn btn--outline btn--sm">
                         {{icon "autorenew"}} Regenerate
@@ -93,6 +94,52 @@
     </div>
 </div>
 
+{{/* ── Schedule calendar widget ─────────────────────────────────────────── */}}
+{{$cal := $d.Calendar}}
+<div class="card cal-card" style="margin-bottom:1.5rem">
+    <div class="cal-toolbar">
+        <div class="cal-toolbar__nav">
+            <a href="{{$cal.PrevURL}}" class="btn-icon" title="Previous {{$cal.Mode}}" aria-label="Previous {{$cal.Mode}}">{{icon "arrow-left"}}</a>
+            <a href="{{$cal.TodayURL}}" class="btn btn--ghost btn--sm" title="Jump to current {{$cal.Mode}}">Today</a>
+            <a href="{{$cal.NextURL}}" class="btn-icon" title="Next {{$cal.Mode}}" aria-label="Next {{$cal.Mode}}"><span style="display:inline-flex;transform:rotate(180deg)">{{icon "arrow-left"}}</span></a>
+            <h2 class="cal-toolbar__title">{{$cal.Title}}</h2>
+        </div>
+        <div class="cal-toolbar__modes" role="group" aria-label="Calendar range">
+            <a href="{{$cal.WeekURL}}"  class="btn btn--sm {{if eq $cal.Mode "week"}}btn--primary{{else}}btn--ghost{{end}}">Week</a>
+            <a href="{{$cal.MonthURL}}" class="btn btn--sm {{if eq $cal.Mode "month"}}btn--primary{{else}}btn--ghost{{end}}">Month</a>
+        </div>
+    </div>
+
+    <div class="cal-grid cal-grid--{{$cal.Mode}}">
+        {{range (index $cal.Rows 0)}}
+        <div class="cal-grid__dow">{{.Weekday}}</div>
+        {{end}}
+
+        {{range $cal.Rows}}
+        {{range .}}
+        <div class="cal-cell{{if not .InScope}} cal-cell--muted{{end}}{{if .IsToday}} cal-cell--today{{end}}">
+            <div class="cal-cell__head">
+                <span class="cal-cell__num">{{.DayNum}}</span>
+                {{if .Meals}}<span class="cal-cell__dot" title="{{len .Meals}} scheduled" aria-hidden="true">{{icon "fork"}}</span>{{end}}
+            </div>
+            <ul class="cal-cell__meals">
+                {{range .Meals}}
+                <li class="cal-meal cal-meal--{{.Slot}}">
+                    <span class="cal-meal__slot" title="{{.Slot}}" aria-hidden="true">{{icon "fork"}}</span>
+                    <a href="/meals/{{.MealID}}" class="cal-meal__title" title="{{.Slot}}: {{.Title}}">{{.Title}}</a>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+        {{end}}
+    </div>
+
+    {{if $cal.Empty}}
+    <p class="form-section__desc" style="padding:.75rem 1rem 0">No meals scheduled in this {{$cal.Mode}}.</p>
+    {{end}}
+</div>
+
 {{/* ── Plan history table ───────────────────────────────────────────────── */}}
 <div class="card">
     <div class="card__header" style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem .5rem">
@@ -122,7 +169,20 @@
                 </td>
                 <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}} - {{end}}</td>
                 <td>${{printf "%.0f" (divf .BudgetCents 100.0)}}</td>
-                <td><a href="/plan?week={{.WeekStart}}" class="btn btn--ghost btn--sm">View</a></td>
+                <td class="data-table__actions">
+                    {{if eq .Status "generating"}}
+                    <a href="/plan/generate" class="btn-icon" title="View generation progress" aria-label="View generation progress">{{icon "autorenew"}}</a>
+                    {{else if eq .Status "ready"}}
+                    <a href="/plan?week={{.WeekStart}}" class="btn-icon" title="View plan" aria-label="View plan">{{icon "calendar"}}</a>
+                    {{else}}
+                    <span class="btn-icon is-disabled" title="This plan didn't finish generating">{{icon "alert"}}</span>
+                    {{end}}
+                    <form method="POST" action="/plan/{{.ID}}/delete"
+                          onsubmit="return confirm('Delete this plan and its meals? This cannot be undone.');">
+                        {{$.CSRFField}}
+                        <button type="submit" class="btn-icon btn-icon--danger" title="Delete plan" aria-label="Delete plan">{{icon "delete"}}</button>
+                    </form>
+                </td>
             </tr>
             {{end}}
         </tbody>
