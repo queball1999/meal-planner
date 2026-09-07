@@ -138,7 +138,35 @@ Files: `web/handlers_instore.go` (new) + `web/instore_test.go` (new),
 ```
 web: add in-store shopping mode
 ```
-Status: ⬜
+Status: ✅
+
+**A separate page, not a mode toggle.** The two views want opposite things:
+the planning list is dense, sortable by store, and full of controls for
+editing prices and matching items; this one wants one item per row, targets a
+thumb can hit while pushing a trolley, and nothing that can be tapped by
+accident.
+
+**The whole row is the button.** A checkbox you have to hit precisely is the
+wrong target for someone holding a trolley.
+
+**The tick is optimistic.** It flips locally first and tells the server after,
+rolling back with a message on failure - a round trip over shop wi-fi is not
+something to wait on at the shelf.
+
+**A finished aisle dims but stays reachable.** Collapsing it away would hide a
+mis-tap at exactly the moment it needs undoing.
+
+**Frozen is matched ahead of the aisle table**, because a frozen product names
+two categories at once ("frozen vegetables") and a plain walk down the table
+would file it under produce. Uncategorised items sort *last*, not first: an
+item nobody has categorised is the one most likely to be somewhere unexpected,
+and leading with it sends a shopper to the wrong end of the shop.
+
+**Wake Lock is best-effort.** It needs a secure context and is missing on
+several browsers; a page that refused to work without it would be worse than
+one that occasionally dims. Re-acquired on `visibilitychange`, since the lock
+is dropped whenever the tab is hidden and would otherwise survive exactly one
+glance away.
 
 ---
 
@@ -172,7 +200,7 @@ Status: ⬜
 |---|--------|-----------|
 | 1 | ✅ Pantry deduction | — |
 | 2 | ✅ Price history chart | — |
-| 3 | In-store mode | — |
+| 3 | ✅ In-store mode | — |
 | 4 | Agent confirmation | — |
 
 All four are independent. Commit 1 is a correctness fix to a claim the UI

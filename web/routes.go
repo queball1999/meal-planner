@@ -44,6 +44,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /stores/{id}/delete", requireAuth(http.HandlerFunc(s.handleStoreDelete)))
 
 	mux.Handle("GET /list", requireAuth(http.HandlerFunc(s.handleShoppingListRedirect)))
+	mux.Handle("GET /list/shop", requireAuth(http.HandlerFunc(s.handleInStore)))
 	mux.Handle("GET /list/export", requireAuth(http.HandlerFunc(s.handleShoppingListExport)))
 	mux.Handle("POST /list/sync", requireAuth(http.HandlerFunc(s.handleListSync)))
 	mux.Handle("GET /list/sync/status", requireAuth(http.HandlerFunc(s.handleListSyncStatus)))

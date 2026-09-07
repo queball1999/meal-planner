@@ -1,0 +1,79 @@
+{{define "title"}}Shopping - {{.AppName}}{{end}}
+{{define "content"}}
+
+{{if not .Data.HasPlan}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "cart"}}</div>
+    <h2 class="skeleton-card__title">Nothing to shop for yet</h2>
+    <p class="skeleton-card__body">
+        Generate a meal plan and its shopping list will show up here, sorted
+        into the order you walk the shop.
+    </p>
+    <a href="/plan" class="btn btn--primary">{{icon "calendar"}} Go to the plan</a>
+</div>
+{{else}}
+
+{{/* The bar stays put while the list scrolls: what is left to find and what is
+     already in the trolley are the two numbers worth glancing at mid-aisle. */}}
+<div class="instore-bar">
+    <a href="/plan/list" class="btn btn-ghost btn-sm instore-bar__back"
+       aria-label="Back to the full shopping list">{{icon "arrow-left"}}</a>
+    <div class="instore-bar__counts">
+        <strong id="instore-remaining">{{.Data.Remaining}}</strong>
+        <span class="text-muted">left of {{.Data.Count}}</span>
+    </div>
+    <div class="instore-bar__money">
+        <span id="instore-cart">{{.Data.InCart}}</span>
+        <span class="text-muted">of {{.Data.Total}}</span>
+    </div>
+</div>
+
+<div class="instore" id="instore">
+    {{range .Data.Aisles}}
+    <section class="instore-aisle{{if eq .Remaining 0}} instore-aisle--done{{end}}"
+             data-aisle aria-labelledby="aisle-{{.Name}}">
+        <h2 class="instore-aisle__head" id="aisle-{{.Name}}">
+            <span>{{.Name}}</span>
+            <span class="instore-aisle__count" data-aisle-count>{{.Remaining}}</span>
+        </h2>
+
+        <ul class="instore-list" role="list">
+            {{range .Lines}}
+            {{/* The whole row is the control. A checkbox you have to hit
+                 precisely is the wrong target for a thumb on a moving
+                 trolley. */}}
+            <li class="instore-row{{if .Checked}} instore-row--checked{{end}}"
+                data-instore-row data-id="{{.ID}}">
+                <button type="button" class="instore-row__btn"
+                        aria-pressed="{{if .Checked}}true{{else}}false{{end}}">
+                    <span class="instore-row__box" aria-hidden="true">{{icon "check"}}</span>
+                    <span class="instore-row__text">
+                        <span class="instore-row__name">{{.Name}}</span>
+                        <span class="instore-row__meta">
+                            {{.Qty}}{{if .Store}} &middot; {{.Store}}{{end}}
+                        </span>
+                    </span>
+                    <span class="instore-row__price">{{.Price}}</span>
+                </button>
+            </li>
+            {{end}}
+        </ul>
+    </section>
+    {{end}}
+
+    {{if not .Data.Aisles}}
+    <div class="skeleton-card">
+        <div class="skeleton-card__icon" aria-hidden="true">{{icon "check"}}</div>
+        <h2 class="skeleton-card__title">Nothing to buy</h2>
+        <p class="skeleton-card__body">
+            Every line on this week's list is already in your pantry.
+        </p>
+    </div>
+    {{end}}
+</div>
+
+<form id="csrf-form" hidden>{{.CSRFField}}</form>
+<script src="/static/js/instore.js" defer></script>
+{{end}}
+
+{{end}}

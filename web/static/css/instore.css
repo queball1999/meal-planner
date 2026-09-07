@@ -1,0 +1,154 @@
+/* ---------------------------------------------------------------------------
+ * In-store shopping mode.
+ *
+ * Sized for one hand on a trolley: every row is a full-width target, the
+ * running totals stay in view, and nothing here can be tapped by accident. The
+ * planning list at /plan/list keeps the dense, editable view - the two want
+ * opposite things, which is why this is a separate page.
+ * ------------------------------------------------------------------------ */
+
+.instore-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+}
+
+.instore-bar__back { flex: 0 0 auto; }
+
+.instore-bar__counts { flex: 1; }
+.instore-bar__money { text-align: right; }
+
+.instore-bar__counts strong,
+.instore-bar__money span:first-child {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+
+.instore-aisle {
+  margin-bottom: var(--sp-5);
+}
+
+.instore-aisle__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.instore-aisle__count {
+  min-width: 1.75rem;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-full);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  text-align: center;
+  font-size: var(--text-xs);
+}
+
+/* A finished aisle fades but stays reachable - it has to be, to undo a
+   mis-tap. Collapsing it entirely would hide the mistake. */
+.instore-aisle--done { opacity: 0.5; }
+.instore-aisle--done .instore-aisle__count {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.instore-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+
+/* The whole row is the button. A checkbox you have to hit precisely is the
+   wrong target for a thumb on a moving trolley. */
+.instore-row__btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.instore-row__btn:active { background: var(--accent-bg); }
+
+.instore-row__box {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: transparent;
+}
+
+.instore-row__box svg { width: 18px; height: 18px; }
+
+.instore-row__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.instore-row__name {
+  display: block;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.instore-row__meta {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.instore-row__price {
+  flex: 0 0 auto;
+  font-weight: var(--weight-semi);
+}
+
+/* Struck through and dimmed, but still legible: a shopper re-reads what they
+   have already picked up as often as what they have not. */
+.instore-row--checked .instore-row__btn {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+.instore-row--checked .instore-row__box {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--text-inverse);
+}
+
+.instore-row--checked .instore-row__name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* Nothing here belongs on paper - the printable list is /plan/list. */
+@media print {
+  .instore-bar { display: none; }
+}
