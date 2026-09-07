@@ -475,7 +475,36 @@ Files: `web/handlers_about.go` (probe funcs + `/about/stream`),
 ```
 web: make About connectivity status live and accurate
 ```
-Status: ⬜
+Status: ✅
+
+**The accuracy problem was the AI row.** It reported whether `s.gen` was
+non-nil - that a provider is *configured* - which says nothing about whether
+the endpoint answers. A wrong API key, an unreachable local model server, and
+a working provider all rendered identically, which is precisely the case an
+operator opens this page to tell apart. It now asks the provider for one
+token.
+
+**Two rows added**: Home Assistant and the scraping renderer, both real
+requests. The renderer is a plain GET on its base URL rather than a render -
+both FlareSolverr and Browserless answer something on their root, and a real
+render costs seconds and a browser tab. Any answer below 500 counts as
+listening, since these services return 404 or 405 on `/` as readily as 200.
+
+**Probes stream, and the page never waits for them.** The rows render as
+"checking" and fill in over SSE as each answer lands, concurrently - a single
+JSON response would make the instant database ping wait for a five-second LLM
+timeout. `EventSource` is fine here (unlike the chat) because this is a GET
+that changes nothing.
+
+**One list, not two.** `probeRows` names the rows and their check functions
+together, and the placeholders derive from it - a placeholder whose key the
+stream never sends would sit on "Checking…" forever, reading as a hung page
+rather than as the wiring mistake it is. There is a test for that.
+
+**The green background** was `badge-success` on the value inside a chip that
+already has its own surface. The status word is coloured instead. The
+background-processes table below keeps its real standalone `.badge` pills,
+which are correct there.
 
 ---
 
@@ -642,7 +671,7 @@ Status: ⬜
 | 7 | ✅ Day headcount autosave + day status | 1, 2, 6b |
 | 7b | ✅ Meal from saved recipe | 6b, 7 |
 | 8 | ✅ Dashboard hover cards + chip cleanup | 1 |
-| 9 | About connectivity live | — |
+| 9 | ✅ About connectivity live | — |
 | 10 | ✅ Persist generated recipes | 5 |
 | 11a | ✅ Agent tool registry + loop | 1, 7, 7b |
 | 11b | ✅ Chat widget | 11a |

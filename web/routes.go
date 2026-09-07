@@ -125,6 +125,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /settings", requireAuth(http.HandlerFunc(s.handleSettingsPage)))
 	mux.Handle("POST /settings/danger/{target}", requireAuth(http.HandlerFunc(s.handleDangerWipe)))
 	mux.Handle("GET /about", requireAuth(http.HandlerFunc(s.handleAbout)))
+	mux.Handle("GET /about/probe", requireAuth(http.HandlerFunc(s.handleAboutProbe)))
 	mux.Handle("POST /settings/save", requireAuth(http.HandlerFunc(s.handleSettingsSave)))
 	mux.Handle("POST /settings/test-render", requireAuth(http.HandlerFunc(s.handleSettingsTestRender)))
 	mux.Handle("POST /settings/test-ai", requireAuth(http.HandlerFunc(s.handleSettingsTestAI)))

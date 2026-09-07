@@ -36,24 +36,89 @@
 </div>
 
 <div class="card">
-    <h2 class="form-section__title" style="margin-top:0">Connectivity</h2>
-    <div class="stats-strip">
-        <div class="stats-chip">
-            <span class="stats-chip__label">Database</span>
-            <span class="stats-chip__value {{if .DBReachable}}badge-success{{else}}badge-danger{{end}}">
-                {{if .DBReachable}}Reachable{{else}}Unreachable{{end}}
-            </span>
-            <span class="stats-chip__hint">{{if not .DBReachable}}{{.DBError}}{{end}}</span>
+    <div class="form-section__head">
+        <h2 class="form-section__title" style="margin:0">Connectivity</h2>
+        <button type="button" class="btn btn-ghost btn-sm" id="probe-refresh">
+            {{icon "refresh"}} Re-check
+        </button>
+    </div>
+    <p class="form-section__desc">
+        Each of these is an actual request to the service, not a check that it
+        is configured - a wrong key and a working provider used to look the
+        same here.
+    </p>
+
+    {{/* Rendered as "checking" and filled in by the SSE stream, so a service
+         that is down cannot hold up the page. The keys match probeResult.Key
+         in handlers_about_probe.go. */}}
+    <div class="stats-strip" id="probe-strip">
+        {{range .Probes}}
+        <div class="stats-chip" data-probe="{{.Key}}">
+            <span class="stats-chip__label">{{.Name}}</span>
+            <span class="stats-chip__value probe-value probe-value--checking">Checking…</span>
+            <span class="stats-chip__hint probe-detail"></span>
         </div>
-        <div class="stats-chip">
-            <span class="stats-chip__label">AI provider</span>
-            <span class="stats-chip__value {{if .LLMConfigured}}badge-success{{else}}badge-muted{{end}}">
-                {{if .LLMConfigured}}{{.LLMProvider}}{{else}}Not configured{{end}}
-            </span>
-            <span class="stats-chip__hint">{{if .LLMConfigured}}{{.LLMModel}}{{else}}set a provider in Settings → AI Provider{{end}}</span>
-        </div>
+        {{end}}
     </div>
 </div>
+
+<script>
+(function () {
+    // A short-lived stream rather than a poll: the checks run concurrently on
+    // the server and each row fills in as its own answer lands, so a slow
+    // provider does not delay the database row.
+    var strip = document.getElementById('probe-strip');
+    var refresh = document.getElementById('probe-refresh');
+    if (!strip) return;
+
+    function reset() {
+        strip.querySelectorAll('[data-probe]').forEach(function (chip) {
+            var v = chip.querySelector('.probe-value');
+            v.className = 'stats-chip__value probe-value probe-value--checking';
+            v.textContent = 'Checking…';
+            chip.querySelector('.probe-detail').textContent = '';
+        });
+    }
+
+    function apply(p) {
+        var chip = strip.querySelector('[data-probe="' + p.key + '"]');
+        if (!chip) return;
+        var v = chip.querySelector('.probe-value');
+        v.className = 'stats-chip__value probe-value probe-value--' + p.status;
+        v.textContent = p.label;
+        var detail = p.detail || '';
+        // A working-but-slow service should be visible, not just green.
+        if (p.status === 'ok' && p.millis) {
+            detail = detail ? detail + ' · ' + p.millis + 'ms' : p.millis + 'ms';
+        }
+        chip.querySelector('.probe-detail').textContent = detail;
+    }
+
+    function run() {
+        reset();
+        if (refresh) refresh.disabled = true;
+        var es = new EventSource('/about/probe');
+        es.addEventListener('probe', function (e) {
+            try { apply(JSON.parse(e.data)); } catch (_) {}
+        });
+        es.addEventListener('done', function () {
+            es.close();
+            if (refresh) refresh.disabled = false;
+        });
+        es.onerror = function () {
+            es.close();
+            if (refresh) refresh.disabled = false;
+            strip.querySelectorAll('.probe-value--checking').forEach(function (v) {
+                v.className = 'stats-chip__value probe-value probe-value--down';
+                v.textContent = 'Check failed';
+            });
+        };
+    }
+
+    if (refresh) refresh.addEventListener('click', run);
+    run();
+})();
+</script>
 
 <div class="card">
     <h2 class="form-section__title" style="margin-top:0">Runtime</h2>

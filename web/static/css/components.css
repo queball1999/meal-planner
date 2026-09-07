@@ -1874,3 +1874,27 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 @media (hover: none) {
     .hovercard { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ABOUT: CONNECTIVITY PROBE VALUES
+   Colour the status word, not a block behind it. Each of these sits inside a
+   .stats-chip, which already has its own surface - the old badge-* classes
+   painted a second, tinted background inside the first.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.probe-value--ok   { color: var(--success); }
+.probe-value--down { color: var(--danger); }
+.probe-value--off  { color: var(--text-muted); }
+
+/* Checking is deliberately quiet and slowly pulsing: an in-flight check is not
+   news, and a fast blink beside three settled rows reads as an error. */
+.probe-value--checking { color: var(--text-muted); }
+
+@media (prefers-reduced-motion: no-preference) {
+    .probe-value--checking { animation: probe-pulse 1.6s ease-in-out infinite; }
+}
+
+@keyframes probe-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.45; }
+}

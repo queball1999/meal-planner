@@ -53,6 +53,12 @@ type aboutPageData struct {
 	LLMProvider   string
 	LLMModel      string
 
+	// Probes are the connectivity rows to render, in order, as placeholders.
+	// Their status is filled in by /about/probe: each row is a real request to
+	// the service, and running them during the page render would block the
+	// whole page on whichever is slowest or down.
+	Probes []probeResult
+
 	Processes []backgroundProcess
 }
 
@@ -127,6 +133,7 @@ func (s *Server) buildAboutData(ctx context.Context, householdID int64) aboutPag
 		data.LLMModel = s.gen.ModelName()
 	}
 
+	data.Probes = probePlaceholders()
 	data.Processes = s.buildBackgroundProcesses(ctx, householdID)
 	return data
 }
