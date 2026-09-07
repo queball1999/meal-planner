@@ -184,3 +184,13 @@ func (s *store) SetShoppingListItemItem(ctx context.Context, id int64, itemID *i
 	_, err := s.db.ExecContext(ctx, `UPDATE shopping_list_items SET item_id = ? WHERE id = ?`, iid, id)
 	return err
 }
+
+// DeleteShoppingListItem removes one line.
+//
+// Note this is a *manual* removal, and a re-price rebuilds the list from the
+// plan's ingredients - so a line that came from a recipe will come back. The
+// way to say "we already have this" permanently is in_pantry, not deletion.
+func (s *store) DeleteShoppingListItem(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM shopping_list_items WHERE id = ?`, id)
+	return err
+}

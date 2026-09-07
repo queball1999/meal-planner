@@ -4,7 +4,7 @@ Date: 2026-09-06
 Spec ref: §4 (UI), §5.5/§5.7 (plan lifecycle), §6.3 (items), §7 (shopping list), §9 (AI)
 Baseline: `d916d02` (Phase 8 complete, tree clean)
 
-Phase 9 turns the backlog into **16 commits**, ordered so shared UI
+Phase 9 turns the backlog into **17 commits**, ordered so shared UI
 primitives land before the features that depend on them.
 
 Legend: ✅ done · 🔨 in progress · ⬜ not started
@@ -476,7 +476,7 @@ edited by hand since.
 
 ---
 
-### 11. web+agent: site-wide AI chat with granular tool control
+### 11a. agent: tool registry and run loop
 A floating circular launcher in the bottom-right of every page opens a chat
 panel. The assistant is backed by an MCP-style tool registry over the site's
 own data so "move chicken quesadillas to monday" reshuffles the plan.
@@ -491,17 +491,60 @@ Each tool is a Go func with a JSON schema, household-scoped, audit-logged, and
 mutating tools return a diff the UI can render for confirmation.
 
 Files: `agent/registry.go`, `agent/tools_plan.go`, `agent/tools_shopping.go`,
-`agent/tools_pantry.go`, `agent/loop.go`, `agent/registry_test.go`,
-`agent/tools_plan_test.go` (all new),
-`web/handlers_chat.go` (new, SSE streaming), `web/routes.go`,
-`web/templates/partials/chat_widget.html` (new),
-`web/static/js/chat.js` (new), `web/static/css/chat.css` (new),
-`web/templates/layout.html`, `llm/generator.go` (tool-call plumbing),
-`db/migrations/00021_chat.sql` (new, conversation history).
-Depends on commits 1, 7.
+`agent/loop.go`, `agent/agent_test.go` (all new), `db/meals.go` (`MoveMeal`),
+`db/shopping_list_items.go` (`DeleteShoppingListItem`), `db/store.go`.
+Depends on commits 1, 7, 7b.
 
 ```
-web: add site-wide AI chat with granular plan and list control tools
+agent: add granular tool registry and run loop for the assistant
+```
+Status: ✅
+
+**Split from the UI.** The registry is the substance of this feature and
+deserves reviewing on its own; 11b is the widget that drives it.
+
+**A JSON protocol, not provider-native tool calling.** This app talks to
+Anthropic and to any OpenAI-compatible endpoint, including local reasoning
+models the `llm` package already works around (`llm/openai.go` strips
+`<think>` blocks and suppresses `enable_thinking`). Native tool-use is spelled
+differently on each and is missing or broken on several; "reply with one JSON
+object" works on all of them and is straightforward to swap out later.
+
+**Granular by design.** One verb per tool, 16 of them, each household-scoped
+and individually described. A single `update_plan` taking a free-form patch
+would be shorter and far worse: nothing to constrain the model to, a whole
+week rewritable by one bad call, and nothing specific enough to show a user
+before applying.
+
+**Safety properties worth naming.** `MaxSteps` caps a run at 8 tool calls, so
+a confused model stops rather than churning writes. Ambiguous names error with
+the candidates rather than guessing - picking one of two meals and then moving
+it is not recoverable. Tool errors are fed back to the model, not the user,
+since most are things it can fix itself. Every call is audited including the
+failures, because "it tried and could not" is what a user needs when an answer
+looks wrong.
+
+**Bug found:** `MoveMeal`'s swap needed three writes, not two.
+`UNIQUE(plan_id, day, slot)` is checked per row as each UPDATE runs, so moving
+the displaced meal into the mover's place collided with the mover still
+sitting there. The displaced meal is parked on a sentinel day first.
+
+---
+
+### 11b. web: site-wide chat widget
+A floating circular launcher in the bottom-right of every page, opening a chat
+panel backed by the 11a registry. Streams over SSE, renders the audit trail so
+a user can see the work rather than trusting a summary, and keeps conversation
+history.
+
+Files: `web/handlers_chat.go` (new), `web/routes.go`,
+`web/templates/partials/chat_widget.html` (new), `web/static/js/chat.js` (new),
+`web/static/css/chat.css` (new), `web/templates/layout.html`,
+`db/migrations/00021_chat.sql` (new, conversation history).
+Depends on commit 11a.
+
+```
+web: add the site-wide AI chat widget
 ```
 Status: ⬜
 
@@ -539,7 +582,8 @@ Status: ⬜
 | 8 | Dashboard hover cards + chip cleanup | 1 |
 | 9 | About connectivity live | — |
 | 10 | ✅ Persist generated recipes | 5 |
-| 11 | AI chat + tool registry | 1, 7 |
+| 11a | ✅ Agent tool registry + loop | 1, 7, 7b |
+| 11b | Chat widget | 11a |
 | 12 | Responsive pass | all |
 
 Migrations are claimed in commit order: `00018` household members (6b),

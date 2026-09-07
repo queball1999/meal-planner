@@ -149,6 +149,7 @@ type Store interface {
 	GetShoppingListItem(ctx context.Context, id int64) (*ShoppingListItem, error)
 	UpdateShoppingListItemPrice(ctx context.Context, p UpdateShoppingListItemPriceParams) error
 	CheckShoppingListItem(ctx context.Context, id int64, checked bool) error
+	DeleteShoppingListItem(ctx context.Context, id int64) error
 	DeleteShoppingListItems(ctx context.Context, planID int64) error
 	DeleteAllShoppingListItemsForHousehold(ctx context.Context, householdID int64) error
 
@@ -165,6 +166,7 @@ type Store interface {
 	GetMealByID(ctx context.Context, mealID int64) (*Meal, error)
 	DeleteMeal(ctx context.Context, mealID int64) error
 	SetMealBaseline(ctx context.Context, mealID int64) error
+	MoveMeal(ctx context.Context, mealID int64, day, slot string) (displaced string, err error)
 	UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error
 	UpdateMealTitle(ctx context.Context, mealID int64, title, effort string, servings, cookedPortions int) error
 	DeleteMealIngredients(ctx context.Context, mealID int64) error

@@ -232,3 +232,68 @@ func (s *store) SetMealBaseline(ctx context.Context, mealID int64) error {
 	}
 	return tx.Commit()
 }
+
+// MoveMeal relocates a meal to another day and/or slot within its own plan.
+//
+// Whatever already occupies the destination is swapped into the mover's old
+// place rather than being overwritten. A move that silently deleted the meal
+// it landed on would be the single most destructive thing the assistant could
+// do by misreading a day name, and a swap is almost always what was meant
+// anyway ("move taco night to Friday" wants Friday's meal to go somewhere).
+//
+// Returns the displaced meal's title, or "" when the destination was empty.
+func (s *store) MoveMeal(ctx context.Context, mealID int64, day, slot string) (displaced string, err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var planID int64
+	var fromDay, fromSlot string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT plan_id, day, slot FROM meals WHERE id = ?`, mealID).
+		Scan(&planID, &fromDay, &fromSlot); err != nil {
+		return "", err
+	}
+	if fromDay == day && fromSlot == slot {
+		return "", nil
+	}
+
+	var otherID int64
+	var otherTitle string
+	switch err := tx.QueryRowContext(ctx,
+		`SELECT id, title FROM meals WHERE plan_id = ? AND day = ? AND slot = ?`,
+		planID, day, slot).Scan(&otherID, &otherTitle); {
+	case err == nil:
+		displaced = otherTitle
+	case errors.Is(err, sql.ErrNoRows):
+		// Destination is empty; nothing to displace.
+	default:
+		return "", err
+	}
+
+	// A swap needs three writes, not two. UNIQUE(plan_id, day, slot) is checked
+	// per row as each UPDATE runs, so moving the displaced meal into the
+	// mover's place first collides with the mover, which is still sitting
+	// there. Parking it on a sentinel day frees both squares before either
+	// real move happens. `day` is unconstrained TEXT (00004_plans.sql), and the
+	// sentinel never escapes this transaction.
+	if otherID != 0 {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE meals SET day = ? WHERE id = ?`, "moving-"+fromDay, otherID); err != nil {
+			return "", err
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE meals SET day = ?, slot = ? WHERE id = ?`, day, slot, mealID); err != nil {
+		return "", err
+	}
+	if otherID != 0 {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE meals SET day = ?, slot = ? WHERE id = ?`, fromDay, fromSlot, otherID); err != nil {
+			return "", err
+		}
+	}
+	return displaced, tx.Commit()
+}
