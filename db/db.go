@@ -33,8 +33,11 @@ func Open(dsn string) (Store, error) {
 		return nil, fmt.Errorf("db open: %w", err)
 	}
 
-	// SQLite best-practice pragmas: WAL for concurrent reads, FK enforcement.
-	if _, err := sqlDB.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`); err != nil {
+	// SQLite best-practice pragmas: WAL for concurrent reads, FK enforcement,
+	// and a busy_timeout so a writer blocked by another in-flight write (e.g.
+	// the HA sync scheduler ticking mid-costing-pass) retries for a while
+	// instead of failing instantly with "database is locked".
+	if _, err := sqlDB.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=10000;`); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("db pragmas: %w", err)
 	}

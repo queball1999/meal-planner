@@ -1,0 +1,46 @@
+{{/* Home Assistant sync setup dialog. Opened from the "Sync" button on the
+     shopping list when HA is not yet configured. Not part of the setup wizard.
+     Needs the page to expose window.goeatCSRF() or a #csrf-form input. */}}
+{{define "haSetupDialog"}}
+<dialog id="ha-setup" class="modal">
+    <form method="dialog" class="modal__x"><button aria-label="Close">{{icon "close"}}</button></form>
+    <h2 class="modal__title">{{icon "home-assistant"}} Sync to Home Assistant</h2>
+    <p class="modal__desc">
+        Push this shopping list to a Home Assistant to-do list, and pull items
+        back as done when you check them off there. Needs Home Assistant 2024.7+.
+    </p>
+
+    <div class="field">
+        <label class="field-label" for="ha-base">Base URL</label>
+        <input class="field-input" id="ha-base" type="url" placeholder="http://homeassistant.local:8123" autocomplete="off">
+    </div>
+    <div class="field">
+        <label class="field-label" for="ha-token">Long-lived access token</label>
+        <input class="field-input" id="ha-token" type="password" placeholder="Profile → Security → Long-lived access tokens" autocomplete="off">
+    </div>
+    <div class="field-row">
+        <div class="field" style="flex: 2 1 16rem;">
+            <label class="field-label" for="ha-entity">To-do entity</label>
+            <div class="field-row" style="gap: var(--sp-2); flex-wrap: nowrap;">
+                <input class="field-input" id="ha-entity" type="text" list="ha-entity-list" value="todo.shopping_list">
+                <button type="button" class="btn btn-ghost btn-sm field--action" id="ha-find-entities" disabled title="Enter a base URL and token first">{{icon "search"}}</button>
+            </div>
+            <datalist id="ha-entity-list"></datalist>
+        </div>
+        <div class="field field--sm">
+            <label class="field-label" for="ha-format">Item text</label>
+            <select class="field-input" id="ha-format">
+                <option value="name_qty">2 lb chicken thighs</option>
+                <option value="name">chicken thighs</option>
+            </select>
+        </div>
+    </div>
+
+    <p class="modal__status" id="ha-status" role="status" aria-live="polite"></p>
+
+    <div class="modal__actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="ha-test">{{icon "check"}} Test connection</button>
+        <button type="button" class="btn btn-primary btn-sm" id="ha-save">{{icon "sync"}} Save &amp; sync</button>
+    </div>
+</dialog>
+{{end}}

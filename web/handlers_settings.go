@@ -109,6 +109,12 @@ func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 				field.Value = row.Value
 			}
 		}
+		if d.Kind == settings.KindSecret && d.Encrypted && s.box != nil {
+			if ct, ok, _ := s.store.GetSecret(r.Context(), d.Key); ok && ct != "" {
+				field.IsSet = true
+				field.Source = "admin"
+			}
+		}
 
 		if d.Category == "AI Provider" {
 			switch {
@@ -277,6 +283,26 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 
 	if err := settings.Validate(def, body.Value); err != nil {
 		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+
+	// Encrypted secrets go to the `secrets` table (cryptbox-sealed), not the
+	// plaintext settings table.
+	if def.Kind == settings.KindSecret && def.Encrypted {
+		if s.box == nil {
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "encryption unavailable"})
+			return
+		}
+		sealed, err := s.box.Seal(body.Value)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "encrypt failed"})
+			return
+		}
+		if err := s.store.SetSecret(r.Context(), def.Key, sealed); err != nil {
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "save failed"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
 		return
 	}
 

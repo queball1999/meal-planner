@@ -529,3 +529,32 @@ details[open] > .llm-log-summary::before { transform: rotate(90deg); }
     .wizard-progress::after { transition: none; }
     .store-chip:hover { transform: none; }
 }
+
+/* ── HA sync setup dialog (native <dialog>, opened with showModal()) ─────── */
+/* The UA gives an open modal dialog `position: fixed` + auto margins (centred)
+   and makes it a containing block for the absolutely-positioned close button.
+   Do NOT set `position` here or that centring breaks and it renders in flow. */
+dialog.modal {
+    margin: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--sp-6);
+    max-width: 30rem;
+    width: calc(100vw - 2rem);
+    max-height: calc(100vh - 4rem);
+    overflow: auto;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
+}
+dialog.modal:not([open]) { display: none; }
+.modal::backdrop { background: rgba(0, 0, 0, 0.5); }
+.modal__title { margin: 0 2rem var(--sp-2) 0; font-size: var(--text-lg); display: flex; align-items: center; gap: var(--sp-2); }
+.modal__desc { margin: 0 0 var(--sp-4); color: var(--text-muted); font-size: var(--text-sm); }
+.modal__status { min-height: 1.25rem; margin: var(--sp-3) 0 0; font-size: var(--text-sm); color: var(--text-muted); }
+.modal__actions { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-4); }
+.modal__x { position: absolute; top: var(--sp-2); right: var(--sp-2); margin: 0; }
+.modal__x button { background: none; border: 0; color: var(--text-muted); cursor: pointer; padding: var(--sp-2); display: inline-flex; }
+.modal .field { margin-bottom: var(--sp-3); }
+.modal .field-row { flex-wrap: wrap; gap: var(--sp-3); }
+.modal .field-row .field { flex: 1 1 12rem; margin-bottom: 0; }
