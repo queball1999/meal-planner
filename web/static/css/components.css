@@ -1768,3 +1768,109 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     .page-header__actions { width: 100%; }
     .page-header__actions > * { flex: 1; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STATS CHIP VALUE COLOURS
+   Colour the number, not a pill behind it. These replace badge--success /
+   badge--danger on the "This week spent" chip, which painted a tinted block
+   behind the text inside a chip that already has its own surface - two nested
+   backgrounds for one value.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.stats-chip__value--under { color: var(--success); }
+.stats-chip__value--over  { color: var(--danger); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MEAL HOVER CARD
+   One floating card for the page (hovercard.js). Fixed, not absolute: the
+   calendar grid and every table here sit in scrolling containers that would
+   clip an absolutely positioned descendant whatever its z-index.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.hovercard {
+    position: fixed;
+    z-index: 1100;
+    width: 20rem;
+    max-width: calc(100vw - 2rem);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    /* Visibility flips instantly while opacity fades - the same reason the
+       modal overlay does it (see modal.css): a transitioned visibility would
+       leave the card unmeasurable on the tick it is positioned in. */
+    transition: opacity var(--dur) var(--ease);
+    pointer-events: none;
+}
+
+.hovercard--open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.hovercard__image {
+    display: block;
+    width: 100%;
+    height: 8rem;
+    object-fit: cover;
+}
+
+.hovercard__body { padding: var(--sp-3) var(--sp-4); }
+
+.hovercard__title {
+    margin: 0 0 var(--sp-1);
+    font-size: var(--text-base);
+    font-weight: var(--weight-semi);
+    line-height: 1.25;
+}
+
+.hovercard__meta {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-transform: capitalize;
+}
+
+.hovercard__cost {
+    margin-top: var(--sp-1);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--accent);
+}
+
+.hovercard__ingredients {
+    list-style: none;
+    margin: var(--sp-3) 0 0;
+    padding: var(--sp-3) 0 0;
+    border-top: 1px solid var(--border);
+    display: grid;
+    gap: 2px;
+    font-size: var(--text-xs);
+}
+
+.hovercard__ingredients li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--sp-3);
+}
+
+.hovercard__ing-name { overflow-wrap: anywhere; }
+
+.hovercard__ing-amount {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.hovercard__more {
+    margin-top: var(--sp-2);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+/* Hover is not a thing on touch, and the link underneath already works. */
+@media (hover: none) {
+    .hovercard { display: none; }
+}

@@ -438,7 +438,28 @@ Depends on commit 1 (tooltip layer).
 ```
 web: add dashboard meal hover cards and clean up stats chip styling
 ```
-Status: ⬜
+Status: ✅
+
+**The chip's background was `badge--success`/`badge--danger`**, which paint a
+tinted block behind the value inside a chip that already has its own surface -
+two nested backgrounds for one number. Replaced with classes that colour the
+text only.
+
+**Cost on the card is attributed, not claimed.** A shopping line is shared
+between every meal using that ingredient, so a meal cannot take the whole line
+- two meals using the same onions would each claim the bag. The line is split
+evenly across the meals referencing it, and the card says "about" rather than
+presenting an approximation as exact. Already-have lines are excluded.
+
+**Photos come from the saved recipe, matched by title.** A meal has no image of
+its own, but commit 10 files every generated meal in the recipe catalog under
+the same title, and that row can have one. Title matching is loose on purpose:
+a wrong photo on a hover card costs nothing, and requiring a hard link would
+mean no photos at all until every meal carried a recipe id.
+
+**Bug found:** `index.html` did `index $cal.Rows 0` unguarded, and `index` on
+an empty slice errors the *whole page render*, not just that line - a calendar
+with no rows would have taken the dashboard down with it.
 
 ---
 
@@ -620,7 +641,7 @@ Status: ⬜
 | 6b | ✅ Household members + portion sizing | 1 |
 | 7 | ✅ Day headcount autosave + day status | 1, 2, 6b |
 | 7b | ✅ Meal from saved recipe | 6b, 7 |
-| 8 | Dashboard hover cards + chip cleanup | 1 |
+| 8 | ✅ Dashboard hover cards + chip cleanup | 1 |
 | 9 | About connectivity live | — |
 | 10 | ✅ Persist generated recipes | 5 |
 | 11a | ✅ Agent tool registry + loop | 1, 7, 7b |

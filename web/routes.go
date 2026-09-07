@@ -96,6 +96,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /pantry/{id}/stock", requireAuth(http.HandlerFunc(s.handlePantryStock)))
 
 	mux.Handle("GET /meals/{id}", requireAuth(http.HandlerFunc(s.handleMealDetail)))
+	mux.Handle("GET /meals/{id}/card", requireAuth(http.HandlerFunc(s.handleMealCard)))
 	mux.Handle("POST /meals/{id}/feedback", requireAuth(http.HandlerFunc(s.handleMealFeedback)))
 	mux.Handle("POST /meals/{id}/lock", requireAuth(http.HandlerFunc(s.handleMealLock)))
 

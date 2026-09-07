@@ -77,7 +77,7 @@
     <div class="stats-chip">
         <span class="stats-chip__label">This week spent</span>
         {{if $d.StatsSpent}}
-        <span class="stats-chip__value {{if $d.StatsOverBudget}}badge--danger{{else}}badge--success{{end}}">
+        <span class="stats-chip__value {{if $d.StatsOverBudget}}stats-chip__value--over{{else}}stats-chip__value--under{{end}}">
             {{$d.StatsSpent}}
         </span>
         {{else}}
@@ -111,8 +111,13 @@
     </div>
 
     <div class="cal-grid cal-grid--{{$cal.Mode}}">
+        {{/* Guarded: `index` on an empty slice errors the whole page render,
+             not just this header row, so a calendar with no rows would take
+             the dashboard down with it. */}}
+        {{if $cal.Rows}}
         {{range (index $cal.Rows 0)}}
         <div class="cal-grid__dow">{{.Weekday}}</div>
+        {{end}}
         {{end}}
 
         {{range $cal.Rows}}
@@ -126,7 +131,8 @@
                 {{range .Meals}}
                 <li class="cal-meal cal-meal--{{.Slot}}">
                     <span class="cal-meal__slot" title="{{.Slot}}" aria-hidden="true">{{icon "fork"}}</span>
-                    <a href="/meals/{{.MealID}}" class="cal-meal__title" title="{{.Slot}}: {{.Title}}">{{.Title}}</a>
+                    <a href="/meals/{{.MealID}}" class="cal-meal__title"
+                       data-meal-id="{{.MealID}}" title="{{.Slot}}: {{.Title}}">{{.Title}}</a>
                 </li>
                 {{end}}
             </ul>

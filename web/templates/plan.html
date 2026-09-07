@@ -137,7 +137,8 @@
             </button>
             {{end}}
             {{else}}
-            <a href="/meals/{{$cell.MealID}}" class="meal-card__title">{{$cell.Title}}</a>
+            <a href="/meals/{{$cell.MealID}}" class="meal-card__title"
+               data-meal-id="{{$cell.MealID}}">{{$cell.Title}}</a>
             <div class="meal-card__meta">
                 <span>{{$cell.Effort}}</span>
                 <span>&middot; {{$cell.Servings}} srv</span>
