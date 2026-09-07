@@ -37,10 +37,9 @@
 
 {{template "haSetupDialog" $root}}
 
-<dialog id="price-edit" class="modal">
-    <form method="dialog" class="modal__x"><button aria-label="Close">{{icon "close"}}</button></form>
-    <h2 class="modal__title">{{icon "pencil"}} <span id="price-edit-name">Set known price</span></h2>
-    <p class="modal__desc">
+{{template "partials/modal_open.html" dict "ID" "price-edit" "Title" "Set known price" "Form" true}}
+    <p class="text-muted" id="price-edit-name"></p>
+    <p class="form-section__desc">
         Set the price for this item at a store. Saved prices are reused by future
         plans and every change is kept in that item's price history.
     </p>
@@ -64,14 +63,15 @@
         </div>
     </div>
 
-    <p class="modal__status" id="price-edit-status" role="status" aria-live="polite"></p>
+    <p class="modal-status" id="price-edit-status" role="status" aria-live="polite"></p>
 
     <div id="price-edit-history"></div>
 
-    <div class="modal__actions">
-        <button type="button" class="btn btn-primary btn-sm" id="price-edit-save">{{icon "check"}} Save price</button>
+    <div class="modal-dialog__footer">
+        <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+        <button type="button" class="btn btn-primary" id="price-edit-save">{{icon "check"}} Save price</button>
     </div>
-</dialog>
+{{template "partials/modal_close.html" $root}}
 
 {{range .Groups}}
 <section class="shopping-group" aria-labelledby="store-{{.StoreName}}">
@@ -413,7 +413,7 @@
         fetch('/list/sync', { method: 'POST', headers: jsonHeaders })
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (d.needs_setup) { if (dlg) dlg.showModal(); return; }
+                if (d.needs_setup) { window.goeat.openModal('ha-setup'); return; }
                 if (!d.ok) { toast(d.error || 'Sync failed', 'error'); return; }
                 applyCheckedState(d.checked_ids, true);
                 applyCheckedState(d.unchecked_ids, false);
@@ -502,7 +502,7 @@
                     if (!d.ok) { status.textContent = d.error || 'Save failed'; return; }
                     applyCheckedState(d.checked_ids, true);
                     applyCheckedState(d.unchecked_ids, false);
-                    dlg.close();
+                    window.goeat.closeModal('ha-setup');
                     toast(d.synced ? ('Connected — pushed ' + d.pushed + ' items') : 'Saved', d.synced ? 'success' : 'info');
                 })
                 .catch(function () { status.textContent = 'Request failed'; });
@@ -541,7 +541,7 @@
                 statusEl.textContent = 'Loading…';
                 historyEl.innerHTML = '';
                 nameEl.textContent = 'Set known price';
-                priceDlg.showModal();
+                window.goeat.openModal('price-edit');
                 fetch('/list/' + priceItemId + '/price')
                     .then(function (r) { return r.json(); })
                     .then(function (d) {
@@ -602,7 +602,7 @@
                         }
                     }
                     toast('Price saved for ' + (d.store_name || 'store'), 'success');
-                    priceDlg.close();
+                    window.goeat.closeModal('price-edit');
                 })
                 .catch(function () { statusEl.textContent = 'Request failed'; });
         });

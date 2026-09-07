@@ -66,7 +66,18 @@ Depends on commit 1.
 ```
 web: migrate remaining modals onto the shared dialog chrome
 ```
-Status: ⬜
+Status: ✅
+
+The app had three dialog conventions when Phase 9 started. It now has one:
+`partials/modal_open.html`. That means the focus trap, Escape, the backdrop
+and `inert` on `<main>` are implemented in exactly one place rather than
+three, and the two that were native `<dialog>` elements no longer depend on
+`showModal()`'s UA-supplied centring - which is why wizard.css carried a
+comment warning nobody to set `position` on them.
+
+Both panels keep a Cancel button they did not have: `<dialog>` gave them
+Escape and a tiny corner ✕, and a form with a Save button and no visible way
+to back out reads as a trap.
 
 ---
 
@@ -661,7 +672,7 @@ Status: ⬜
 | # | Commit | Depends on |
 |---|--------|-----------|
 | 1 | ✅ Dialog + tooltip primitives | — |
-| 1b | Migrate legacy modals | 1 |
+| 1b | ✅ Migrate legacy modals | 1 |
 | 2 | ✅ Auto-filter + skeletons | — |
 | 3 | ✅ Colored pills | — |
 | 4 | ✅ Item modals + quick add (absorbed 1b's stores.html) | 1 |

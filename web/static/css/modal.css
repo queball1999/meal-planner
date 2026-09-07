@@ -199,3 +199,19 @@
 }
 
 .tooltip-popup-close:hover { color: var(--text); }
+
+/* A status line inside a dialog: the HA connection test and the price editor
+   both report success or failure in place rather than as a toast, because the
+   result is about the form you are still looking at. */
+.modal-status {
+  min-height: 1.25rem;
+  margin: var(--sp-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Dialog forms stack their fields, and a field row wraps rather than crushing
+   three inputs into a 32rem panel. */
+.modal-dialog .field { margin-bottom: var(--sp-3); }
+.modal-dialog .field-row { flex-wrap: wrap; gap: var(--sp-3); }
+.modal-dialog .field-row .field { flex: 1 1 12rem; margin-bottom: 0; }

@@ -1,11 +1,13 @@
 {{/* Home Assistant sync setup dialog. Opened from the "Sync" button on the
      shopping list when HA is not yet configured. Not part of the setup wizard.
-     Needs the page to expose window.goeatCSRF() or a #csrf-form input. */}}
+     Needs the page to expose window.goeatCSRF() or a #csrf-form input.
+
+     On the shared chrome (partials/modal_open.html), not a native <dialog>:
+     one dialog convention in the app means one place that handles the focus
+     trap, Escape, the backdrop and `inert` on <main>. */}}
 {{define "haSetupDialog"}}
-<dialog id="ha-setup" class="modal">
-    <form method="dialog" class="modal__x"><button aria-label="Close">{{icon "close"}}</button></form>
-    <h2 class="modal__title">{{icon "home-assistant"}} Sync to Home Assistant</h2>
-    <p class="modal__desc">
+{{template "partials/modal_open.html" dict "ID" "ha-setup" "Title" "Sync to Home Assistant" "Form" true}}
+    <p class="form-section__desc">
         Push this shopping list to a Home Assistant to-do list, and pull items
         back as done when you check them off there. Needs Home Assistant 2024.7+.
     </p>
@@ -36,11 +38,12 @@
         </div>
     </div>
 
-    <p class="modal__status" id="ha-status" role="status" aria-live="polite"></p>
+    <p class="modal-status" id="ha-status" role="status" aria-live="polite"></p>
 
-    <div class="modal__actions">
-        <button type="button" class="btn btn-ghost btn-sm" id="ha-test">{{icon "check"}} Test connection</button>
-        <button type="button" class="btn btn-primary btn-sm" id="ha-save">{{icon "sync"}} Save &amp; sync</button>
+    <div class="modal-dialog__footer">
+        <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+        <button type="button" class="btn btn-ghost" id="ha-test">{{icon "check"}} Test connection</button>
+        <button type="button" class="btn btn-primary" id="ha-save">{{icon "sync"}} Save &amp; sync</button>
     </div>
-</dialog>
+{{template "partials/modal_close.html" .}}
 {{end}}

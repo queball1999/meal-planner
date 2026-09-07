@@ -264,3 +264,34 @@ func TestShoppingListBodyRendersLinkChips(t *testing.T) {
 		}
 	}
 }
+
+// Both the price editor and the HA setup panel were native <dialog
+// class="modal"> elements with their own CSS and their own open/close calls.
+// One convention means one place handling the focus trap, Escape, the backdrop
+// and `inert` on <main>.
+func TestShoppingListDialogsUseSharedChrome(t *testing.T) {
+	out := renderPage(t, "plan", pageData{
+		AppName: "Go Eat",
+		Page:    "list",
+		Data: planPageData{
+			HasPlan: true, Tab: "list",
+			List: &shoppingListPageData{HasPlan: true, TotalLabel: "$0.00"},
+		},
+	})
+
+	for _, want := range []string{
+		`class="modal-overlay" id="price-edit"`,
+		`class="modal-overlay" id="ha-setup"`,
+		`goeat.openModal('price-edit')`,
+		`goeat.openModal('ha-setup')`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("shopping list missing %q", want)
+		}
+	}
+	for _, dead := range []string{"<dialog", "showModal()", "modal__title", "modal__actions", "modal__x"} {
+		if strings.Contains(out, dead) {
+			t.Errorf("a native <dialog> panel survives (%q)", dead)
+		}
+	}
+}

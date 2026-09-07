@@ -678,9 +678,9 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .subtab svg { width: 16px; height: 16px; flex-shrink: 0; }
 
 /* The `hidden`-toggled .modal:not(dialog) overlay that used to live here is
- * gone: stores.html was its only consumer and now uses the shared chrome in
- * modal.css. The remaining .modal rules belong to the native <dialog> panels
- * in wizard.css. */
+ * gone, along with the native <dialog> rules that were in wizard.css. Every
+ * dialog in the app now uses the shared chrome in modal.css - see
+ * partials/modal_open.html. */
 
 /* Your-stores list. It is a <ul> for semantics only - the markers and the
  * default list indent have no place on a stack of cards. */
