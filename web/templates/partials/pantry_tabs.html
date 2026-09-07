@@ -1,0 +1,8 @@
+{{/* Sub-tab nav shared by the Pantry section (Pantry stock vs Items catalog).
+     Highlighting keys off pageData.Page (the render template name). */}}
+{{define "pantryTabs"}}
+<nav class="subtabs" aria-label="Pantry sections">
+    <a href="/pantry"       class="subtab{{if eq .Page "pantry"}} subtab--active{{end}}"{{if eq .Page "pantry"}} aria-current="page"{{end}}>{{icon "archive"}} On hand</a>
+    <a href="/pantry/items" class="subtab{{if or (eq .Page "items") (eq .Page "item_detail")}} subtab--active{{end}}"{{if or (eq .Page "items") (eq .Page "item_detail")}} aria-current="page"{{end}}>{{icon "tag"}} Items catalog</a>
+</nav>
+{{end}}

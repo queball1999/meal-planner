@@ -7,6 +7,8 @@
     </p>
 </div>
 
+{{template "pantryTabs" .}}
+
 <form method="GET" action="/pantry" class="filter-bar" aria-label="Filter pantry" style="margin-bottom:1rem">
     <div class="field-row">
         <div class="field" style="flex:1">
@@ -103,7 +105,7 @@
     <h2 class="skeleton-card__title">Pantry is empty</h2>
     <p class="skeleton-card__body">
         Add ingredients you have on hand. When you shop, items from the
-        <a href="/list">shopping list</a> can be moved here automatically.
+        <a href="/plan/list">shopping list</a> can be moved here automatically.
     </p>
 </div>
 {{end}}

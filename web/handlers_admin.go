@@ -6,18 +6,20 @@ import (
 	"strconv"
 	"strings"
 
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
-	"goeat/pricing"
 )
 
 type adminPricesPageData struct {
 	Stores []storeWithPrices
+	Items  []*db.Item // catalog items for the picker
 }
 
 type manualPriceRow struct {
 	*db.ManualPrice
-	PriceLabel string
+	PriceLabel  string
+	DisplayName string // catalog item name when the term resolves, else the term
 }
 
 type storeWithPrices struct {
@@ -37,20 +39,31 @@ func (s *Server) handleAdminPricesPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stores, _ := s.store.ListStores(ctx, hh.ID)
 
+	catItems, _ := s.store.ListItems(ctx, hh.ID)
+	nameByTerm := make(map[string]string, len(catItems))
+	for _, it := range catItems {
+		nameByTerm[it.NormalizedTerm] = it.Name
+	}
+
 	var rows []storeWithPrices
 	for _, gs := range stores {
 		rawPrices, _ := s.store.ListManualPrices(ctx, gs.ID)
 		var priceRows []manualPriceRow
 		for _, p := range rawPrices {
+			display := p.NormalizedTerm
+			if n := nameByTerm[p.NormalizedTerm]; n != "" {
+				display = n
+			}
 			priceRows = append(priceRows, manualPriceRow{
 				ManualPrice: p,
 				PriceLabel:  fmt.Sprintf("$%.2f", float64(p.PriceCents)/100),
+				DisplayName: display,
 			})
 		}
 		priceRows, page := paginateNamed(r, priceRows, fmt.Sprintf("page_%d", gs.ID))
 		rows = append(rows, storeWithPrices{Store: gs, Prices: priceRows, Page: page})
 	}
-	s.render(w, r, "admin_prices", adminPricesPageData{Stores: rows})
+	s.render(w, r, "admin_prices", adminPricesPageData{Stores: rows, Items: catItems})
 }
 
 func (s *Server) handleAdminPriceCreate(w http.ResponseWriter, r *http.Request) {
@@ -67,9 +80,30 @@ func (s *Server) handleAdminPriceCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	ctx := r.Context()
+
+	// Prefer an explicit catalog item pick; fall back to a typed name, which
+	// is turned into a catalog item so the price attaches to something real.
+	var item *db.Item
+	if idStr := strings.TrimSpace(r.FormValue("item_id")); idStr != "" {
+		if itemID, perr := strconv.ParseInt(idStr, 10, 64); perr == nil {
+			it, _ := s.store.GetItem(ctx, itemID)
+			if it != nil && it.HouseholdID == hh.ID {
+				item = it
+			}
+		}
+	}
 	rawName := strings.TrimSpace(r.FormValue("name"))
-	if rawName == "" {
-		s.setNotify(w, NotifyDanger, "Ingredient name is required.")
+	if item == nil {
+		if rawName == "" {
+			s.setNotify(w, NotifyDanger, "Choose an item or enter a name.")
+			http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
+			return
+		}
+		item, _ = catalog.EnsureItem(ctx, s.store, hh.ID, rawName)
+	}
+	if item == nil {
+		s.setNotify(w, NotifyDanger, "Could not resolve that item.")
 		http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
 		return
 	}
@@ -82,26 +116,42 @@ func (s *Server) handleAdminPriceCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	packSizeStr := strings.TrimSpace(r.FormValue("pack_size"))
-	packSize, _ := strconv.ParseFloat(packSizeStr, 64)
+	packSize, _ := strconv.ParseFloat(strings.TrimSpace(r.FormValue("pack_size")), 64)
 	if packSize <= 0 {
 		packSize = 1
 	}
+	purchaseUnit := strings.TrimSpace(r.FormValue("purchase_unit"))
+	if purchaseUnit == "" {
+		purchaseUnit = "each"
+	}
+	priceCents := int64(dollars * 100)
+	user := middleware.UserFromCtx(r).Username
 
-	normalized := pricing.Normalize(rawName)
-	err = s.store.UpsertManualPrice(r.Context(), db.UpsertManualPriceParams{
+	// Transitional: keep the term-keyed manual_prices row for the fallback
+	// pricing chain, and write the first-class per-store package.
+	err = s.store.UpsertManualPrice(ctx, db.UpsertManualPriceParams{
 		StoreID:        storeID,
 		Region:         hh.ZIPCode,
-		NormalizedTerm: normalized,
-		PriceCents:     int64(dollars * 100),
+		NormalizedTerm: item.NormalizedTerm,
+		PriceCents:     priceCents,
 		PackSize:       packSize,
-		PurchaseUnit:   strings.TrimSpace(r.FormValue("purchase_unit")),
-		UpdatedBy:      middleware.UserFromCtx(r).Username,
+		PurchaseUnit:   purchaseUnit,
+		UpdatedBy:      user,
 	})
+	if err == nil {
+		err = s.store.UpsertItemStorePackage(ctx, db.UpsertItemStorePackageParams{
+			ItemID:           item.ID,
+			StoreID:          storeID,
+			PurchaseUnit:     purchaseUnit,
+			AmountPerPackage: packSize,
+			PriceCents:       priceCents,
+			UpdatedBy:        user,
+		})
+	}
 	if err != nil {
 		s.setNotify(w, NotifyDanger, fmt.Sprintf("Error saving price: %v", err))
 	} else {
-		s.setNotify(w, NotifySuccess, fmt.Sprintf("Price for %q saved.", rawName))
+		s.setNotify(w, NotifySuccess, fmt.Sprintf("Price for %q saved.", item.Name))
 	}
 	http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
 }

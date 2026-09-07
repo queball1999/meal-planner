@@ -285,3 +285,25 @@ function goeatCSRF() {
         });
     });
 })();
+
+// ── Choices.js enhancement ───────────────────────────────────────────────
+// Any <select data-choices> becomes a searchable dropdown. Multi-selects
+// (<select data-choices multiple>) get removable tags. Loaded from the
+// vendored choices.min.js (see layout.html); no-ops if that failed to load.
+
+(function initChoices() {
+    if (typeof window.Choices === 'undefined') return;
+    var selects = document.querySelectorAll('select[data-choices]');
+    for (var i = 0; i < selects.length; i++) {
+        var el = selects[i];
+        if (el.dataset.choicesReady) continue;
+        el.dataset.choicesReady = '1';
+        new window.Choices(el, {
+            searchEnabled: true,
+            shouldSort: false,
+            itemSelectText: '',
+            removeItemButton: el.multiple,
+            allowHTML: false,
+        });
+    }
+})();

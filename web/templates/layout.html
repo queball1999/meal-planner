@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="/static/css/layout.css">
     <link rel="stylesheet" href="/static/css/components.css">
     <link rel="stylesheet" href="/static/css/wizard.css">
+    <link rel="stylesheet" href="/static/css/choices.min.css">
+    <link rel="stylesheet" href="/static/css/choices-overrides.css">
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to content</a>
@@ -31,10 +33,11 @@
             <a href="/plan"    class="nav-link{{if eq .Page "plan"}}    nav-link--active{{end}}"{{if eq .Page "plan"}} aria-current="page"{{end}} aria-label="Plan">
                 {{icon "calendar"}} Plan
             </a>
-            <a href="/list"    class="nav-link{{if eq .Page "list"}}    nav-link--active{{end}}"{{if eq .Page "list"}} aria-current="page"{{end}} aria-label="Shopping List">
+            <a href="/plan/list" class="nav-link{{if eq .Page "list"}} nav-link--active{{end}}"{{if eq .Page "list"}} aria-current="page"{{end}} aria-label="Shopping List">
                 {{icon "cart"}} Shopping List
             </a>
-            <a href="/pantry"  class="nav-link{{if eq .Page "pantry"}}  nav-link--active{{end}}"{{if eq .Page "pantry"}} aria-current="page"{{end}} aria-label="Pantry">
+            {{$pantrySection := or (eq .Page "pantry") (eq .Page "items") (eq .Page "item_detail")}}
+            <a href="/pantry"  class="nav-link{{if $pantrySection}}  nav-link--active{{end}}"{{if $pantrySection}} aria-current="page"{{end}} aria-label="Pantry">
                 {{icon "archive"}} Pantry
             </a>
             <a href="/recipes" class="nav-link{{if eq .Page "recipes"}} nav-link--active{{end}}"{{if eq .Page "recipes"}} aria-current="page"{{end}} aria-label="Recipes">
@@ -87,11 +90,13 @@
 
     <footer class="site-footer" role="contentinfo">
         <span>{{.AppName}} &middot; v{{.Version}}</span>
+        {{if .User}}<span>&middot; <a href="/attributions">Photo attributions</a></span> <span>&middot; <a href="/about">About</a></span>{{end}}
         {{if gt .PageLoadMs 0.0}}
         <span class="site-footer__timing">Page: {{dur .PageLoadMs}} &middot; Template: {{dur .TemplateMs}}</span>
         {{end}}
     </footer>
 
+    <script src="/static/js/choices.min.js" defer></script>
     <script src="/static/js/main.js" defer></script>
 </body>
 </html>

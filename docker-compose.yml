@@ -6,6 +6,7 @@ services:
     environment:
       DATABASE_URL: "file:/data/goeat.db"
       RECIPE_IMAGE_DIR: "/data/recipe-images"
+      ITEM_IMAGE_DIR: "/data/item-images"
     ports:
       - "8081:8080"
     volumes:

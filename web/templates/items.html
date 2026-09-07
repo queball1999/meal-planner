@@ -1,0 +1,128 @@
+{{define "title"}}Items catalog - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "tag"}} Items catalog</h1>
+    <p class="page-subtitle">
+        Canonical grocery items - photo, category, stock unit, and per-store packages.
+        Recipes, meals, the pantry, and the shopping list all resolve to these.
+    </p>
+</div>
+
+{{template "pantryTabs" .}}
+
+<form method="GET" action="/pantry/items" class="filter-bar" aria-label="Filter items" style="margin-bottom:1rem">
+    <div class="field-row">
+        <div class="field" style="flex:1">
+            <input class="field-input" name="q" type="search"
+                   value="{{.Data.FilterQ}}" placeholder="Filter by name…" autocomplete="off">
+        </div>
+        <div class="field field--sm">
+            <select class="field-input" name="category" onchange="this.form.submit()">
+                <option value="">All categories</option>
+                {{range .Data.Categories}}
+                <option value="{{.}}"{{if eq . $.Data.FilterCat}} selected{{end}}>{{.}}</option>
+                {{end}}
+            </select>
+        </div>
+        <div class="field field--action">
+            <button type="submit" class="btn btn-ghost">{{icon "filter"}} Filter</button>
+        </div>
+        {{if .Data.Filtered}}
+        <div class="field field--action">
+            <a href="/pantry/items" class="btn btn-ghost">Clear</a>
+        </div>
+        {{end}}
+    </div>
+</form>
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">Add item</h2>
+    <form method="POST" action="/pantry/items" class="pref-form">
+        {{.CSRFField}}
+        <div class="field-row">
+            <div class="field" style="flex:2">
+                <label class="field-label" for="item-name">Name</label>
+                <input class="field-input" id="item-name" name="name" type="text"
+                       placeholder="e.g. Sharp cheddar cheese" autocomplete="off" required>
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="item-category">Category</label>
+                <input class="field-input" id="item-category" name="category" type="text"
+                       placeholder="Dairy & Eggs" list="item-categories" autocomplete="off">
+                <datalist id="item-categories">
+                    {{range .Data.Categories}}<option value="{{.}}"></option>{{end}}
+                </datalist>
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="item-unit">Stock unit</label>
+                <input class="field-input" id="item-unit" name="stock_unit" type="text"
+                       placeholder="g" value="each">
+            </div>
+            <div class="field field--sm">
+                <label class="field-label" for="item-qty">Default buy qty</label>
+                <input class="field-input" id="item-qty" name="default_purchase_qty"
+                       type="number" min="0.01" step="0.01" value="1">
+            </div>
+            <div class="field field--action">
+                <button type="submit" class="btn btn-primary">{{icon "plus"}} Add</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{{if .Data.Items}}
+<div class="card">
+    <table class="data-table" aria-label="Catalog items">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Stock unit</th>
+                <th>Source</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Data.Items}}
+            <tr>
+                <td data-label="">
+                    <img src="{{.ImageURL}}" alt="" width="40" height="40"
+                         loading="lazy" style="border-radius:6px;object-fit:cover">
+                </td>
+                <td data-label="Name"><a href="/pantry/items/{{.ID}}">{{.Name}}</a></td>
+                <td data-label="Category">{{.Category}}</td>
+                <td data-label="Stock unit">{{.StockUnit}}</td>
+                <td data-label="Source">
+                    <span class="badge {{if eq .Source "builtin"}}badge-cached{{else if eq .Source "manual"}}badge-manual{{else}}badge-estimate{{end}}">{{.Source}}</span>
+                </td>
+                <td data-label="">
+                    <a href="/pantry/items/{{.ID}}" class="btn btn-ghost btn-sm"
+                       aria-label="Edit {{.Name}}" title="Edit">{{icon "pencil"}}</a>
+                    <form method="POST" action="/pantry/items/{{.ID}}/delete" style="display:inline"
+                          onsubmit="return confirm('Delete {{.Name}} from the catalog?')">
+                        {{$.CSRFField}}
+                        <button type="submit" class="btn btn-ghost btn-danger btn-sm"
+                                aria-label="Delete {{.Name}}" title="Delete">{{icon "delete"}}</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{template "pagination" .Data.Page}}
+</div>
+{{else if .Data.Filtered}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "search"}}</div>
+    <h2 class="skeleton-card__title">No items match</h2>
+    <p class="skeleton-card__body"><a href="/pantry/items">Clear the filter</a> to see the whole catalog.</p>
+</div>
+{{else}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "tag"}}</div>
+    <h2 class="skeleton-card__title">Catalog is empty</h2>
+    <p class="skeleton-card__body">Add an item above, or generate a plan - ingredients auto-create items.</p>
+</div>
+{{end}}
+{{end}}

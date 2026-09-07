@@ -1,0 +1,56 @@
+/* choices-overrides.css - fit choices.js v11 to Go Eat's design tokens and
+   dark mode. Loaded after choices.min.css in layout.html. */
+
+.choices { margin-bottom: 0; }
+
+.choices__inner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    min-height: auto;
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--text-sm);
+}
+
+.choices.is-focused .choices__inner {
+    border-color: var(--border-focus);
+}
+
+.choices__list--dropdown,
+.choices__list[aria-expanded] {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+}
+
+.choices__list--dropdown .choices__item--selectable.is-highlighted,
+.choices__list[aria-expanded] .choices__item--selectable.is-highlighted {
+    background: var(--accent-bg);
+    color: var(--accent-text);
+}
+
+.choices__input {
+    background: transparent;
+    color: var(--text);
+    font-size: var(--text-sm);
+}
+
+.choices__list--multiple .choices__item {
+    background: var(--accent);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-inverse);
+}
+
+.choices__list--multiple .choices__item.is-highlighted {
+    background: var(--accent-hover);
+    border-color: var(--accent-border);
+}
+
+.choices[data-type*="select-one"] .choices__inner { padding-bottom: var(--sp-2); }
+
+.choices__placeholder { color: var(--text-muted); opacity: 1; }
+
+.choices__list--dropdown .choices__list { -webkit-overflow-scrolling: touch; }

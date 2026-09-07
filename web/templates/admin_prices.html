@@ -31,7 +31,16 @@
         <input type="hidden" name="store_id" value="{{.Store.ID}}">
         <div class="field-row">
             <div class="field">
-                <label class="field-label" for="name-{{.Store.ID}}">Ingredient name</label>
+                <label class="field-label" for="item-{{.Store.ID}}">Catalog item</label>
+                <select class="field-input" id="item-{{.Store.ID}}" name="item_id" data-choices>
+                    <option value="">Choose an item…</option>
+                    {{range $.Data.Items}}
+                    <option value="{{.ID}}">{{.Name}}{{if .Category}} ({{.Category}}){{end}}</option>
+                    {{end}}
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label" for="name-{{.Store.ID}}">…or new item name</label>
                 <input class="field-input" id="name-{{.Store.ID}}" name="name"
                        type="text" placeholder="e.g. chicken breast" autocomplete="off">
             </div>
@@ -71,16 +80,16 @@
         <tbody>
             {{range .Prices}}
             <tr>
-                <td>{{.NormalizedTerm}}</td>
-                <td>{{.PriceLabel}}</td>
-                <td>{{.PackSize}}</td>
-                <td>{{.PurchaseUnit}}</td>
-                <td>{{.UpdatedAt.Format "Jan 2, 2006"}}</td>
-                <td>
+                <td data-label="Ingredient">{{.DisplayName}}</td>
+                <td data-label="Price">{{.PriceLabel}}</td>
+                <td data-label="Pack size">{{.PackSize}}</td>
+                <td data-label="Unit">{{.PurchaseUnit}}</td>
+                <td data-label="Updated">{{.UpdatedAt.Format "Jan 2, 2006"}}</td>
+                <td data-label="">
                     <form method="POST" action="/admin/prices/{{.ID}}/delete" style="display:inline">
                         {{$.CSRFField}}
                         <button type="submit" class="btn btn--ghost btn--danger btn--sm"
-                                aria-label="Delete price for {{.NormalizedTerm}}">
+                                aria-label="Delete price for {{.DisplayName}}" title="Delete">
                             {{icon "delete"}}
                         </button>
                     </form>
