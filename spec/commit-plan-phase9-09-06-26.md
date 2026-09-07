@@ -154,7 +154,38 @@ Depends on commits 1, 3.
 ```
 db: add item aliases and surface shopping-list link status
 ```
-Status: ⬜
+Status: ✅
+
+**What the chip colours actually mean.** `catalog.EnsureItem` *always* created
+an item when a normalized term missed, so every line was technically "linked"
+and there was no unmatched state to show. Green now means the line resolves to
+a real catalog item (source builtin/manual - seeded, created, or confirmed);
+yellow means it resolves only to a `source='auto'` placeholder, so its price
+and pantry stock are being tracked under a name nobody confirmed.
+
+**EnsureItem grew a third and fourth step**: alias lookup, then a fuzzy match
+taken automatically only above `AutoLinkScore` (0.92) and recorded as an alias
+so the next sighting is a hit rather than a re-score. The bar is high because
+linking is a destructive merge and a wrong one is close to invisible
+afterwards.
+
+**Scoring is token overlap, not edit distance.** Grocery names differ by whole
+words ("chicken breast" vs "boneless skinless chicken breasts"), where edit
+distance is terrible and overlap is perfect. Note that `pricing.Normalize`
+already collapses plurals and prep words, so the fuzzy step's real job is the
+qualifiers it keeps - "extra virgin olive oil" normalizes to "virgin olive
+oil", not "olive oil".
+
+**Confirming a match merges, it does not just repoint.** Otherwise the
+placeholder survives holding its own price history and keeps collecting future
+ingredients with the same name, and the line comes back yellow next week. Only
+`source='auto'` placeholders are merged away - merging two real items because
+a line was mis-linked would destroy one the household deliberately created.
+
+**Bug found:** `pantry_items.item_id` was write-only - `SetPantryItemItem` set
+it and no SELECT ever read it back, so `PantryItem.ItemID` was nil everywhere
+in the app. Two near-identical pantry scan functions had drifted; they are now
+one.
 
 ---
 
@@ -480,7 +511,7 @@ Status: ⬜
 | 2 | ✅ Auto-filter + skeletons | — |
 | 3 | ✅ Colored pills | — |
 | 4 | Item modals + quick add | 1 |
-| 5 | Item aliases + link status | 1, 3 |
+| 5 | ✅ Item aliases + link status | 1, 3 |
 | 6 | ✅ Shopping total fix + already-have | — |
 | 6b | ✅ Household members + portion sizing | 1 |
 | 7 | ✅ Day headcount autosave + day status | 1, 2, 6b |

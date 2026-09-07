@@ -35,7 +35,7 @@ func (s *store) SearchCatalogRecipes(ctx context.Context, householdID int64, q s
 func (s *store) SearchPantryItems(ctx context.Context, householdID int64, q string) ([]*PantryItem, error) {
 	like := "%" + q + "%"
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at
+		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at, item_id
 		FROM pantry_items
 		WHERE household_id = ?
 		  AND (lower(name) LIKE lower(?) OR lower(normalized_term) LIKE lower(?))
@@ -134,7 +134,7 @@ func (s *store) FilterPantryItems(ctx context.Context, householdID int64, q stri
 	}
 	like := "%" + q + "%"
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at
+		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at, item_id
 		FROM pantry_items
 		WHERE household_id = ?
 		  AND (lower(name) LIKE lower(?) OR lower(normalized_term) LIKE lower(?))
@@ -157,10 +157,10 @@ func (s *store) FilterPantryItems(ctx context.Context, householdID int64, q stri
 
 func (s *store) GetPantryItemByBarcode(ctx context.Context, householdID int64, code string) (*PantryItem, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at
+		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at, item_id
 		FROM pantry_items WHERE household_id = ? AND barcode = ?`,
 		householdID, code)
-	return scanPantryItemRow(row)
+	return scanPantryItem(row)
 }
 
 func (s *store) IncrementPantryItem(ctx context.Context, id int64, delta float64) error {

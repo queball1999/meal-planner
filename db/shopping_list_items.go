@@ -173,3 +173,14 @@ func (s *store) MarkShoppingListItemInPantry(ctx context.Context, id int64, inPa
 	_, err := s.db.ExecContext(ctx, `UPDATE shopping_list_items SET in_pantry = ? WHERE id = ?`, v, id)
 	return err
 }
+
+// SetShoppingListItemItem repoints one shopping-list line at a catalog item.
+// Used when a person confirms what an unmatched line actually means.
+func (s *store) SetShoppingListItemItem(ctx context.Context, id int64, itemID *int64) error {
+	var iid any
+	if itemID != nil {
+		iid = *itemID
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE shopping_list_items SET item_id = ? WHERE id = ?`, iid, id)
+	return err
+}

@@ -91,6 +91,11 @@
                        onchange="toggleCheck(this)">
                 <span class="shopping-item__name-wrap">
                     <span class="shopping-item__name">{{.DisplayName}}</span>
+                    <button type="button" class="link-chip link-chip--{{.LinkState}} no-print"
+                            data-match-line data-id="{{.ID}}" data-name="{{.DisplayName}}"
+                            title="{{.LinkLabel}}" aria-label="{{.LinkLabel}}">
+                        {{icon "tag"}}
+                    </button>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
                         {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
@@ -136,6 +141,11 @@
                        onchange="toggleCheck(this)">
                 <span class="shopping-item__name-wrap">
                     <span class="shopping-item__name">{{.DisplayName}}</span>
+                    <button type="button" class="link-chip link-chip--{{.LinkState}} no-print"
+                            data-match-line data-id="{{.ID}}" data-name="{{.DisplayName}}"
+                            title="{{.LinkLabel}}" aria-label="{{.LinkLabel}}">
+                        {{icon "tag"}}
+                    </button>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
                         {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
@@ -165,6 +175,20 @@
     </ul>
 </section>
 {{end}}
+
+{{template "partials/modal_open.html" dict "ID" "match-item" "Title" "What is this?" "Form" true}}
+  <p id="match-item-intro" class="text-muted"></p>
+  <div class="field">
+    <label class="field-label" for="match-item-q">Search your item catalog</label>
+    <input class="field-input" id="match-item-q" type="search" autocomplete="off"
+           placeholder="Type to search…">
+    <p class="field-hint">
+      Matching teaches the planner that this name means that item, so next
+      week's list links it on its own. Prices and pantry stock move across too.
+    </p>
+  </div>
+  <ul class="match-list" id="match-item-list" role="listbox" aria-label="Catalog items"></ul>
+{{template "partials/modal_close.html" $root}}
 
 {{template "partials/modal_open.html" dict "ID" "have-it" "Title" "I already have this"}}
   <p id="have-it-desc">
@@ -204,6 +228,100 @@
         var li = cb.closest('li');
         if (li) li.classList.toggle('shopping-item--checked', cb.checked);
     };
+
+    // ── Item matching (the tag chip) ─────────────────────────────────────
+    // Yellow means the line is linked only to an auto-created placeholder, so
+    // its price and pantry stock are being tracked under a name nobody
+    // confirmed. Clicking it opens one shared dialog, retargeted per line.
+    var matchLine = null;
+    var matchList = document.getElementById('match-item-list');
+    var matchQ = document.getElementById('match-item-q');
+    var matchIntro = document.getElementById('match-item-intro');
+    var matchTimer;
+
+    function renderMatches(rows) {
+        matchList.innerHTML = '';
+        if (!rows.length) {
+            var empty = document.createElement('li');
+            empty.className = 'match-list__empty text-muted';
+            empty.textContent = 'Nothing found. Try a shorter search.';
+            matchList.appendChild(empty);
+            return;
+        }
+        rows.forEach(function (m) {
+            var li = document.createElement('li');
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'match-list__btn';
+
+            var name = document.createElement('span');
+            // textContent: item names are user-supplied.
+            name.textContent = m.name;
+            btn.appendChild(name);
+
+            var meta = document.createElement('span');
+            meta.className = 'match-list__meta text-muted';
+            var bits = [];
+            if (m.score) bits.push(m.score + '% match');
+            if (m.pantry) bits.push('in pantry');
+            if (m.unit) bits.push(m.unit);
+            meta.textContent = bits.join(' · ');
+            btn.appendChild(meta);
+
+            btn.addEventListener('click', function () { confirmMatch(m.item_id); });
+            li.appendChild(btn);
+            matchList.appendChild(li);
+        });
+    }
+
+    function loadMatches(q) {
+        if (!matchLine) return;
+        fetch('/list/' + matchLine.dataset.id + '/match' + (q ? '?q=' + encodeURIComponent(q) : ''), {
+            headers: { 'Accept': 'application/json' },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { renderMatches((d && d.suggestions) || []); })
+            .catch(function () { renderMatches([]); });
+    }
+
+    function confirmMatch(itemID) {
+        if (!matchLine) return;
+        var chip = matchLine;
+        matchLine = null;
+        window.goeat.closeModal('match-item');
+        fetch('/list/' + chip.dataset.id + '/match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
+            body: 'item_id=' + encodeURIComponent(itemID),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || !d.ok) { toast((d && d.error) || 'Could not save that match', 'error'); return; }
+                chip.classList.remove('link-chip--unmatched');
+                chip.classList.add('link-chip--linked');
+                chip.title = 'Linked to ' + d.name;
+                toast(d.message, 'success');
+            })
+            .catch(function () { toast('Could not save that match', 'error'); });
+    }
+
+    document.querySelectorAll('[data-match-line]').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            matchLine = chip;
+            matchQ.value = '';
+            matchIntro.textContent = 'Which catalog item is "' + chip.dataset.name + '"?';
+            matchList.innerHTML = '';
+            loadMatches('');
+            window.goeat.openModal('match-item');
+        });
+    });
+
+    if (matchQ) {
+        matchQ.addEventListener('input', function () {
+            clearTimeout(matchTimer);
+            matchTimer = setTimeout(function () { loadMatches(matchQ.value.trim()); }, 300);
+        });
+    }
 
     // ── "I already have this" ────────────────────────────────────────────
     // One dialog for the whole page, retargeted on each click: a shopping list

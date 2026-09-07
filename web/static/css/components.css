@@ -1696,3 +1696,78 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 /* Sits under "No meal" on an empty slot, so the card is an invitation rather
  * than a dead end. */
 .meal-card__fill { margin-top: var(--sp-2); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SHOPPING LIST ITEM LINK CHIP
+   Green: the line resolves to a real catalog item. Yellow: only to an
+   auto-created placeholder, so its price and pantry stock are tracked under a
+   name nobody confirmed - click to say what it actually is.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.link-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    margin: 0 0 0 var(--sp-1);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    background: transparent;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.link-chip svg { width: 13px; height: 13px; }
+
+.link-chip--linked {
+    color: var(--success);
+    background: var(--success-bg);
+}
+
+/* Yellow is an invitation, not an error - nothing is broken, it just wants a
+ * person's eye. The border makes it read as actionable rather than decorative. */
+.link-chip--unmatched {
+    color: var(--warning);
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
+}
+
+.link-chip--unmatched:hover {
+    border-color: var(--warning);
+}
+
+/* ── Match picker ───────────────────────────────────────────────────────── */
+
+.match-list {
+    list-style: none;
+    margin: var(--sp-3) 0 0;
+    padding: 0;
+    max-height: 20rem;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.match-list li + li { border-top: 1px solid var(--border); }
+
+.match-list__btn {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    width: 100%;
+    padding: var(--sp-3) var(--sp-4);
+    border: none;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.match-list__btn:hover { background: var(--accent-bg); }
+
+.match-list__meta { font-size: var(--text-xs); white-space: nowrap; }
+
+.match-list__empty { padding: var(--sp-4); font-size: var(--text-sm); }

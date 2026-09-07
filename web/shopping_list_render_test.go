@@ -189,3 +189,78 @@ func TestShoppingListBodyRendersHaveControl(t *testing.T) {
 		}
 	}
 }
+
+func TestLineLinkState(t *testing.T) {
+	if got := lineLinkState(&db.Item{Name: "Chicken breast", Source: "builtin"}); got != "linked" {
+		t.Errorf("a seeded catalog item = %q, want linked", got)
+	}
+	if got := lineLinkState(&db.Item{Name: "My thing", Source: "manual"}); got != "linked" {
+		t.Errorf("a hand-created item = %q, want linked", got)
+	}
+	// An auto placeholder is the case the yellow chip exists for.
+	if got := lineLinkState(&db.Item{Name: "chicken breasts", Source: "auto"}); got != "unmatched" {
+		t.Errorf("an auto placeholder = %q, want unmatched", got)
+	}
+	if got := lineLinkState(nil); got != "unmatched" {
+		t.Errorf("no item at all = %q, want unmatched", got)
+	}
+}
+
+func TestBuildLineItemLinkState(t *testing.T) {
+	real, auto := int64(1), int64(2)
+	items := map[int64]*db.Item{
+		real: {ID: real, Name: "Chicken breast", Source: "builtin"},
+		auto: {ID: auto, Name: "chicken breasts", Source: "auto"},
+	}
+
+	green := buildLineItem(&db.ShoppingListItem{ID: 10, DisplayName: "Chicken breast", ItemID: &real}, nil, items)
+	if green.LinkState != "linked" {
+		t.Errorf("LinkState = %q, want linked", green.LinkState)
+	}
+	if !strings.Contains(green.LinkLabel, "Chicken breast") {
+		t.Errorf("LinkLabel = %q, want it to name the item", green.LinkLabel)
+	}
+
+	yellow := buildLineItem(&db.ShoppingListItem{ID: 11, DisplayName: "chicken breasts", ItemID: &auto}, nil, items)
+	if yellow.LinkState != "unmatched" {
+		t.Errorf("LinkState = %q, want unmatched", yellow.LinkState)
+	}
+
+	// A line whose item id points at nothing must not panic or read as linked.
+	missing := int64(999)
+	orphan := buildLineItem(&db.ShoppingListItem{ID: 12, DisplayName: "mystery", ItemID: &missing}, nil, items)
+	if orphan.LinkState != "unmatched" {
+		t.Errorf("dangling item id = %q, want unmatched", orphan.LinkState)
+	}
+}
+
+func TestShoppingListBodyRendersLinkChips(t *testing.T) {
+	out := renderPage(t, "plan", pageData{
+		AppName: "Go Eat",
+		Page:    "list",
+		Data: planPageData{
+			HasPlan: true,
+			Tab:     "list",
+			List: &shoppingListPageData{
+				HasPlan:    true,
+				TotalLabel: "$8.99",
+				UnassignedItems: []shoppingLineItem{
+					{ID: 1, DisplayName: "Chicken breast", LinkState: "linked", LinkLabel: "Linked to Chicken breast"},
+					{ID: 2, DisplayName: "chicken breasts", LinkState: "unmatched", LinkLabel: "Not matched to a known item yet - click to pick one"},
+				},
+			},
+		},
+	})
+
+	for _, want := range []string{
+		`link-chip link-chip--linked`,
+		`link-chip link-chip--unmatched`,
+		`data-match-line`,
+		`id="match-item"`,
+		`id="match-item-list"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("shopping list missing %q", want)
+		}
+	}
+}

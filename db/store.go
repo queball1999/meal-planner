@@ -192,6 +192,13 @@ type Store interface {
 	ListPantryItems(ctx context.Context, householdID int64) ([]*PantryItem, error)
 	UpdatePantryItem(ctx context.Context, p UpdatePantryItemParams) error
 	GetPantryItemByTerm(ctx context.Context, householdID int64, term string) (*PantryItem, error)
+
+	GetItemByAlias(ctx context.Context, householdID int64, alias string) (*Item, error)
+	CreateItemAlias(ctx context.Context, householdID, itemID int64, alias, source string) error
+	ListItemAliases(ctx context.Context, householdID, itemID int64) ([]*ItemAlias, error)
+	DeleteItemAlias(ctx context.Context, householdID, id int64) error
+	MergeItems(ctx context.Context, householdID, from, to int64) error
+	SetShoppingListItemItem(ctx context.Context, id int64, itemID *int64) error
 	DeletePantryItem(ctx context.Context, id int64) error
 	DeleteAllPantryItemsForHousehold(ctx context.Context, householdID int64) error
 	SetPantryItemItem(ctx context.Context, id int64, itemID *int64) error

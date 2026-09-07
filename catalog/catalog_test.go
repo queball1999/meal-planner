@@ -130,3 +130,98 @@ func TestSeedGlobalConversions(t *testing.T) {
 		t.Fatalf("reseed changed global count %d -> %d", len(g), len(g2))
 	}
 }
+
+// EnsureItem's whole reason for growing past "look up or create": before
+// aliases, every near-miss name silently became its own item with its own
+// price and its own pantry stock.
+func TestEnsureItemResolvesThroughAlias(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newStore(t)
+
+	real, err := store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID: hhID, Name: "Chicken breast", NormalizedTerm: "chicken breast",
+		StockUnit: "lb", DefaultPurchaseQty: 1, Source: "builtin",
+	})
+	if err != nil {
+		t.Fatalf("seed item: %v", err)
+	}
+	if err := store.CreateItemAlias(ctx, hhID, real.ID, "chix breast", "manual"); err != nil {
+		t.Fatalf("alias: %v", err)
+	}
+
+	got, err := catalog.EnsureItem(ctx, store, hhID, "chix breast")
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if got == nil || got.ID != real.ID {
+		t.Fatalf("resolved to %+v, want the aliased item %d", got, real.ID)
+	}
+
+	before, _ := store.ListItems(ctx, hhID)
+	if _, err := catalog.EnsureItem(ctx, store, hhID, "chix breast"); err != nil {
+		t.Fatalf("second ensure: %v", err)
+	}
+	after, _ := store.ListItems(ctx, hhID)
+	if len(after) != len(before) {
+		t.Errorf("an aliased name created a new item: %d -> %d", len(before), len(after))
+	}
+}
+
+// A confident fuzzy match is taken automatically and recorded as an alias, so
+// the next sighting resolves without re-scoring the catalog.
+//
+// The example is a descriptive qualifier rather than a plural on purpose:
+// pricing.Normalize already collapses plurals and prep words ("boneless
+// skinless chicken breasts" -> "chicken breast"), so those never reach the
+// fuzzy step. What it keeps - "extra virgin olive oil" normalizes to "virgin
+// olive oil", not "olive oil" - is exactly what this step is for.
+func TestEnsureItemAutoLinksCloseMatch(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newStore(t)
+
+	real, err := store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID: hhID, Name: "Olive oil", NormalizedTerm: "olive oil",
+		StockUnit: "ml", DefaultPurchaseQty: 1, Source: "builtin",
+	})
+	if err != nil {
+		t.Fatalf("seed item: %v", err)
+	}
+
+	got, err := catalog.EnsureItem(ctx, store, hhID, "extra virgin olive oil")
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if got == nil || got.ID != real.ID {
+		t.Fatalf("resolved to %+v, want the existing item %d - a near-duplicate was created", got, real.ID)
+	}
+	// Recorded, so the second lookup is an alias hit rather than a re-score of
+	// the whole catalog.
+	if a, _ := store.GetItemByAlias(ctx, hhID, "virgin olive oil"); a == nil || a.ID != real.ID {
+		t.Errorf("auto match was not recorded as an alias: %+v", a)
+	}
+}
+
+// A name that is genuinely new still gets its own placeholder - the shopping
+// list flags those yellow rather than guessing.
+func TestEnsureItemStillCreatesForUnrelatedNames(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newStore(t)
+
+	if _, err := store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID: hhID, Name: "Chicken breast", NormalizedTerm: "chicken breast",
+		StockUnit: "lb", DefaultPurchaseQty: 1, Source: "builtin",
+	}); err != nil {
+		t.Fatalf("seed item: %v", err)
+	}
+
+	got, err := catalog.EnsureItem(ctx, store, hhID, "pomegranate molasses")
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if got == nil {
+		t.Fatal("no item created for an unrelated name")
+	}
+	if got.Source != "auto" {
+		t.Errorf("source = %q, want auto - this is the yellow-chip case", got.Source)
+	}
+}

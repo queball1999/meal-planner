@@ -29,7 +29,7 @@ func (s *store) CreatePantryItem(ctx context.Context, p CreatePantryItemParams) 
 
 func (s *store) ListPantryItems(ctx context.Context, householdID int64) ([]*PantryItem, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at
+		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at, item_id
 		FROM pantry_items WHERE household_id = ?
 		ORDER BY name COLLATE NOCASE`, householdID)
 	if err != nil {
@@ -92,10 +92,10 @@ func (s *store) GetPantryItemByTerm(ctx context.Context, householdID int64, term
 
 func (s *store) getPantryItemByTerm(ctx context.Context, householdID int64, term string) (*PantryItem, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at
+		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at, item_id
 		FROM pantry_items WHERE household_id = ? AND normalized_term = ?`,
 		householdID, term)
-	item, err := scanPantryItemRow(row)
+	item, err := scanPantryItem(row)
 	if err != nil {
 		return nil, err
 	}
@@ -109,26 +109,13 @@ type pantryScanner interface {
 func scanPantryItem(sc pantryScanner) (*PantryItem, error) {
 	var item PantryItem
 	var updatedAt string
+	// item_id is read back as well as written: it was previously write-only
+	// (SetPantryItemItem set it, nothing selected it), so PantryItem.ItemID was
+	// nil everywhere in the app and the shopping list could not tell a pantry
+	// row's catalog item from no link at all.
 	err := sc.Scan(
 		&item.ID, &item.HouseholdID, &item.Name, &item.NormalizedTerm,
-		&item.QuantityOnHand, &item.Unit, &item.Barcode, &updatedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	item.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
-	return &item, nil
-}
-
-func scanPantryItemRow(row *sql.Row) (*PantryItem, error) {
-	var item PantryItem
-	var updatedAt string
-	err := row.Scan(
-		&item.ID, &item.HouseholdID, &item.Name, &item.NormalizedTerm,
-		&item.QuantityOnHand, &item.Unit, &item.Barcode, &updatedAt,
+		&item.QuantityOnHand, &item.Unit, &item.Barcode, &updatedAt, &item.ItemID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

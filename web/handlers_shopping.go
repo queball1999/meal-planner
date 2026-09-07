@@ -44,6 +44,11 @@ type shoppingLineItem struct {
 	// quantity it will stock the pantry with.
 	BuyQuantity float64
 	Unit        string
+
+	// LinkState is "linked" (green) or "unmatched" (yellow); LinkLabel is the
+	// chip's tooltip. See lineLinkState.
+	LinkState string
+	LinkLabel string
 }
 
 // mealTag is one pill on a shopping-list line naming a meal it belongs to.
@@ -96,13 +101,22 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) sh
 		storeMap[gs.ID] = gs.Name
 	}
 
+	// The catalog, keyed by id, so each line can say whether it resolves to a
+	// real item or only to an auto-created placeholder. One query for the whole
+	// list rather than a lookup per line.
+	catalogItems, _ := s.store.ListItems(ctx, hh.ID)
+	itemsByID := make(map[int64]*db.Item, len(catalogItems))
+	for _, it := range catalogItems {
+		itemsByID[it.ID] = it
+	}
+
 	// Group items by store.
 	groupIndex := make(map[int64]int)
 	var groups []shoppingStoreGroup
 	var unassigned []shoppingLineItem
 
 	for _, item := range rawItems {
-		line := buildLineItem(item, mealTitles)
+		line := buildLineItem(item, mealTitles, itemsByID)
 		if item.StoreID == nil {
 			unassigned = append(unassigned, line)
 			continue
@@ -168,7 +182,7 @@ func summarizeLines(items []*db.ShoppingListItem) (total int64, byStore map[int6
 	return total, byStore
 }
 
-func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string) shoppingLineItem {
+func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string, itemsByID map[int64]*db.Item) shoppingLineItem {
 	buyLabel := fmt.Sprintf("%.4g %s", item.BuyQuantity, item.PurchaseUnit)
 	priceLabel := ""
 	if item.UnitPriceCents > 0 {
@@ -177,6 +191,16 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 	totalLabel := fmt.Sprintf("$%.2f", float64(item.LineTotalCents)/100)
 
 	badgeClass, badgeText := confidenceBadge(item.Confidence)
+
+	var linked *db.Item
+	if item.ItemID != nil {
+		linked = itemsByID[*item.ItemID]
+	}
+	state := lineLinkState(linked)
+	label := "Not matched to a known item yet - click to pick one"
+	if state == "linked" {
+		label = "Linked to " + linked.Name
+	}
 
 	return shoppingLineItem{
 		ID:          item.ID,
@@ -191,6 +215,8 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 		InPantry:    item.InPantry,
 		BuyQuantity: item.BuyQuantity,
 		Unit:        item.PurchaseUnit,
+		LinkState:   state,
+		LinkLabel:   label,
 	}
 }
 
@@ -641,7 +667,14 @@ func (s *Server) handleShoppingItemPriceSet(w http.ResponseWriter, r *http.Reque
 	resp := map[string]any{"ok": true, "store_name": storeName}
 	if updated != nil {
 		mealTitles, _ := s.store.ListMealTitlesByIngredientID(ctx, updated.PlanID)
-		resp["line"] = buildLineItem(updated, mealTitles)
+		// Only this line's own item is needed here, not the whole catalog.
+		itemsByID := map[int64]*db.Item{}
+		if updated.ItemID != nil {
+			if it, _ := s.store.GetItem(ctx, *updated.ItemID); it != nil {
+				itemsByID[it.ID] = it
+			}
+		}
+		resp["line"] = buildLineItem(updated, mealTitles, itemsByID)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
