@@ -27,7 +27,10 @@ Return ONLY valid JSON matching this schema - no prose, no markdown fences, no e
         {"name": "blueberries", "quantity": 0.5, "unit": "cup", "est_price_cents": 150},
         {"name": "canned black beans", "quantity": 1, "unit": "can", "est_price_cents": 129}
       ],
-      "steps": ["Boil 2 cups water.", "Stir in oats and cook 5 min.", "Top with berries."]
+      "steps": ["Boil 2 cups water.", "Stir in oats and cook 5 min.", "Top with berries."],
+      "prep_minutes": 5,
+      "cook_minutes": 5,
+      "tags": ["breakfast", "vegetarian", "quick"]
     }
   ]
 }
@@ -56,6 +59,18 @@ Rules:
   found later - it does not need to be precise, but it must be a real positive number,
   never 0 or omitted.
 - Steps are numbered imperatives, 3-8 per meal
+- "prep_minutes" and "cook_minutes" are your best estimate of hands-on and
+  cooking time. Every generated meal is saved to the household's recipe
+  catalog to cook again later, and a recipe with no times cannot be found by
+  "what can I make in 20 minutes".
+- "tags" are 2-5 short lowercase labels for finding this recipe later: the meal
+  type, the cuisine, the main protein, and any diet it satisfies. Not
+  sentences, not ingredient lists.
+- Ingredient "name" must be the plain grocery name of the thing, as it would be
+  written on a shopping list: "chicken breast", not "boneless skinless organic
+  chicken breast, cubed". Put preparation in the steps, not the name. The app
+  matches these names against the household's grocery catalog to track prices
+  and pantry stock, and a name loaded with adjectives matches nothing.
 - Plan slightly under the budget to leave headroom; the pricing engine will cost the actual total`
 
 // storeNames returns the names of the household's enabled stores, plus

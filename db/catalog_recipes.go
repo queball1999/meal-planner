@@ -211,3 +211,26 @@ func scanCatalogRecipeRow(rows *sql.Rows) (*CatalogRecipe, error) {
 func normalizeTerm(name string) string {
 	return name // pricing.Normalize is called by the import layer; db stores what it gets
 }
+
+// GetCatalogRecipeByTitle finds a household's recipe by exact title,
+// case-insensitively, or nil when there is none.
+//
+// Used to keep plan generation from filling the catalog with duplicates: the
+// same meal comes back week after week, and twenty copies of "Weeknight Chili"
+// would make the recipes page useless.
+func (s *store) GetCatalogRecipeByTitle(ctx context.Context, householdID int64, title string) (*CatalogRecipe, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, household_id, title, source_kind, source_url, source_site,
+		       image_path, servings, prep_minutes, cook_minutes, tags, created_at
+		FROM catalog_recipes
+		WHERE household_id = ? AND title = ? COLLATE NOCASE
+		ORDER BY id LIMIT 1`, householdID, title)
+	r, err := scanCatalogRecipe(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}

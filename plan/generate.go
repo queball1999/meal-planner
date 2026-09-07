@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/llm"
 	"goeat/pricing"
@@ -122,7 +124,7 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	}
 
 	j.EmitStatus("Saving your meals and recipes…")
-	if err := persistPlan(ctx, store, plan.ID, aiRun.ID, weekStart, gp); err != nil {
+	if err := persistPlan(ctx, store, householdID, plan.ID, aiRun.ID, weekStart, gp); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
 		return plan.ID, fmt.Errorf("persist plan: %w", err)
 	}
@@ -183,7 +185,15 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	return plan.ID, nil
 }
 
-func persistPlan(ctx context.Context, store db.Store, planID, aiRunID int64, weekStart time.Time, gp GeneratedPlan) error {
+// persistPlan writes a generated plan to the database: the meals, their steps,
+// and their ingredients - each linked to a catalog item as it is created - and
+// saves every meal to the household's recipe catalog.
+//
+// Linking happens here rather than only in the pricer, which is where it used
+// to live: buildPricer returns nil when no store chain is configured, so a
+// household with no stores never linked a single ingredient and every shopping
+// line stayed unmatched forever.
+func persistPlan(ctx context.Context, store db.Store, householdID, planID, aiRunID int64, weekStart time.Time, gp GeneratedPlan) error {
 	for _, gm := range gp.Meals {
 		day := strings.ToLower(gm.Day)
 		offset, ok := dayOffset[day]
@@ -219,15 +229,87 @@ func persistPlan(ctx context.Context, store db.Store, planID, aiRunID int64, wee
 		}
 
 		for _, ing := range gm.Ingredients {
+			// Resolve the name to a catalog item now - EnsureItem tries an
+			// exact term, then the household's aliases, then a confident fuzzy
+			// match, and only creates a placeholder as a last resort. A
+			// failure here is non-fatal: an unlinked ingredient still shops,
+			// it just shows as unmatched on the list.
+			var itemID *int64
+			term := pricing.Normalize(ing.Name)
+			if it, ierr := catalog.EnsureItem(ctx, store, householdID, ing.Name); ierr != nil {
+				log.Printf("plan: link ingredient %q: %v", ing.Name, ierr)
+			} else if it != nil {
+				itemID = &it.ID
+				term = it.NormalizedTerm
+			}
+
 			if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
-				MealID:        meal.ID,
-				Name:          ing.Name,
-				Quantity:      ing.Quantity,
-				Unit:          ing.Unit,
-				EstPriceCents: ing.EstPriceCents,
+				MealID:         meal.ID,
+				Name:           ing.Name,
+				Quantity:       ing.Quantity,
+				Unit:           ing.Unit,
+				NormalizedTerm: term,
+				ItemID:         itemID,
+				EstPriceCents:  ing.EstPriceCents,
 			}); err != nil {
 				return fmt.Errorf("create ingredient %q: %w", ing.Name, err)
 			}
+		}
+
+		// Keep the recipe, not just this week's meal. Non-fatal: a plan that
+		// cooks is worth more than a catalog entry, and losing the whole
+		// generation over a duplicate title would be absurd.
+		if err := saveGeneratedRecipe(ctx, store, householdID, gm); err != nil {
+			log.Printf("plan: save recipe %q to catalog: %v", gm.Title, err)
+		}
+	}
+	return nil
+}
+
+// saveGeneratedRecipe files one generated meal in the household's recipe
+// catalog so it can be cooked again outside this week's plan.
+//
+// Skips a title the household already has. The same meals come back week after
+// week, and twenty copies of "Weeknight Chili" would make /recipes useless;
+// the existing entry is left alone rather than overwritten, because it may
+// have been edited by hand since.
+func saveGeneratedRecipe(ctx context.Context, store db.Store, householdID int64, gm GeneratedMeal) error {
+	title := strings.TrimSpace(gm.Title)
+	if title == "" {
+		return nil
+	}
+	existing, err := store.GetCatalogRecipeByTitle(ctx, householdID, title)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+
+	recipe, err := store.CreateCatalogRecipe(ctx, db.CreateCatalogRecipeParams{
+		HouseholdID: householdID,
+		Title:       title,
+		SourceKind:  "ai",
+		Servings:    gm.Servings,
+		PrepMinutes: gm.PrepMinutes,
+		CookMinutes: gm.CookMinutes,
+		Tags:        gm.Tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	for i, ing := range gm.Ingredients {
+		// Catalog recipes store quantity as free text (that is what an import
+		// gives you); %g keeps "1" as "1" rather than "1.0000".
+		qty := strconv.FormatFloat(ing.Quantity, 'g', -1, 64)
+		if err := store.AddCatalogRecipeIngredient(ctx, recipe.ID, ing.Name, qty, ing.Unit, i); err != nil {
+			return err
+		}
+	}
+	for i, step := range gm.Steps {
+		if err := store.AddCatalogRecipeStep(ctx, recipe.ID, i, step); err != nil {
+			return err
 		}
 	}
 	return nil

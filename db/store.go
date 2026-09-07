@@ -211,6 +211,7 @@ type Store interface {
 
 	CreateCatalogRecipe(ctx context.Context, p CreateCatalogRecipeParams) (*CatalogRecipe, error)
 	GetCatalogRecipe(ctx context.Context, id int64) (*CatalogRecipe, error)
+	GetCatalogRecipeByTitle(ctx context.Context, householdID int64, title string) (*CatalogRecipe, error)
 	ListCatalogRecipes(ctx context.Context, householdID int64) ([]*CatalogRecipe, error)
 	FilterCatalogRecipes(ctx context.Context, householdID int64, f CatalogRecipeFilter) ([]*CatalogRecipe, error)
 	DeleteCatalogRecipe(ctx context.Context, id int64) error

@@ -91,3 +91,23 @@ func TestTotalPortionsRounds(t *testing.T) {
 		}
 	}
 }
+
+// The generation prompt has to ask for everything a saved recipe needs, or
+// every catalog entry lands with no times and no tags.
+func TestSystemPromptAsksForRecipeMetadata(t *testing.T) {
+	sys, _ := BuildPrompt(&db.Household{HouseholdSize: 2}, &PreferenceProfile{}, nil,
+		time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC))
+
+	for _, want := range []string{
+		`"prep_minutes"`,
+		`"cook_minutes"`,
+		`"tags"`,
+		// Names loaded with adjectives match nothing in the grocery catalog.
+		"plain grocery name",
+	} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("system prompt missing %q", want)
+		}
+	}
+}

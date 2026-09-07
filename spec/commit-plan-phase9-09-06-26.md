@@ -452,7 +452,27 @@ Depends on commit 5 (aliases).
 ```
 plan: save generated recipes and auto-create catalog items for ingredients
 ```
-Status: ⬜
+Status: ✅
+
+**Bug found while wiring this.** Ingredient linking ran *only* inside the
+pricer, and `buildPricer` returns nil when no store chain is configured - so a
+household with no stores never linked a single ingredient, and every shopping
+line stayed unmatched forever. Linking moved into `persistPlan`, where it
+happens as each ingredient is created regardless of pricing. It now goes
+through commit 5's `EnsureItem`, so generation reuses aliases and confident
+fuzzy matches instead of minting a placeholder per name.
+
+**Recipe metadata had to be asked for.** `GeneratedMeal` gained
+`prep_minutes`, `cook_minutes`, and `tags`; without them every catalog entry
+would land with no times and no way to find it. All three are optional in the
+response, so a model that ignores them still produces a valid plan. The prompt
+also now insists ingredient names be the plain grocery name ("chicken breast",
+not "boneless skinless organic chicken breast, cubed") - a name loaded with
+adjectives matches nothing in the item catalog.
+
+**Duplicate titles are skipped, not overwritten.** The same meals come back
+week after week; the existing entry is left alone because it may have been
+edited by hand since.
 
 ---
 
@@ -518,7 +538,7 @@ Status: ⬜
 | 7b | ✅ Meal from saved recipe | 6b, 7 |
 | 8 | Dashboard hover cards + chip cleanup | 1 |
 | 9 | About connectivity live | — |
-| 10 | Persist generated recipes | 5 |
+| 10 | ✅ Persist generated recipes | 5 |
 | 11 | AI chat + tool registry | 1, 7 |
 | 12 | Responsive pass | all |
 

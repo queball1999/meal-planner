@@ -24,6 +24,14 @@ type GeneratedMeal struct {
 	CookedPortions int                   `json:"cooked_portions"`
 	Ingredients    []GeneratedIngredient `json:"ingredients"`
 	Steps          []string              `json:"steps"`
+
+	// Asked for so the meal can be saved to the recipe catalog as something
+	// worth cooking again, rather than a title and a step list with no times
+	// and no way to find it. Optional in the response - an older model that
+	// ignores them still produces a valid plan.
+	PrepMinutes int      `json:"prep_minutes"`
+	CookMinutes int      `json:"cook_minutes"`
+	Tags        []string `json:"tags"`
 }
 
 // GeneratedPlan is the top-level LLM JSON response (§7.4).
