@@ -213,7 +213,7 @@ func TestBuildLineItemLinkState(t *testing.T) {
 		auto: {ID: auto, Name: "chicken breasts", Source: "auto"},
 	}
 
-	green := buildLineItem(&db.ShoppingListItem{ID: 10, DisplayName: "Chicken breast", ItemID: &real}, nil, items)
+	green := buildLineItem(&db.ShoppingListItem{ID: 10, DisplayName: "Chicken breast", ItemID: &real}, nil, items, nil)
 	if green.LinkState != "linked" {
 		t.Errorf("LinkState = %q, want linked", green.LinkState)
 	}
@@ -221,14 +221,14 @@ func TestBuildLineItemLinkState(t *testing.T) {
 		t.Errorf("LinkLabel = %q, want it to name the item", green.LinkLabel)
 	}
 
-	yellow := buildLineItem(&db.ShoppingListItem{ID: 11, DisplayName: "chicken breasts", ItemID: &auto}, nil, items)
+	yellow := buildLineItem(&db.ShoppingListItem{ID: 11, DisplayName: "chicken breasts", ItemID: &auto}, nil, items, nil)
 	if yellow.LinkState != "unmatched" {
 		t.Errorf("LinkState = %q, want unmatched", yellow.LinkState)
 	}
 
 	// A line whose item id points at nothing must not panic or read as linked.
 	missing := int64(999)
-	orphan := buildLineItem(&db.ShoppingListItem{ID: 12, DisplayName: "mystery", ItemID: &missing}, nil, items)
+	orphan := buildLineItem(&db.ShoppingListItem{ID: 12, DisplayName: "mystery", ItemID: &missing}, nil, items, nil)
 	if orphan.LinkState != "unmatched" {
 		t.Errorf("dangling item id = %q, want unmatched", orphan.LinkState)
 	}
@@ -343,5 +343,31 @@ func TestShoppingListRendersPantryNote(t *testing.T) {
 	// A line the pantry did not touch gets no note markup at all.
 	if strings.Count(out, "shopping-item__pantry-note") != 1 {
 		t.Errorf("expected exactly one pantry note, got %d", strings.Count(out, "shopping-item__pantry-note"))
+	}
+}
+
+func TestShoppingListRendersPriceVerdict(t *testing.T) {
+	out := renderPage(t, "plan", pageData{
+		AppName: "Go Eat",
+		Page:    "list",
+		Data: planPageData{
+			HasPlan: true, Tab: "list",
+			List: &shoppingListPageData{
+				HasPlan:    true,
+				TotalLabel: "$8.99",
+				UnassignedItems: []shoppingLineItem{
+					{ID: 1, DisplayName: "Ground beef", PriceVerdict: "good price", PriceVerdictClass: "price-verdict--good"},
+					{ID: 2, DisplayName: "Saffron"},
+				},
+			},
+		},
+	})
+
+	if !strings.Contains(out, "good price") {
+		t.Error("the price verdict is not rendered")
+	}
+	// An ordinary price renders nothing - silence is the common case.
+	if strings.Count(out, `class="price-verdict `) != 1 {
+		t.Errorf("expected exactly one verdict, got %d", strings.Count(out, `class="price-verdict `))
 	}
 }

@@ -130,3 +130,39 @@ func scanItemPackageRows(rows interface {
 	}
 	return out, rows.Err()
 }
+
+// ListPriceHistoryForItem returns every recorded price for one item across all
+// stores, oldest first, capped to the most recent 200 entries.
+//
+// Oldest-first because a chart is drawn left to right in time, and the cap is
+// applied to the *newest* end - a subquery rather than a plain LIMIT, which
+// would keep the oldest 200 and draw a chart that stops months ago.
+func (s *store) ListPriceHistoryForItem(ctx context.Context, itemID int64) ([]*PriceHistoryEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, item_id, store_id, price_cents, purchase_unit, amount_per_package, recorded_by, recorded_at
+		FROM (
+			SELECT id, item_id, store_id, price_cents, purchase_unit, amount_per_package, recorded_by, recorded_at
+			FROM price_history
+			WHERE item_id = ?
+			ORDER BY recorded_at DESC
+			LIMIT 200
+		)
+		ORDER BY recorded_at ASC`, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*PriceHistoryEntry
+	for rows.Next() {
+		var e PriceHistoryEntry
+		var recordedAt string
+		if err := rows.Scan(&e.ID, &e.ItemID, &e.StoreID, &e.PriceCents,
+			&e.PurchaseUnit, &e.AmountPerPackage, &e.RecordedBy, &recordedAt); err != nil {
+			return nil, err
+		}
+		e.RecordedAt, _ = time.Parse(time.RFC3339Nano, recordedAt)
+		out = append(out, &e)
+	}
+	return out, rows.Err()
+}

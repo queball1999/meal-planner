@@ -54,6 +54,13 @@ type shoppingLineItem struct {
 	// pantry"). Empty when the pantry contributed nothing. Without it a line
 	// that quietly shrank reads as a bug in the plan.
 	PantryNote string
+
+	// PriceVerdict is "good price" / "above usual" when this line's price is
+	// notably off that item's own past prices at the same store, and empty
+	// otherwise. Most prices are ordinary, and a badge on every line says
+	// nothing - silence is the common case by design.
+	PriceVerdict      string
+	PriceVerdictClass string
 }
 
 // mealTag is one pill on a shopping-list line naming a meal it belongs to.
@@ -114,6 +121,7 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) sh
 	for _, it := range catalogItems {
 		itemsByID[it.ID] = it
 	}
+	verdicts := s.priceVerdicts(ctx, rawItems)
 
 	// Group items by store.
 	groupIndex := make(map[int64]int)
@@ -121,7 +129,7 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) sh
 	var unassigned []shoppingLineItem
 
 	for _, item := range rawItems {
-		line := buildLineItem(item, mealTitles, itemsByID)
+		line := buildLineItem(item, mealTitles, itemsByID, verdicts)
 		if item.StoreID == nil {
 			unassigned = append(unassigned, line)
 			continue
@@ -187,7 +195,7 @@ func summarizeLines(items []*db.ShoppingListItem) (total int64, byStore map[int6
 	return total, byStore
 }
 
-func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string, itemsByID map[int64]*db.Item) shoppingLineItem {
+func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string, itemsByID map[int64]*db.Item, verdicts map[int64]priceFlag) shoppingLineItem {
 	buyLabel := fmt.Sprintf("%.4g %s", item.BuyQuantity, item.PurchaseUnit)
 	priceLabel := ""
 	if item.UnitPriceCents > 0 {
@@ -208,22 +216,72 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 	}
 
 	return shoppingLineItem{
-		ID:          item.ID,
-		DisplayName: item.DisplayName,
-		BuyLabel:    buyLabel,
-		PriceLabel:  priceLabel,
-		TotalLabel:  totalLabel,
-		BadgeClass:  badgeClass,
-		BadgeText:   badgeText,
-		Checked:     item.Checked,
-		Meals:       mealTagsFor(item.MealIngredientRefs, mealTitleByIngredient),
-		InPantry:    item.InPantry,
-		BuyQuantity: item.BuyQuantity,
-		Unit:        item.PurchaseUnit,
-		LinkState:   state,
-		LinkLabel:   label,
-		PantryNote:  pantryNote(item),
+		ID:                item.ID,
+		DisplayName:       item.DisplayName,
+		BuyLabel:          buyLabel,
+		PriceLabel:        priceLabel,
+		TotalLabel:        totalLabel,
+		BadgeClass:        badgeClass,
+		BadgeText:         badgeText,
+		Checked:           item.Checked,
+		Meals:             mealTagsFor(item.MealIngredientRefs, mealTitleByIngredient),
+		InPantry:          item.InPantry,
+		BuyQuantity:       item.BuyQuantity,
+		Unit:              item.PurchaseUnit,
+		LinkState:         state,
+		LinkLabel:         label,
+		PantryNote:        pantryNote(item),
+		PriceVerdict:      verdicts[item.ID].Label,
+		PriceVerdictClass: verdicts[item.ID].Class,
 	}
+}
+
+// priceFlag is one line's verdict against its own price history.
+type priceFlag struct {
+	Label string
+	Class string
+}
+
+// priceVerdicts judges each priced line against that item's past prices at the
+// same store.
+//
+// Same store only. Two shops' prices for the same thing are not comparable, so
+// "cheap" measured against a blend of them would be noise dressed as a signal
+// - a line at a premium grocer would read as expensive purely for being there.
+//
+// Lines with no item, no store, or no price are skipped: there is nothing to
+// compare them against, and guessing is worse than saying nothing.
+func (s *Server) priceVerdicts(ctx context.Context, lines []*db.ShoppingListItem) map[int64]priceFlag {
+	out := map[int64]priceFlag{}
+	// One history read per (item, store), not per line - a list routinely has
+	// several lines from the same shop.
+	type key struct{ item, store int64 }
+	cache := map[key][]float64{}
+
+	for _, ln := range lines {
+		if ln.ItemID == nil || ln.StoreID == nil || ln.UnitPriceCents <= 0 {
+			continue
+		}
+		k := key{*ln.ItemID, *ln.StoreID}
+		prior, ok := cache[k]
+		if !ok {
+			entries, err := s.store.ListPriceHistory(ctx, k.item, k.store)
+			if err != nil {
+				cache[k] = nil
+				continue
+			}
+			for _, e := range entries {
+				prior = append(prior, unitPrice(e.PriceCents, e.AmountPerPackage))
+			}
+			cache[k] = prior
+		}
+
+		current := unitPrice(ln.UnitPriceCents, ln.PackSize)
+		if label, class := priceVerdict(current, prior); label != "" {
+			out[ln.ID] = priceFlag{Label: label, Class: class}
+		}
+	}
+	return out
 }
 
 // pantryNote renders what the household's own stock covered on this line.
@@ -699,7 +757,7 @@ func (s *Server) handleShoppingItemPriceSet(w http.ResponseWriter, r *http.Reque
 				itemsByID[it.ID] = it
 			}
 		}
-		resp["line"] = buildLineItem(updated, mealTitles, itemsByID)
+		resp["line"] = buildLineItem(updated, mealTitles, itemsByID, s.priceVerdicts(ctx, []*db.ShoppingListItem{updated}))
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

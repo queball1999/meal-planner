@@ -255,6 +255,7 @@ type Store interface {
 	GetItemStorePackage(ctx context.Context, itemID, storeID int64) (*ItemStorePackage, error)
 	DeleteItemStorePackage(ctx context.Context, id int64) error
 	ListPriceHistory(ctx context.Context, itemID, storeID int64) ([]*PriceHistoryEntry, error)
+	ListPriceHistoryForItem(ctx context.Context, itemID int64) ([]*PriceHistoryEntry, error)
 
 	// ── Search (§8.4c) ────────────────────────────────────────────────────────
 

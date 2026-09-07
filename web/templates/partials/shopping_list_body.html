@@ -122,6 +122,7 @@
                 {{icon "fridge-outline"}}
             </button>
             <span class="shopping-item__total">{{.TotalLabel}}</span>
+            {{if .PriceVerdict}}<span class="price-verdict {{.PriceVerdictClass}}">{{.PriceVerdict}}</span>{{end}}
             <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
         </li>
         {{end}}
@@ -175,6 +176,7 @@
                 {{icon "fridge-outline"}}
             </button>
             <span class="shopping-item__total">{{.TotalLabel}}</span>
+            {{if .PriceVerdict}}<span class="price-verdict {{.PriceVerdictClass}}">{{.PriceVerdict}}</span>{{end}}
             <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
         </li>
         {{end}}

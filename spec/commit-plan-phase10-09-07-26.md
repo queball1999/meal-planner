@@ -95,7 +95,27 @@ Files: `db/price_history.go`, `db/store.go`, `web/handlers_items.go`,
 ```
 web: chart item price history and flag a good price
 ```
-Status: ⬜
+Status: ✅
+
+**One chart per store, not one combined line.** Two shops' prices for the same
+thing are not the same measurement, and averaging them draws a trend no shelf
+anywhere ever had.
+
+**Prices are normalised to cents per unit of amount** before charting or
+comparing (`unitPrice`), so a change of pack size does not read as a change of
+price - and a 5 lb bag does not look dearer than a 2 lb one.
+
+**Median, not mean.** One mistyped price - a $40 onion - drags a mean far
+enough to mislabel every price after it, and hand-entered price history is
+exactly where that happens. There is a test with a typo in the series.
+
+**Silence is the common case.** A verdict shows only at ±10% off the median
+and only with at least three prior readings; with two, one outlier *is* the
+median. Most prices are ordinary, and a badge on every line says nothing.
+
+**Two points minimum for a chart.** One reading is a number, not a trend, and
+a single-point chart invites the reader to see a shape that is not there. A
+flat series is drawn level rather than stretched to fill the height.
 
 ---
 
@@ -151,7 +171,7 @@ Status: ⬜
 | # | Commit | Depends on |
 |---|--------|-----------|
 | 1 | ✅ Pantry deduction | — |
-| 2 | Price history chart | — |
+| 2 | ✅ Price history chart | — |
 | 3 | In-store mode | — |
 | 4 | Agent confirmation | — |
 

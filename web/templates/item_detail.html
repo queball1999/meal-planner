@@ -144,6 +144,48 @@
 </div>
 
 <div class="card form-section" style="margin-top:1.5rem">
+{{if .Data.PriceCharts}}
+<div class="card" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title" style="margin-top:0">Price history</h2>
+    <p class="form-section__desc">
+        Every price recorded for this item, per store. Normalised to a price
+        per {{.Data.Item.StockUnit}} so a change of pack size does not read as
+        a change of price.
+    </p>
+
+    {{range .Data.PriceCharts}}
+    {{$s := .Spark}}
+    <div class="price-chart">
+        <div class="price-chart__head">
+            <span class="price-chart__store">{{.StoreName}}</span>
+            <span class="price-chart__last price-chart__last--{{$s.Direction}}">
+                {{$s.LastLabel}}
+                {{if eq $s.Direction "up"}}&uarr;{{else if eq $s.Direction "down"}}&darr;{{end}}
+            </span>
+        </div>
+
+        {{/* Inline SVG rather than a charting library: one series of a couple
+             of dozen points does not justify a dependency, and drawing it here
+             means it inherits the app's own theme tokens instead of shipping a
+             second colour system to keep in step with dark mode. */}}
+        <svg class="price-chart__svg" viewBox="0 0 {{$s.Width}} {{$s.Height}}"
+             preserveAspectRatio="none" role="img"
+             aria-label="{{.StoreName}}: {{$s.Count}} prices from {{$s.MinLabel}} to {{$s.MaxLabel}}, most recently {{$s.LastLabel}}">
+            <polygon class="price-chart__area" points="{{$s.Area}}"></polygon>
+            <polyline class="price-chart__line" points="{{$s.Points}}"></polyline>
+            <circle class="price-chart__dot" cx="{{$s.LastX}}" cy="{{$s.LastY}}" r="2.5"></circle>
+        </svg>
+
+        <div class="price-chart__foot">
+            <span>{{$s.FirstDate}}</span>
+            <span class="text-muted">{{$s.MinLabel}} - {{$s.MaxLabel}} per {{.Unit}}</span>
+            <span>{{$s.LastDate}}</span>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}
+
     <h2 class="form-section__title">Unit conversions</h2>
     <p class="form-section__desc">
         Item-specific bridges, usually count → weight/volume (e.g. 1 slice = 28 g).

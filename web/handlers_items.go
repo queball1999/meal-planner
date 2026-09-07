@@ -219,6 +219,19 @@ type itemDetailPageData struct {
 	Conversions []*db.UnitConversion // hand-entered item bridges (editable)
 	Derived     []*db.UnitConversion // auto-precomputed edges to the stock unit
 	UnitOptions []string
+
+	// PriceCharts is one series per store that has a price history for this
+	// item. Per store rather than one combined line: two shops' prices for the
+	// same thing are not the same measurement, and averaging them would draw a
+	// trend that no shelf anywhere ever had.
+	PriceCharts []itemPriceChart
+}
+
+// itemPriceChart is one store's price history for an item.
+type itemPriceChart struct {
+	StoreName string
+	Unit      string
+	Spark     Sparkline
 }
 
 var commonUnits = []string{
@@ -297,7 +310,63 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 		Conversions: conv,
 		Derived:     derived,
 		UnitOptions: unitOptionsFor(it.StockUnit),
+		PriceCharts: s.itemPriceCharts(ctx, it, stores),
 	})
+}
+
+// itemPriceCharts builds one sparkline per store from the item's recorded
+// price history.
+//
+// price_history has been filling up since 00014 and, until now, only one modal
+// ever read it. Prices are normalised to cents per unit of amount before
+// charting, so a 2 lb pack and a 5 lb pack of the same thing sit on the same
+// scale instead of drawing a cliff every time the pack size changed.
+func (s *Server) itemPriceCharts(ctx context.Context, it *db.Item, stores []*db.GroceryStore) []itemPriceChart {
+	entries, err := s.store.ListPriceHistoryForItem(ctx, it.ID)
+	if err != nil || len(entries) == 0 {
+		return nil
+	}
+
+	names := make(map[int64]string, len(stores))
+	for _, st := range stores {
+		names[st.ID] = st.Name
+	}
+
+	type series struct {
+		pts  []SparkPoint
+		unit string
+	}
+	byStore := map[int64]*series{}
+	var order []int64
+	for _, e := range entries {
+		sr, ok := byStore[e.StoreID]
+		if !ok {
+			sr = &series{unit: e.PurchaseUnit}
+			byStore[e.StoreID] = sr
+			order = append(order, e.StoreID)
+		}
+		sr.pts = append(sr.pts, SparkPoint{
+			Cents: unitPrice(e.PriceCents, e.AmountPerPackage),
+			At:    e.RecordedAt,
+		})
+	}
+
+	out := make([]itemPriceChart, 0, len(order))
+	for _, sid := range order {
+		sr := byStore[sid]
+		spark, ok := BuildSparkline(sr.pts, 260, 56)
+		if !ok {
+			continue // one reading is a number, not a trend
+		}
+		name := names[sid]
+		if name == "" {
+			// The store was deleted since the price was recorded. The history
+			// is still true, so it is shown rather than dropped.
+			name = "a store you no longer shop at"
+		}
+		out = append(out, itemPriceChart{StoreName: name, Unit: sr.unit, Spark: spark})
+	}
+	return out
 }
 
 func (s *Server) handleItemCreate(w http.ResponseWriter, r *http.Request) {
