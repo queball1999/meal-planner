@@ -40,7 +40,7 @@
                 <a href="/plan" class="btn btn--primary btn--sm">{{icon "calendar-week"}} View plan</a>
                 {{if $d.HasLLM}}
                 <form method="POST" action="/plan/generate" style="display:inline"
-                      onsubmit="return confirm('This replaces your current plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference. Continue?');">
+                      data-confirm="This replaces your current plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference." data-confirm-title="Regenerate plan" data-confirm-label="Regenerate">
                     {{$.CSRFField}}
                     <button type="submit" class="btn btn--outline btn--sm">
                         {{icon "autorenew"}} Regenerate
@@ -178,7 +178,7 @@
                     <span class="btn-icon is-disabled" title="This plan didn't finish generating">{{icon "alert"}}</span>
                     {{end}}
                     <form method="POST" action="/plan/{{.ID}}/delete"
-                          onsubmit="return confirm('Delete this plan and its meals? This cannot be undone.');">
+                          data-confirm="Delete this plan and its meals? This cannot be undone." data-confirm-title="Delete plan" data-confirm-label="Delete" data-confirm-danger>
                         {{$.CSRFField}}
                         <button type="submit" class="btn-icon btn-icon--danger" title="Delete plan" aria-label="Delete plan">{{icon "delete"}}</button>
                     </form>

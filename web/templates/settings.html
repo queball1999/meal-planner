@@ -274,7 +274,7 @@
             <p class="field-hint">Deletes every saved recipe (imported or hand-entered) under /recipes.</p>
         </div>
         <form method="POST" action="/settings/danger/recipes"
-              onsubmit="return confirm('Permanently delete every saved recipe? This cannot be undone.');">
+              data-confirm="Permanently delete every saved recipe? This cannot be undone." data-confirm-title="Wipe recipes" data-confirm-label="Wipe recipes" data-confirm-danger>
             {{$.CSRFField}}
             <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe recipes</button>
         </form>
@@ -286,7 +286,7 @@
             <p class="field-hint">Deletes every pantry item and stock level.</p>
         </div>
         <form method="POST" action="/settings/danger/pantry"
-              onsubmit="return confirm('Permanently delete your entire pantry? This cannot be undone.');">
+              data-confirm="Permanently delete your entire pantry? This cannot be undone." data-confirm-title="Wipe pantry" data-confirm-label="Wipe pantry" data-confirm-danger>
             {{$.CSRFField}}
             <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe pantry</button>
         </form>
@@ -298,7 +298,7 @@
             <p class="field-hint">Clears every generated shopping-list line (checked items, prices) across all plans - the plans and meals themselves are untouched.</p>
         </div>
         <form method="POST" action="/settings/danger/lists"
-              onsubmit="return confirm('Permanently clear every shopping list? This cannot be undone.');">
+              data-confirm="Permanently clear every shopping list? This cannot be undone." data-confirm-title="Wipe shopping lists" data-confirm-label="Wipe lists" data-confirm-danger>
             {{$.CSRFField}}
             <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe shopping lists</button>
         </form>
@@ -310,7 +310,7 @@
             <p class="field-hint">Deletes every weekly plan - past and present - along with their meals, recipes, ingredients, and shopping lists. Unlike a regenerate, this does not keep anything in Plan History.</p>
         </div>
         <form method="POST" action="/settings/danger/plans"
-              onsubmit="return confirm('Permanently delete every meal plan, including all history? This cannot be undone.');">
+              data-confirm="Permanently delete every meal plan, including all history? This cannot be undone." data-confirm-title="Wipe all plans" data-confirm-label="Wipe all plans" data-confirm-danger>
             {{$.CSRFField}}
             <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe all plans</button>
         </form>

@@ -1,0 +1,33 @@
+{{/* Shared modal chrome, opening half. Closed by partials/modal_close.html.
+
+     Split in two rather than one template taking a body pipeline because
+     html/template's {{template}} action requires a literal name, so there is
+     no way for this template to execute an arbitrary caller-supplied body in
+     between; the caller writes its own markup between the open/close calls.
+     One definition of the header/overlay chrome is still what this buys.
+
+     Usage:
+
+       {{template "partials/modal_open.html" dict "ID" "addItemModal" "Title" "Add item" "Form" true}}
+         ...body...
+         <div class="modal-dialog__footer">...</div>
+       {{template "partials/modal_close.html" .}}
+
+     Params:
+       ID    - unique element id, also the handle for goeat.openModal(id)
+       Title - heading text
+       Form  - true for the 44rem width (a multi-field form)
+       Large - true for the 52rem width (data display / wide form)
+
+     Form and Large are mutually exclusive; Form wins if both are set.
+     Widths and behaviour: web/static/css/modal.css, web/static/js/modal.js. */}}
+{{define "partials/modal_open.html"}}
+<div class="modal-overlay" id="{{.ID}}" data-modal>
+  <div class="modal-dialog{{if .Form}} modal-form{{else if .Large}} modal-lg{{end}}"
+       role="dialog" aria-modal="true" aria-labelledby="{{.ID}}-title" tabindex="-1">
+    <div class="modal-dialog__header">
+      <h2 id="{{.ID}}-title">{{.Title}}</h2>
+      <button type="button" class="modal-dialog__close" data-modal-close aria-label="Close">{{icon "close"}}</button>
+    </div>
+    <div class="modal-dialog__body">
+{{end}}

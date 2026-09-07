@@ -73,7 +73,7 @@
                     <span class="btn-icon is-disabled" title="This plan didn't finish generating">{{icon "alert"}}</span>
                     {{end}}
                     <form method="POST" action="/plan/{{.ID}}/delete"
-                          onsubmit="return confirm('Delete this plan and its meals? This cannot be undone.');">
+                          data-confirm="Delete this plan and its meals? This cannot be undone." data-confirm-title="Delete plan" data-confirm-label="Delete" data-confirm-danger>
                         {{$.CSRFField}}
                         <button type="submit" class="btn-icon btn-icon--danger" title="Delete plan" aria-label="Delete plan">{{icon "delete"}}</button>
                     </form>

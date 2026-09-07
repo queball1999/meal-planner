@@ -100,7 +100,7 @@
                     <a href="/pantry/items/{{.ID}}" class="btn btn-ghost btn-sm"
                        aria-label="Edit {{.Name}}" title="Edit">{{icon "pencil"}}</a>
                     <form method="POST" action="/pantry/items/{{.ID}}/delete" style="display:inline"
-                          onsubmit="return confirm('Delete {{.Name}} from the catalog?')">
+                          data-confirm="Delete {{.Name}} from the catalog?" data-confirm-title="Delete item" data-confirm-label="Delete" data-confirm-danger>
                         {{$.CSRFField}}
                         <button type="submit" class="btn btn-ghost btn-danger btn-sm"
                                 aria-label="Delete {{.Name}}" title="Delete">{{icon "delete"}}</button>

@@ -86,7 +86,7 @@
     {{end}}
 
     <form method="POST" action="/recipes/{{$r.ID}}/delete"
-          onsubmit="return confirm('Delete this recipe? This cannot be undone.')">
+          data-confirm="Delete this recipe? This cannot be undone." data-confirm-title="Delete recipe" data-confirm-label="Delete" data-confirm-danger>
         {{.CSRFField}}
         <button type="submit" class="btn btn-ghost btn-danger">{{icon "delete"}} Delete</button>
     </form>
@@ -177,7 +177,7 @@
 
         {{if $r.ImagePath}}
         <form method="POST" action="/recipes/{{$r.ID}}/image" style="margin-top:var(--sp-3)"
-              onsubmit="return confirm('Remove this photo?')">
+              data-confirm="Remove this photo?" data-confirm-title="Remove photo" data-confirm-label="Remove" data-confirm-danger>
             {{.CSRFField}}
             <input type="hidden" name="remove" value="1">
             <button type="submit" class="btn btn-ghost btn-danger btn-sm">{{icon "delete"}} Remove photo</button>

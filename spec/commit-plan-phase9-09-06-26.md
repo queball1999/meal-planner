@@ -1,0 +1,366 @@
+# Phase 9 Commit Plan — UI Platform, Item Linking, Plan Lifecycle & AI Chat
+
+Date: 2026-09-06
+Spec ref: §4 (UI), §5.5/§5.7 (plan lifecycle), §6.3 (items), §7 (shopping list), §9 (AI)
+Baseline: `d916d02` (Phase 8 complete, tree clean)
+
+Phase 9 turns the backlog into **14 commits**, ordered so shared UI
+primitives land before the features that depend on them.
+
+Legend: ✅ done · 🔨 in progress · ⬜ not started
+
+---
+
+## Commits
+
+### 1. web: custom dialog/modal and tooltip primitives
+Replaces the browser's `confirm()` everywhere with an in-app dialog, ported
+from `slack-llm-proxy` (`web/static/js/modal.js`, `tooltip.js`,
+`partials/modal_open.html` / `modal_close.html`, `web/MODALS.md`).
+
+Files: `web/static/js/modal.js` (new), `web/static/js/tooltip.js` (new),
+`web/static/css/modal.css` (new), `web/templates/partials/modal_open.html` (new),
+`web/templates/partials/modal_close.html` (new), `web/templates/layout.html`
+(script/style includes), `web/render.go` (`dict` template helper if absent),
+and the 12 `onsubmit="return confirm(...)"` call sites in
+`history.html`, `index.html`, `items.html`, `plan.html`, `recipe.html`,
+`settings.html`, `stores.html` → `data-confirm="..."`.
+
+Three widths: dialog 32rem / form 44rem / large 52rem.
+`goeat.confirm(msg, opts) -> Promise<bool>` and `goeat.alert(msg)` replace the
+native calls; a global submit interceptor handles `data-confirm` forms.
+
+```
+web: add custom dialog and tooltip primitives, drop browser confirm()
+```
+Status: ✅
+
+**Namespace note.** `.modal` already meant two different things in this repo
+before the port: `.modal:not(dialog)` is a full-screen overlay (stores.html)
+and `dialog.modal` is a native `<dialog>` panel (HA setup, price edit). The
+new chrome therefore uses `.modal-overlay` + `.modal-dialog` (BEM children
+`__header`/`__body`/`__footer`/`__close`), colliding with neither, and
+`modal.js`'s `data-modal-open` handler only fires for overlays carrying
+`data-modal` so stores.html's own opener is left alone. Commit 1b migrates
+the stragglers.
+
+---
+
+### 1b. web: migrate legacy modals onto the shared chrome
+Three modal conventions coexist after commit 1. This retires the older two so
+`partials/modal_open.html` is the only one left: stores.html's
+`hidden`-toggled `.modal__backdrop`/`.modal__panel` overlay with its
+page-local opener script, and the native `<dialog class="modal">` panels
+(`partials/ha_setup_dialog.html`, the price editor in
+`partials/shopping_list_body.html`).
+
+Files: `web/templates/stores.html` (drop the inline opener/closer script),
+`web/templates/partials/ha_setup_dialog.html`,
+`web/templates/partials/shopping_list_body.html`,
+`web/static/css/components.css` (remove `.modal:not(dialog)`, `.modal__*`),
+`web/static/css/wizard.css` (remove `dialog.modal` rules).
+Depends on commit 1.
+
+```
+web: migrate remaining modals onto the shared dialog chrome
+```
+Status: ⬜
+
+---
+
+### 2. web: debounced auto-filter and skeleton loading across list pages
+Removes every explicit "Filter"/"Apply" button; filter inputs now submit on a
+debounce (matching the settings-page autosave pattern already in `main.js`).
+Every data page gets a skeleton state while its first paint is in flight.
+
+Files: `web/static/js/main.js` (`autoFilter` module, debounce util reuse),
+`web/static/css/components.css` (`.skeleton-*` extension: table rows, cards,
+list rows), `web/templates/history.html`, `items.html`, `llm_log.html`,
+`pantry.html`, `recipes.html`, `stores.html`, `admin_prices.html`,
+`search_results.html`.
+
+```
+web: auto-filter list pages on debounce and add skeleton loading states
+```
+Status: ⬜
+
+---
+
+### 3. web: colored pills for item source, unit, and category
+Source / unit / category render as a deterministically colored pill so a row
+can be scanned by color. Colors derive from a stable hash of the value so new
+sources/units don't need a palette entry, with hand-picked overrides for the
+known set.
+
+Files: `web/render.go` (`pillClass` helper), `web/static/css/components.css`
+(`.pill--*` palette, light + dark), `web/templates/items.html`,
+`item_detail.html`, `pantry.html`, `admin_prices.html`.
+
+```
+web: render item source, unit, and category as colored pills
+```
+Status: ⬜
+
+---
+
+### 4. web: modal add-item forms and quick add-to-list/on-hand actions
+"Add item" moves out of the inline form into an upper-right button + modal on
+both `/pantry` and `/pantry/items`, matching the recipes page. Each catalog
+row gains a quick action next to Edit that opens a small dialog for quantity
+plus optional price, writing either to the shopping list or to on-hand stock.
+With no price entered, the existing pricing chain supplies one.
+
+Files: `web/templates/items.html`, `pantry.html`,
+`web/templates/partials/item_quick_add.html` (new),
+`web/handlers_items.go` (`/pantry/items/{id}/quick-add`),
+`web/handlers_pantry.go`, `web/routes.go`, `db/pantry.go`,
+`db/shopping_list_items.go` (upsert-by-item helpers).
+Depends on commit 1.
+
+```
+web: add item modals and quick add-to-list/on-hand actions
+```
+Status: ⬜
+
+---
+
+### 5. db+web: item aliases and shopping-list link status
+Pantry/catalog items gain an alias list so a shopping line's free-text name
+resolves to a known item across plan rebuilds. Each shopping-list row shows a
+link chip: **green** when linked to a catalog item, **yellow** when unmatched
+and awaiting a manual match. Clicking a yellow chip opens a match dialog with
+fuzzy-search suggestions; confirming records the alias.
+
+Files: `db/migrations/00019_item_aliases.sql` (new), `db/item_aliases.go` (new),
+`db/store.go`, `db/models.go`, `catalog/catalog.go` (alias lookup in
+`EnsureItem`), `catalog/fuzzy.go` (new) + `catalog/fuzzy_test.go` (new),
+`web/handlers_shopping.go` (`/list/{id}/match`),
+`web/templates/partials/shopping_list_body.html`, `web/routes.go`,
+`web/static/css/components.css`.
+Depends on commits 1, 3.
+
+```
+db: add item aliases and surface shopping-list link status
+```
+Status: ⬜
+
+---
+
+### 6. web: fix $0.00 estimated total on the shopping list
+Regression: `/plan/list` reports `$0.00 estimated total` even when lines carry
+prices. Root cause to confirm in `web/handlers_shopping.go` — `p.TotalCents`
+is read from the plan row rather than summed from the current lines, so it is
+stale whenever lines are repriced without a plan-level recompute
+(`recomputeTotals` at :594 writes it, but not on every path).
+
+Files: `web/handlers_shopping.go`, `plan/…` reprice path,
+`web/shopping_list_render_test.go` (regression test asserting a non-zero
+total for priced lines).
+
+```
+web: recompute shopping list total from current lines
+```
+Status: ⬜
+
+---
+
+### 6b. db+web: household members and per-person portion sizing
+A household is currently just a headcount, so a plan for "4" budgets the same
+food whether that is four adults or two adults and two toddlers. This adds
+named members, each with a **portion factor** — how much that person eats
+relative to one standard adult serving (a small child ~0.5, a light eater
+~0.8, a big eater ~1.4) — plus per-member dietary notes and dislikes that the
+generator already accepts for the household as a whole.
+
+The plan's serving math changes from *count of people* to *sum of portion
+factors*, so Phase 8's base-value rescaling (commit 6 there) keeps working
+unchanged: the scale factor is just computed from members instead of an
+integer.
+
+Surfaces:
+* **Setup wizard** — a members step after household basics, seeded with one
+  member for the operator, with an "everyone eats a standard portion" default
+  so the step can be skipped.
+* **Preferences page** — full CRUD on members (add/edit/remove, portion
+  factor, notes), the canonical place to manage them afterwards.
+* **Plan day widget** — the day's "people eating" control becomes a member
+  multi-select (see commit 7); the numeric headcount stays as the derived,
+  displayed value.
+
+Files: `db/migrations/00018_household_members.sql` (new),
+`db/household_members.go` (new), `db/household_members_test.go` (new),
+`db/models.go` (`HouseholdMember`, `PlanDay.MemberIDs`), `db/store.go`,
+`db/plan_days.go` (portion-factor sum feeds `ScaleMealsForDay`),
+`web/handlers_preferences.go`, `web/handlers_setup.go`,
+`web/templates/preferences.html`, `web/templates/setup.html`,
+`web/templates/partials/member_form.html` (new), `web/routes.go`,
+`plan/prompt.go` (per-member notes in the generation prompt),
+`plan/generate.go`.
+Depends on commit 1 (member add/edit dialogs).
+
+**Migration numbering**: this takes `00018`, so commit 5's aliases move to
+`00019` and commit 7's day status to `00020`.
+
+```
+db: add household members with per-person portion sizing
+```
+Status: ⬜
+
+---
+
+### 7. web: plan day headcount autosave and day-status actions
+Two changes to the weekly-plan day widget:
+
+* The "people eating" checkmark button is removed; the control autosaves on a
+  debounce (same helper as commit 2). A `(?)` affordance replaces it, showing
+  a tooltip explaining what the setting does (rescales servings and ingredient
+  quantities from the as-generated base — see Phase 8 commit 6).
+* With commit 6b landed, the control selects **which household members** are
+  eating rather than typing a bare number; the day's scale factor is the sum
+  of their portion factors and the numeric headcount is shown as derived.
+* A dropdown next to "people eating" marks the day **eating out**, **skipped**,
+  or **leftovers**. Because a marked day breaks any downstream leftovers link
+  (dinner tonight → leftovers tomorrow), choosing one opens a resolution dialog
+  offering: pick a replacement meal, mark the dependent day too, or leave the
+  slot empty.
+
+Files: `db/migrations/00020_day_status.sql` (new), `db/plan_days.go`
+(`SetDayStatus`, dependent-day lookup), `db/models.go` (`PlanDay.Status`),
+`db/plan_days_status_test.go` (new), `web/handlers_plan.go`,
+`web/templates/plan.html`, `web/templates/partials/day_status_dialog.html` (new),
+`web/routes.go`, `web/static/js/main.js`.
+Depends on commits 1, 2, 6b.
+
+```
+plan: autosave day headcount and add eating-out/skip/leftovers day status
+```
+Status: ⬜
+
+---
+
+### 8. web: dashboard meal hover cards and stats-chip cleanup
+Hovering a food item on the dashboard shows a preview card (photo, title,
+cost, ingredient list), following the knowledge-graph hover card in
+`slack-llm-proxy`. Also removes the text background behind the
+"This week spent" stats chip value.
+
+Files: `web/static/js/hovercard.js` (new), `web/static/css/components.css`,
+`web/templates/index.html`, `web/handlers.go` (`/meal/{id}/card` fragment),
+`web/routes.go`.
+Depends on commit 1 (tooltip layer).
+
+```
+web: add dashboard meal hover cards and clean up stats chip styling
+```
+Status: ⬜
+
+---
+
+### 9. web: About page connectivity widget accuracy and live updates
+Drops the green border behind the connectivity text (colored text stays),
+makes each row reflect a real probe result rather than configuration
+presence, and streams updates over SSE with a short polling fallback.
+
+Files: `web/handlers_about.go` (probe funcs + `/about/stream`),
+`web/handlers_about_test.go`, `web/templates/about.html`,
+`web/static/css/components.css`, `web/routes.go`.
+
+```
+web: make About connectivity status live and accurate
+```
+Status: ⬜
+
+---
+
+### 10. plan: persist AI-generated recipes and auto-create catalog items
+Every recipe the generator produces is saved to the recipe catalog at
+generation time rather than only living on the plan. The system prompt is
+extended so the model returns enough structure to populate a recipe row and
+to match ingredients against the item catalog; unmatched ingredients create a
+catalog item via `catalog.EnsureItem`.
+
+Files: `plan/prompt.go`, `plan/generate.go`, `plan/types.go`,
+`plan/generate_test.go`, `db/catalog_recipes.go`, `catalog/catalog.go`,
+`llm/generator.go`.
+Depends on commit 5 (aliases).
+
+```
+plan: save generated recipes and auto-create catalog items for ingredients
+```
+Status: ⬜
+
+---
+
+### 11. web+agent: site-wide AI chat with granular tool control
+A floating circular launcher in the bottom-right of every page opens a chat
+panel. The assistant is backed by an MCP-style tool registry over the site's
+own data so "move chicken quesadillas to monday" reshuffles the plan.
+
+Tool surface (granular, one verb per tool):
+`read_plan`, `read_meal`, `move_meal`, `edit_meal`, `delete_meal`,
+`swap_meals`, `set_day_status`, `set_day_headcount`,
+`read_shopping_list`, `add_list_item`, `remove_list_item`, `set_item_price`,
+`read_pantry`, `set_pantry_qty`, `search_items`, `search_recipes`.
+
+Each tool is a Go func with a JSON schema, household-scoped, audit-logged, and
+mutating tools return a diff the UI can render for confirmation.
+
+Files: `agent/registry.go`, `agent/tools_plan.go`, `agent/tools_shopping.go`,
+`agent/tools_pantry.go`, `agent/loop.go`, `agent/registry_test.go`,
+`agent/tools_plan_test.go` (all new),
+`web/handlers_chat.go` (new, SSE streaming), `web/routes.go`,
+`web/templates/partials/chat_widget.html` (new),
+`web/static/js/chat.js` (new), `web/static/css/chat.css` (new),
+`web/templates/layout.html`, `llm/generator.go` (tool-call plumbing),
+`db/migrations/00021_chat.sql` (new, conversation history).
+Depends on commits 1, 7.
+
+```
+web: add site-wide AI chat with granular plan and list control tools
+```
+Status: ⬜
+
+---
+
+### 12. web: mobile and desktop layout pass
+A responsive review of every page: tables that overflow on narrow screens get
+a card or scroll treatment, the plan grid reflows, dialogs and the chat panel
+size correctly on small viewports, and touch targets meet 44px.
+
+Files: `web/static/css/layout.css`, `components.css`, `chat.css`, `modal.css`,
+plus per-page tweaks across `web/templates/`.
+
+```
+web: responsive layout pass for mobile and desktop
+```
+Status: ⬜
+
+---
+
+## Summary
+
+| # | Commit | Depends on |
+|---|--------|-----------|
+| 1 | ✅ Dialog + tooltip primitives | — |
+| 1b | Migrate legacy modals | 1 |
+| 2 | Auto-filter + skeletons | — |
+| 3 | Colored pills | — |
+| 4 | Item modals + quick add | 1 |
+| 5 | Item aliases + link status | 1, 3 |
+| 6 | Shopping total fix | — |
+| 6b | Household members + portion sizing | 1 |
+| 7 | Day headcount autosave + day status | 1, 2, 6b |
+| 8 | Dashboard hover cards + chip cleanup | 1 |
+| 9 | About connectivity live | — |
+| 10 | Persist generated recipes | 5 |
+| 11 | AI chat + tool registry | 1, 7 |
+| 12 | Responsive pass | all |
+
+Migrations are claimed in commit order: `00018` household members (6b),
+`00019` item aliases (5), `00020` day status (7), `00021` chat history (11).
+
+Commits 1–3 are the shared platform and should land first. Commits 6 and 9 are
+independent bug fixes and can be pulled forward if a release is needed sooner.
+Commit 11 is the largest single piece and assumes 1 and 7 are settled.
+
+Commit messages carry no AI attribution.

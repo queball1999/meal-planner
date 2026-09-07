@@ -98,11 +98,12 @@
                     title="Scraping settings">
                 {{icon "cog"}}
             </button>
-            <form method="POST" action="/stores/{{.Store.ID}}/delete">
+            <form method="POST" action="/stores/{{.Store.ID}}/delete"
+                  data-confirm="Remove {{.Store.Name}} from your stores?"
+                  data-confirm-title="Remove store" data-confirm-label="Remove" data-confirm-danger>
                 {{$.CSRFField}}
                 <button type="submit" class="btn btn-ghost btn-sm btn-danger"
-                        aria-label="Remove {{.Store.Name}}"
-                        onclick="return confirm('Remove {{.Store.Name}}?')">
+                        aria-label="Remove {{.Store.Name}}">
                     {{icon "delete"}}
                 </button>
             </form>

@@ -1,0 +1,201 @@
+/* ---------------------------------------------------------------------------
+ * Modal chrome and tooltip popups.
+ *
+ * Behaviour lives in web/static/js/modal.js and web/static/js/tooltip.js;
+ * this file is only the look. Kept out of components.css because both the
+ * markup (partials/modal_open.html) and the scripts are a self-contained
+ * subsystem that every page loads.
+ * ------------------------------------------------------------------------ */
+
+/* ── Overlay + dialog ──────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  visibility: hidden;
+  /* Only opacity is transitioned, deliberately not visibility alongside it: a
+     hidden -> visible transition sits at its "hidden" keyframe value for the
+     same synchronous tick the .active class is added in, so openModal()
+     calling .focus() right after classList.add('active') would focus a still
+     invisible (and so unfocusable) element, with no error - focus silently
+     stays on <body> and the Tab trap never engages. Dropping visibility from
+     the transition list makes it flip the instant the class changes, while
+     opacity still fades. */
+  transition: opacity var(--dur) var(--ease);
+}
+
+.modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Three widths, chosen by the caller (see partials/modal_open.html):
+   dialog 32rem for a confirmation, form 44rem for a multi-field form,
+   large 52rem for a data display or a form that needs the room. */
+.modal-dialog {
+  width: 100%;
+  max-width: 32rem;
+  margin: auto;
+  max-height: calc(100vh - 2 * var(--sp-4));
+  overflow-y: auto;
+  padding: var(--sp-5) var(--sp-6);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-dialog.modal-form { max-width: 44rem; }
+.modal-dialog.modal-lg   { max-width: 52rem; }
+
+.modal-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.modal-dialog__header h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+}
+
+.modal-dialog__body { margin-bottom: var(--sp-4); }
+.modal-dialog__body p  { margin: var(--sp-2) 0; }
+.modal-dialog__body ul { margin: var(--sp-2) 0; padding-left: var(--sp-6); }
+
+.modal-dialog__footer {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.modal-dialog__close {
+  margin: 0;
+  padding: var(--sp-1);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+}
+
+.modal-dialog__close:hover { color: var(--text); }
+
+/* On a phone the dialog is the page: full width, pinned to the bottom so the
+   action buttons sit within thumb reach rather than centred behind the
+   keyboard. */
+@media (max-width: 640px) {
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal-dialog,
+  .modal-dialog.modal-form,
+  .modal-dialog.modal-lg {
+    max-width: none;
+    max-height: 90vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+}
+
+/* ── Tooltip "(?)" button and popup ────────────────────────────────────── */
+
+.tooltip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  transition: color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+
+.tooltip-btn:hover,
+.tooltip-btn.tooltip-open {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+/* Just the trigger's layout wrapper - the popup is fixed, so this is not its
+   containing block (see tooltip.js's note on overflow clipping). */
+.tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-popup {
+  display: none;
+  position: fixed;
+  z-index: 1200;
+  width: 260px;
+  max-width: 80vw;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-raised);
+  color: var(--text);
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  white-space: normal;
+  line-height: 1.4;
+  cursor: default;
+}
+
+.tooltip-popup.open { display: block; }
+
+/* The arrow is drawn at the popup's own horizontal centre, not the trigger's:
+   correct whenever positionPopup had room to centre the popup under its
+   trigger, and only mildly off when a trigger near the viewport edge forced a
+   shift. */
+.tooltip-popup::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--border);
+}
+
+.tooltip-popup-body { padding-right: 1.2rem; }
+
+.tooltip-popup-close {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  margin: 0;
+  padding: 0.15rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-base);
+  line-height: 1;
+  border-radius: var(--radius-sm);
+}
+
+.tooltip-popup-close:hover { color: var(--text); }

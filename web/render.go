@@ -68,6 +68,25 @@ func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"icon":     iconFunc,
 		"stepText": stripStepNumber,
+		// dict builds an inline map so a shared partial can be called with
+		// named arguments - html/template's {{template}} takes a single
+		// pipeline, and partials/modal_open.html needs ID/Title/width.
+		// An odd argument count or a non-string key is a template author's
+		// typo, so it fails the render rather than silently dropping a pair.
+		"dict": func(kv ...any) (map[string]any, error) {
+			if len(kv)%2 != 0 {
+				return nil, fmt.Errorf("dict: odd argument count (%d)", len(kv))
+			}
+			m := make(map[string]any, len(kv)/2)
+			for i := 0; i < len(kv); i += 2 {
+				k, ok := kv[i].(string)
+				if !ok {
+					return nil, fmt.Errorf("dict: key %d is %T, want string", i, kv[i])
+				}
+				m[k] = kv[i+1]
+			}
+			return m, nil
+		},
 		"slots":    func() []string { return []string{"breakfast", "lunch", "dinner"} },
 		"titleCase": func(s string) string {
 			if s == "" {
