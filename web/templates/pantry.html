@@ -9,14 +9,12 @@
 
 {{template "pantryTabs" .}}
 
-<form method="GET" action="/pantry" class="filter-bar" aria-label="Filter pantry" style="margin-bottom:1rem">
+<form method="GET" action="/pantry" class="filter-bar" aria-label="Filter pantry"
+      style="margin-bottom:1rem" data-autofilter data-skeleton="#pantry-rows">
     <div class="field-row">
         <div class="field" style="flex:1">
             <input class="field-input" name="q" type="search"
                    value="{{.Data.FilterQ}}" placeholder="Filter ingredients…" autocomplete="off">
-        </div>
-        <div class="field field--action">
-            <button type="submit" class="btn btn--ghost">{{icon "filter"}} Filter</button>
         </div>
         {{if .Data.Filtered}}
         <div class="field field--action">
@@ -71,7 +69,7 @@
                 <th></th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="pantry-rows">
             {{range .Data.Items}}
             <tr>
                 <td data-label="Ingredient">{{.Name}}</td>

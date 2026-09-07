@@ -307,3 +307,119 @@ function goeatCSRF() {
         });
     }
 })();
+
+// ── Auto-filter ───────────────────────────────────────────────────────────
+// A GET form marked data-autofilter submits itself instead of waiting for a
+// Filter button: text fields on a debounce, everything discrete (select,
+// date, checkbox, radio) the moment it changes. Every list page's Filter
+// button is gone, so this is the only way those filters are applied.
+//
+// Two problems come with submitting a *navigation* while the user is typing,
+// and both are handled here rather than per page:
+//
+//   1. The new document arrives with focus on <body>, so the next keystroke
+//      goes nowhere. The field name and caret position are stashed in
+//      sessionStorage keyed by pathname and restored on load.
+//   2. The old rows sit there looking live for the whole round trip. If the
+//      form names a data-skeleton target, its contents are swapped for
+//      shimmer rows the instant the request starts.
+
+(function initAutoFilter() {
+    const DEBOUNCE_MS = 450;
+    const FOCUS_KEY = 'goeat:autofilter:focus';
+
+    function isTextual(el) {
+        if (el.tagName === 'TEXTAREA') return true;
+        if (el.tagName !== 'INPUT') return false;
+        return ['text', 'search', 'number', 'tel', 'url', 'email'].indexOf(el.type) !== -1;
+    }
+
+    // Fills the target with shimmer placeholders. A <tbody> needs real rows
+    // with the right column count or the table collapses mid-request, which
+    // looks worse than showing nothing; anything else gets plain bars.
+    function paintSkeleton(target) {
+        if (!target) return;
+        const rows = Math.min(Math.max(target.children.length, 3), 8);
+        if (target.tagName === 'TBODY') {
+            const table = target.closest('table');
+            const head = table && table.querySelector('thead tr');
+            const cols = head ? head.children.length : 1;
+            let html = '';
+            for (let i = 0; i < rows; i++) {
+                html += '<tr aria-hidden="true"><td colspan="' + cols + '">' +
+                        '<div class="skeleton-row"></div></td></tr>';
+            }
+            target.innerHTML = html;
+            return;
+        }
+        let html = '';
+        for (let i = 0; i < rows; i++) {
+            html += '<div class="skeleton-row" aria-hidden="true" style="margin:var(--sp-3) 0"></div>';
+        }
+        target.innerHTML = html;
+    }
+
+    function rememberFocus(field) {
+        if (!field || !field.name) return;
+        const state = { path: window.location.pathname, name: field.name, pos: null };
+        // selectionStart throws on input types that have no text selection
+        // (date, checkbox, ...), which is exactly the set where there is no
+        // caret worth restoring.
+        try { state.pos = field.selectionStart; } catch (_) {}
+        try { sessionStorage.setItem(FOCUS_KEY, JSON.stringify(state)); } catch (_) {}
+    }
+
+    function restoreFocus() {
+        let state;
+        try {
+            const raw = sessionStorage.getItem(FOCUS_KEY);
+            if (!raw) return;
+            sessionStorage.removeItem(FOCUS_KEY);
+            state = JSON.parse(raw);
+        } catch (_) { return; }
+        if (!state || state.path !== window.location.pathname) return;
+
+        const field = document.querySelector('[data-autofilter] [name="' + CSS.escape(state.name) + '"]');
+        if (!field) return;
+        field.focus();
+        if (state.pos !== null && state.pos !== undefined) {
+            try { field.setSelectionRange(state.pos, state.pos); } catch (_) {}
+        }
+    }
+
+    document.querySelectorAll('form[data-autofilter]').forEach(function (form) {
+        let timer;
+
+        function go(field) {
+            clearTimeout(timer);
+            rememberFocus(field);
+            const sel = form.getAttribute('data-skeleton');
+            if (sel) paintSkeleton(document.querySelector(sel));
+            form.submit();
+        }
+
+        form.addEventListener('input', function (e) {
+            const el = e.target;
+            if (!isTextual(el)) return;
+            clearTimeout(timer);
+            timer = setTimeout(function () { go(el); }, DEBOUNCE_MS);
+        });
+
+        form.addEventListener('change', function (e) {
+            const el = e.target;
+            if (isTextual(el)) return; // its own debounce owns it
+            go(el);
+        });
+
+        // Enter in a text field applies immediately rather than waiting out
+        // the debounce - the form has no submit button left to press.
+        form.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            if (!isTextual(e.target)) return;
+            e.preventDefault();
+            go(e.target);
+        });
+    });
+
+    restoreFocus();
+})();

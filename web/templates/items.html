@@ -10,22 +10,20 @@
 
 {{template "pantryTabs" .}}
 
-<form method="GET" action="/pantry/items" class="filter-bar" aria-label="Filter items" style="margin-bottom:1rem">
+<form method="GET" action="/pantry/items" class="filter-bar" aria-label="Filter items"
+      style="margin-bottom:1rem" data-autofilter data-skeleton="#item-rows">
     <div class="field-row">
         <div class="field" style="flex:1">
             <input class="field-input" name="q" type="search"
                    value="{{.Data.FilterQ}}" placeholder="Filter by name…" autocomplete="off">
         </div>
         <div class="field field--sm">
-            <select class="field-input" name="category" onchange="this.form.submit()">
+            <select class="field-input" name="category">
                 <option value="">All categories</option>
                 {{range .Data.Categories}}
                 <option value="{{.}}"{{if eq . $.Data.FilterCat}} selected{{end}}>{{.}}</option>
                 {{end}}
             </select>
-        </div>
-        <div class="field field--action">
-            <button type="submit" class="btn btn-ghost">{{icon "filter"}} Filter</button>
         </div>
         {{if .Data.Filtered}}
         <div class="field field--action">
@@ -83,7 +81,7 @@
                 <th></th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="item-rows">
             {{range .Data.Items}}
             <tr>
                 <td data-label="">

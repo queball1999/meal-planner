@@ -334,6 +334,14 @@
     }
 }
 
+/* Skeleton rows painted into a <tbody> while a debounced filter navigation is
+ * in flight (initAutoFilter in main.js). The row keeps the table's normal
+ * height so the page does not collapse and re-expand around the request. */
+.data-table tbody tr[aria-hidden="true"] td {
+    padding-top: var(--sp-3);
+    padding-bottom: var(--sp-3);
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    FORM FIELDS
    ══════════════════════════════════════════════════════════════════════════ */

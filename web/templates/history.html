@@ -6,7 +6,8 @@
 </div>
 
 <div class="card form-section" style="margin-bottom:1.5rem">
-    <form method="GET" action="/plan/history" class="pref-form">
+    <form method="GET" action="/plan/history" class="pref-form"
+          data-autofilter data-skeleton="#history-rows">
         <div class="field-row">
             <div class="field">
                 <label class="field-label" for="hist-from">From week</label>
@@ -17,9 +18,6 @@
                 <label class="field-label" for="hist-to">To week</label>
                 <input class="field-input" id="hist-to" name="to" type="date"
                        value="{{.Data.To}}">
-            </div>
-            <div class="field field--action">
-                <button type="submit" class="btn btn--outline">{{icon "filter-variant"}} Filter</button>
             </div>
             {{if or .Data.From .Data.To}}
             <div class="field field--action">
@@ -43,7 +41,7 @@
                 <th></th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="history-rows">
             {{range .Data.Plans}}
             <tr>
                 <td>{{fmtWeekRange .WeekStart .WeekEnd}}</td>

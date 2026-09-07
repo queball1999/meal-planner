@@ -6,7 +6,8 @@
 </div>
 
 <!-- ── Filters ───────────────────────────────────────────────────────────── -->
-<form method="GET" action="/admin/llm-log" class="llm-log-filters">
+<form method="GET" action="/admin/llm-log" class="llm-log-filters"
+      data-autofilter data-skeleton=".llm-log-list">
     <input class="field-input llm-log-search"
            type="search"
            name="q"
@@ -20,7 +21,6 @@
         <option value="error" {{if eq .Data.Status "error"}}selected{{end}}>Errors only</option>
     </select>
 
-    <button type="submit" class="btn btn-secondary">Filter</button>
     <a href="/admin/llm-log" class="btn btn-secondary">Clear</a>
 </form>
 

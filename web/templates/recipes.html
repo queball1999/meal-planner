@@ -8,7 +8,8 @@
     <p class="page-subtitle">Your saved recipe catalog.</p>
 </div>
 
-<form method="GET" action="/recipes" class="filter-bar" aria-label="Filter recipes">
+<form method="GET" action="/recipes" class="filter-bar" aria-label="Filter recipes"
+      data-autofilter data-skeleton="#recipe-rows">
     <div class="field-row" style="flex-wrap:wrap;gap:0.5rem">
         <div class="field" style="flex:2;min-width:140px">
             <input class="field-input" name="q" type="search"
@@ -21,9 +22,6 @@
                 <option value="manual"{{if eq .Data.FilterSrc "manual"}} selected{{end}}>Manual</option>
                 <option value="ai"{{if eq .Data.FilterSrc "ai"}} selected{{end}}>AI</option>
             </select>
-        </div>
-        <div class="field field--action">
-            <button type="submit" class="btn btn--ghost">{{icon "filter"}} Filter</button>
         </div>
         {{if .Data.Filtered}}
         <div class="field field--action">
@@ -48,7 +46,7 @@
                 <th></th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="recipe-rows">
             {{range .Data.Recipes}}
             <tr>
                 <td data-label="Photo">
