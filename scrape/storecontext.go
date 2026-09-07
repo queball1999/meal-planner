@@ -103,10 +103,11 @@ func RenderWithContext(ctx context.Context, r Renderer, targetURL string, sc *St
 
 	var out struct {
 		Data struct {
-			HTML   string `json:"html"`
-			URL    string `json:"url"`
-			Status int    `json:"status"`
-			Error  string `json:"error"`
+			HTML         string `json:"html"`
+			URL          string `json:"url"`
+			Status       int    `json:"status"`
+			Error        string `json:"error"`
+			ContentReady bool   `json:"contentReady"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -119,8 +120,32 @@ func RenderWithContext(ctx context.Context, r Renderer, targetURL string, sc *St
 	if status == 0 {
 		status = http.StatusOK
 	}
-	return &FetchResult{HTML: out.Data.HTML, FinalURL: out.Data.URL, StatusCode: status}, nil
+	res := &FetchResult{HTML: out.Data.HTML, FinalURL: out.Data.URL, StatusCode: status}
+	// The page loaded but the wait never resolved: a full UI with no products.
+	// That is the soft-block signature, not a success. Return the shell as a
+	// sentinel error so the caller can escalate (clearance handoff) instead of
+	// settling for the empty page. A hard failure (network, timeout, script
+	// error) still returns a plain error with no shell.
+	if !out.Data.ContentReady {
+		return nil, &emptyRenderError{result: res}
+	}
+	return res, nil
 }
+
+// emptyRenderError is returned by RenderWithContext when the page loaded but
+// its content wait timed out - a full UI shell with no products. It carries
+// the rendered shell so the caller can still inspect it, while signalling
+// "not a real result" so the chain escalates rather than accepting it.
+type emptyRenderError struct {
+	result *FetchResult
+}
+
+func (e *emptyRenderError) Error() string {
+	return "page loaded but the content wait timed out (no products rendered)"
+}
+
+// Result returns the rendered shell carried by the error, if any.
+func (e *emptyRenderError) Result() *FetchResult { return e.result }
 
 // contextCookies merges the operator's store selection with any clearance
 // cookies, in Puppeteer's setCookie shape. The operator's own values win: a
@@ -176,14 +201,20 @@ export default async ({ page, context }) => {
 
     const resp = await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
+    // contentReady tells the caller whether the wait actually resolved. A page
+    // that loads with a full UI but never paints its products is the soft-block
+    // signature (Imperva lets the shell through and starves the product API);
+    // without this flag the caller cannot tell that from a genuine result.
+    let contentReady = false;
     if (waitFor) {
-      try { await page.waitForSelector(waitFor, { timeout: 30000 }); }
+      try { await page.waitForSelector(waitFor, { timeout: 30000 }); contentReady = true; }
       catch (e) { /* fall through: return what rendered */ }
     } else {
       try {
         await page.waitForFunction(
           () => /[$£€]\s?\d+[.,]\d{2}/.test(document.body.innerText),
           { timeout: 25000 });
+        contentReady = true;
       } catch (e) { /* same */ }
     }
 
@@ -192,6 +223,7 @@ export default async ({ page, context }) => {
         html: await page.content(),
         url: page.url(),
         status: resp ? resp.status() : 200,
+        contentReady: contentReady,
       },
       type: 'application/json',
     };

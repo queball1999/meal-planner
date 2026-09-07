@@ -2,6 +2,7 @@ package scrape
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -236,13 +237,20 @@ func fetchWithStoreContext(ctx context.Context, rawURL string, render RenderConf
 
 	attempt := func(cl *Clearance) (*SmartResult, bool) {
 		rendered, err := RenderWithContext(ctx, browserless, rawURL, sc, cl)
-		if err != nil {
-			log.Printf("scrape: store-context render of %s failed: %v", rawURL, err)
-			return nil, false
-		}
 		label := "Browserless (store context)"
 		if cl != nil {
 			label = "Browserless (store context + FlareSolverr clearance)"
+		}
+		if err != nil {
+			var empty *emptyRenderError
+			if errors.As(err, &empty) {
+				// Loaded but no products: the soft-block signature. Keep the
+				// shell so the caller can inspect it, and signal not-ok so the
+				// chain escalates to the clearance handoff instead of settling.
+				return &SmartResult{FetchResult: empty.Result(), ViaProxy: true, Backend: label, Challenge: "loaded but no products rendered"}, false
+			}
+			log.Printf("scrape: store-context render of %s failed: %v", rawURL, err)
+			return nil, false
 		}
 		if reason := ChallengeReason(rendered.HTML, rendered.StatusCode); reason != "" {
 			return &SmartResult{FetchResult: rendered, ViaProxy: true, Backend: label, Challenge: reason}, false
@@ -250,12 +258,13 @@ func fetchWithStoreContext(ctx context.Context, rawURL string, render RenderConf
 		return &SmartResult{FetchResult: rendered, ViaProxy: true, Backend: label}, true
 	}
 
-	if out, ok := attempt(nil); ok {
-		return out, true
+	first, ok := attempt(nil)
+	if ok {
+		return first, true
 	}
 
-	// Blocked. Same handoff as the plain chain: FlareSolverr walks in the
-	// front door, Browserless replays the store context as a vetted visitor.
+	// Blocked or empty. Same handoff as the plain chain: FlareSolverr walks in
+	// the front door, Browserless replays the store context as a vetted visitor.
 	var flare Renderer
 	for _, r := range render.Renderers() {
 		if r.Backend == RendererFlareSolverr {
@@ -264,12 +273,12 @@ func fetchWithStoreContext(ctx context.Context, rawURL string, render RenderConf
 		}
 	}
 	if !flare.Enabled() {
-		return nil, false
+		return first, false // may be nil; return the shell we have, if any
 	}
 	clearance, err := FlareClearance(ctx, flare.URL, rawURL)
 	if err != nil {
 		log.Printf("scrape: clearance for store-context render of %s failed: %v", rawURL, err)
-		return nil, false
+		return first, false
 	}
 	return attempt(clearance)
 }

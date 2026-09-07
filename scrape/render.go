@@ -262,7 +262,12 @@ func fetchViaBrowserless(ctx context.Context, targetURL string, cfg Renderer, cl
 	if cl != nil && len(cl.Cookies) > 0 {
 		payload["cookies"] = cl.Cookies
 		if cl.UserAgent != "" {
-			payload["userAgent"] = cl.UserAgent
+			// Current Browserless builds validate userAgent as an object
+			// ({"userAgent": "..."}); a bare string is rejected with
+			// HTTP 400 "userAgent must be object". Older builds accepted the
+			// string, so the object form is the safe choice for the version
+			// we ship.
+			payload["userAgent"] = map[string]string{"userAgent": cl.UserAgent}
 		}
 	}
 	body, _ := json.Marshal(payload)
