@@ -10,6 +10,7 @@ data/
 
 # Build output
 bin/
+*.exe
 
 # Logs
 *.log
