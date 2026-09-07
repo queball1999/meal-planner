@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
 	"goeat/pricing"
@@ -55,7 +56,7 @@ func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	normalized := pricing.Normalize(rawName)
-	_, err := s.store.CreatePantryItem(r.Context(), db.CreatePantryItemParams{
+	pi, err := s.store.CreatePantryItem(r.Context(), db.CreatePantryItemParams{
 		HouseholdID:    hh.ID,
 		Name:           rawName,
 		NormalizedTerm: normalized,
@@ -65,6 +66,7 @@ func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.setNotify(w, NotifyDanger, fmt.Sprintf("Error saving pantry item: %v", err))
 	} else {
+		linkPantryItem(r, s.store, hh.ID, pi)
 		s.setNotify(w, NotifySuccess, fmt.Sprintf("%q added to pantry.", rawName))
 	}
 	http.Redirect(w, r, "/pantry", http.StatusSeeOther)
@@ -118,13 +120,28 @@ func (s *Server) handlePantryStock(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.MarkShoppingListItemInPantry(ctx, id, true)
 
 	normalized := pricing.Normalize(target.DisplayName)
-	_, _ = s.store.CreatePantryItem(ctx, db.CreatePantryItemParams{
+	pi, _ := s.store.CreatePantryItem(ctx, db.CreatePantryItemParams{
 		HouseholdID:    hh.ID,
 		Name:           target.DisplayName,
 		NormalizedTerm: normalized,
 		QuantityOnHand: target.BuyQuantity * float64(target.PackSize),
 		Unit:           target.PurchaseUnit,
 	})
+	linkPantryItem(r, s.store, hh.ID, pi)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// linkPantryItem ensures a catalog item for a freshly upserted pantry row and
+// records the item_id. Best-effort: catalog linkage never blocks a pantry save.
+func linkPantryItem(r *http.Request, store db.Store, householdID int64, pi *db.PantryItem) {
+	if pi == nil {
+		return
+	}
+	it, err := catalog.EnsureItem(r.Context(), store, householdID, pi.Name)
+	if err != nil || it == nil {
+		return
+	}
+	id := it.ID
+	_ = store.SetPantryItemItem(r.Context(), pi.ID, &id)
 }

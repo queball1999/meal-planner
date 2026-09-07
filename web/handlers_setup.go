@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"goeat/auth"
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
 )
@@ -156,6 +157,12 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+
+	// ── Seed the grocery-item catalog for the new household ──────────────────
+	_ = catalog.SeedGlobalConversions(ctx, s.store)
+	if serr := catalog.SeedHousehold(ctx, s.store, hh.ID); serr != nil {
+		log.Printf("setup: seed item catalog: %v", serr)
 	}
 
 	// ── Create selected stores ───────────────────────────────────────────────

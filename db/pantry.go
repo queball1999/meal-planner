@@ -63,6 +63,24 @@ func (s *store) DeletePantryItem(ctx context.Context, id int64) error {
 	return err
 }
 
+// DeleteAllPantryItemsForHousehold wipes the entire pantry for a household
+// (Settings → Danger zone).
+func (s *store) DeleteAllPantryItemsForHousehold(ctx context.Context, householdID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM pantry_items WHERE household_id = ?`, householdID)
+	return err
+}
+
+// SetPantryItemItem links a pantry row to a catalog item. Used by the catalog
+// linking / backfill pass.
+func (s *store) SetPantryItemItem(ctx context.Context, id int64, itemID *int64) error {
+	var iid interface{}
+	if itemID != nil {
+		iid = *itemID
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE pantry_items SET item_id = ? WHERE id = ?`, iid, id)
+	return err
+}
+
 func (s *store) getPantryItemByTerm(ctx context.Context, householdID int64, term string) (*PantryItem, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at
