@@ -19,11 +19,13 @@ func (s *store) CreateShoppingListItem(ctx context.Context, p CreateShoppingList
 		INSERT INTO shopping_list_items
 			(plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 			 buy_quantity, pack_size, purchase_unit,
-			 unit_price_cents, line_total_cents, price_source, confidence)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 unit_price_cents, line_total_cents, price_source, confidence,
+			 pantry_qty_used, in_pantry)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.PlanID, storeID, itemID, p.MealIngredientRefs, p.DisplayName,
 		p.BuyQuantity, p.PackSize, p.PurchaseUnit,
 		p.UnitPriceCents, p.LineTotalCents, p.PriceSource, p.Confidence,
+		p.PantryQtyUsed, boolInt(p.InPantry),
 	)
 	if err != nil {
 		return nil, err
@@ -43,6 +45,8 @@ func (s *store) CreateShoppingListItem(ctx context.Context, p CreateShoppingList
 		LineTotalCents:     p.LineTotalCents,
 		PriceSource:        p.PriceSource,
 		Confidence:         p.Confidence,
+		PantryQtyUsed:      p.PantryQtyUsed,
+		InPantry:           p.InPantry,
 	}
 	return item, nil
 }
@@ -51,7 +55,7 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
-		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry
+		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used
 		FROM shopping_list_items
 		WHERE plan_id = ?
 		ORDER BY store_id, display_name`, planID)
@@ -69,7 +73,7 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 			&item.ID, &item.PlanID, &storeID, &itemID, &item.MealIngredientRefs, &item.DisplayName,
 			&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 			&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
-			&checked, &inPantry,
+			&checked, &inPantry, &item.PantryQtyUsed,
 		); err != nil {
 			return nil, err
 		}
@@ -86,7 +90,7 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
-		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry
+		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used
 		FROM shopping_list_items
 		WHERE id = ?`, id)
 
@@ -97,7 +101,7 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 		&item.ID, &item.PlanID, &storeID, &itemID, &item.MealIngredientRefs, &item.DisplayName,
 		&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 		&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
-		&checked, &inPantry,
+		&checked, &inPantry, &item.PantryQtyUsed,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -193,4 +197,12 @@ func (s *store) SetShoppingListItemItem(ctx context.Context, id int64, itemID *i
 func (s *store) DeleteShoppingListItem(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM shopping_list_items WHERE id = ?`, id)
 	return err
+}
+
+// boolInt renders a Go bool for SQLite's integer booleans.
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

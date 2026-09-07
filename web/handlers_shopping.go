@@ -49,6 +49,11 @@ type shoppingLineItem struct {
 	// chip's tooltip. See lineLinkState.
 	LinkState string
 	LinkLabel string
+
+	// PantryNote explains a quantity the pantry reduced ("1 lb already in your
+	// pantry"). Empty when the pantry contributed nothing. Without it a line
+	// that quietly shrank reads as a bug in the plan.
+	PantryNote string
 }
 
 // mealTag is one pill on a shopping-list line naming a meal it belongs to.
@@ -217,7 +222,27 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 		Unit:        item.PurchaseUnit,
 		LinkState:   state,
 		LinkLabel:   label,
+		PantryNote:  pantryNote(item),
 	}
+}
+
+// pantryNote renders what the household's own stock covered on this line.
+//
+// Two different sentences on purpose: a line the pantry covered entirely is
+// not being bought at all, and saying "2 lb already in your pantry" next to a
+// quantity of zero invites the reader to work out the subtraction themselves.
+func pantryNote(item *db.ShoppingListItem) string {
+	if item.PantryQtyUsed <= 0 {
+		return ""
+	}
+	unit := item.PurchaseUnit
+	if unit == "" {
+		unit = "on hand"
+	}
+	if item.InPantry {
+		return fmt.Sprintf("all %.4g %s already in your pantry", item.PantryQtyUsed, unit)
+	}
+	return fmt.Sprintf("%.4g %s already in your pantry", item.PantryQtyUsed, unit)
 }
 
 // mealTagsFor resolves a shopping-list line's meal_ingredient_refs (a JSON

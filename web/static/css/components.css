@@ -2017,3 +2017,13 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .stats-chip__hint {
     overflow-wrap: anywhere;
 }
+
+/* Why a shopping line's quantity is smaller than the recipe asked for. Set
+ * below the quantity rather than beside it: the number is what is scanned,
+ * and the explanation only matters to someone who stopped on that line. */
+.shopping-item__pantry-note {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--success);
+    white-space: normal;
+}

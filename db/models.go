@@ -359,7 +359,8 @@ type ShoppingListItem struct {
 	Confidence         string
 	Checked            bool
 	InPantry           bool
-	ItemID             *int64 // catalog item, nil when unlinked (00010_items.sql)
+	ItemID             *int64  // catalog item, nil when unlinked (00010_items.sql)
+	PantryQtyUsed      float64 // how much the household already had (00022)
 }
 
 // UpdateShoppingListItemPriceParams rewrites one shopping-list line's price and
@@ -445,6 +446,15 @@ type CreateShoppingListItemParams struct {
 	LineTotalCents     int64
 	PriceSource        string
 	Confidence         string
+
+	// PantryQtyUsed is how much of this line the household's existing stock
+	// covered (00022). Recorded so the list can say "1 of 3 lb from your
+	// pantry" rather than silently showing a smaller number - a quantity that
+	// shrinks with no explanation reads as a bug in the plan.
+	PantryQtyUsed float64
+	// InPantry marks a line the pantry covered entirely: kept on the list, out
+	// of the total. The same state the "I already have this" control sets.
+	InPantry bool
 }
 
 // ── Items catalog + quantity conversions (00010_items.sql) ───────────────────

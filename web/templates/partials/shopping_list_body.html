@@ -103,7 +103,10 @@
                     {{end}}
                 </span>
             </label>
-            <span class="shopping-item__qty">{{.BuyLabel}}</span>
+            <span class="shopping-item__qty">
+                {{.BuyLabel}}
+                {{if .PantryNote}}<span class="shopping-item__pantry-note">{{.PantryNote}}</span>{{end}}
+            </span>
             {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm price-edit-btn no-print"
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
@@ -153,7 +156,10 @@
                     {{end}}
                 </span>
             </label>
-            <span class="shopping-item__qty">{{.BuyLabel}}</span>
+            <span class="shopping-item__qty">
+                {{.BuyLabel}}
+                {{if .PantryNote}}<span class="shopping-item__pantry-note">{{.PantryNote}}</span>{{end}}
+            </span>
             {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm price-edit-btn no-print"
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">

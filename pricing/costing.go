@@ -43,12 +43,22 @@ func CostPlan(
 	if err != nil {
 		return nil, fmt.Errorf("aggregate ingredients: %w", err)
 	}
+
+	// Subtract what the household already has, before anything is priced -
+	// see ApplyPantry. Non-fatal: a plan that over-buys is worse than one that
+	// does not, but it is still a usable plan, and losing the whole costing
+	// run over a pantry read would be a bad trade.
+	deducted, perr := ApplyPantry(ctx, store, household.ID, items)
+	if perr != nil {
+		log.Printf("costing: pantry deduction: %v", perr)
+	}
+
 	region := household.ZIPCode
 
 	var totalCents int64
 	confidenceCounts := map[string]int{}
 
-	for _, item := range items {
+	for idx, item := range items {
 		var priceCents int64
 		var packSize float64 = 1
 		var purchaseUnit, priceSource, confidence string
@@ -136,7 +146,13 @@ func CostPlan(
 			packSize = item.TotalQuantity
 			buyQuantity = item.TotalQuantity
 		}
-		totalCents += lineTotal
+		// A line the pantry covered entirely stays on the list but is not
+		// bought, so it must not reach the total either - the same rule the
+		// "I already have this" control follows.
+		ded := deducted[idx]
+		if !ded.Covered {
+			totalCents += lineTotal
+		}
 		confidenceCounts[confidence]++
 
 		refsJSON, _ := json.Marshal(item.IngredientIDs)
@@ -153,6 +169,8 @@ func CostPlan(
 			LineTotalCents:     lineTotal,
 			PriceSource:        priceSource,
 			Confidence:         confidence,
+			PantryQtyUsed:      ded.Used,
+			InPantry:           ded.Covered,
 		})
 		if cerr != nil {
 			log.Printf("costing: create shopping list item %q: %v", item.DisplayName, cerr)

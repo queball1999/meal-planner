@@ -295,3 +295,53 @@ func TestShoppingListDialogsUseSharedChrome(t *testing.T) {
 		}
 	}
 }
+
+func TestPantryNote(t *testing.T) {
+	// Nothing on hand: no note at all.
+	if got := pantryNote(&db.ShoppingListItem{PurchaseUnit: "lb"}); got != "" {
+		t.Errorf("pantryNote with no deduction = %q, want empty", got)
+	}
+
+	// Partial: the note explains why the quantity shrank.
+	got := pantryNote(&db.ShoppingListItem{PantryQtyUsed: 1, PurchaseUnit: "lb"})
+	if got != "1 lb already in your pantry" {
+		t.Errorf("partial note = %q", got)
+	}
+
+	// Fully covered reads differently: the line is not being bought, and
+	// "2 lb already in your pantry" beside a quantity of zero makes the reader
+	// do the subtraction themselves.
+	got = pantryNote(&db.ShoppingListItem{PantryQtyUsed: 2, PurchaseUnit: "lb", InPantry: true})
+	if !strings.HasPrefix(got, "all ") {
+		t.Errorf("covered note = %q, want it to lead with 'all'", got)
+	}
+}
+
+func TestShoppingListRendersPantryNote(t *testing.T) {
+	out := renderPage(t, "plan", pageData{
+		AppName: "Go Eat",
+		Page:    "list",
+		Data: planPageData{
+			HasPlan: true, Tab: "list",
+			List: &shoppingListPageData{
+				HasPlan:    true,
+				TotalLabel: "$8.99",
+				UnassignedItems: []shoppingLineItem{
+					{ID: 1, DisplayName: "Ground beef", BuyLabel: "2 lb", PantryNote: "1 lb already in your pantry"},
+					{ID: 2, DisplayName: "Saffron", BuyLabel: "1 g"},
+				},
+			},
+		},
+	})
+
+	if !strings.Contains(out, "1 lb already in your pantry") {
+		t.Error("the pantry note is not rendered")
+	}
+	if !strings.Contains(out, "shopping-item__pantry-note") {
+		t.Error("the pantry note has no class to style it")
+	}
+	// A line the pantry did not touch gets no note markup at all.
+	if strings.Count(out, "shopping-item__pantry-note") != 1 {
+		t.Errorf("expected exactly one pantry note, got %d", strings.Count(out, "shopping-item__pantry-note"))
+	}
+}
