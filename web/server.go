@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/csrf"
 
+	"goeat/agent"
 	"goeat/config"
 	"goeat/cryptbox"
 	"goeat/db"
@@ -46,6 +47,17 @@ type Server struct {
 	// rebuilds that race each other's DELETE-then-INSERT.
 	repriceMu      sync.Mutex
 	repricingPlans map[int64]bool
+
+	// pendingChat holds the assistant's paused runs, keyed by household - a
+	// mutating tool call waiting on a yes.
+	//
+	// In memory rather than in the database: a pending call is meaningful for
+	// the seconds between the assistant proposing it and a person answering,
+	// and a restart in that window should forget it. Persisting it would mean
+	// an "apply?" prompt surviving a reboot and applying a change nobody
+	// remembers being asked about.
+	pendingMu   sync.Mutex
+	pendingChat map[int64]*agent.Pending
 }
 
 // NewServer wires up routes, session loading, and CSRF middleware, then
@@ -68,6 +80,7 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		box:            box,
 		startedAt:      time.Now(),
 		repricingPlans: make(map[int64]bool),
+		pendingChat:    make(map[int64]*agent.Pending),
 	}
 	s.handler = s.buildHandler()
 	return s

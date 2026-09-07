@@ -234,3 +234,54 @@
   .chat-launcher,
   .chat-panel { display: none !important; }
 }
+
+/* ── Confirmation ──────────────────────────────────────────────────────────
+ * A change the assistant wants to make, shown before it happens. Deliberately
+ * heavier than a tool step: a step reports something already done, this asks
+ * for permission, and the two must not be mistaken for one another at a
+ * glance.
+ */
+
+.chat-confirm {
+  padding: var(--sp-3);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  background: var(--warning-bg);
+  font-size: var(--text-sm);
+}
+
+.chat-confirm__title {
+  font-weight: var(--weight-semi);
+  color: var(--text);
+  margin-bottom: var(--sp-1);
+}
+
+.chat-confirm__tool {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.chat-confirm__desc {
+  margin-top: var(--sp-1);
+  color: var(--text);
+}
+
+/* The arguments are the part being checked, so they are the part that reads
+   as data rather than prose. */
+.chat-confirm__detail {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.chat-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}

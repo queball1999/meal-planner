@@ -92,3 +92,43 @@ func TestToTurnsSurvivesBadAudit(t *testing.T) {
 		t.Errorf("audit = %+v, want none", turns[0].Audit)
 	}
 }
+
+// A held call is not a finished turn, so nothing is written to the
+// conversation until it is answered - recording "the assistant did X" before X
+// was agreed to would be a lie in the transcript.
+func TestPendingIsHeldOncePerHousehold(t *testing.T) {
+	srv := &Server{pendingChat: map[int64]*agent.Pending{}}
+
+	if got := srv.takePending(1); got != nil {
+		t.Errorf("takePending on an empty server = %+v, want nil", got)
+	}
+
+	first := &agent.Pending{Tool: "move_meal"}
+	srv.putPending(1, first)
+
+	// A newer question supersedes an unanswered prompt: a stack of stale
+	// "apply?" boxes is worse than losing one.
+	second := &agent.Pending{Tool: "delete_meal"}
+	srv.putPending(1, second)
+
+	got := srv.takePending(1)
+	if got == nil || got.Tool != "delete_meal" {
+		t.Fatalf("takePending = %+v, want the newer held call", got)
+	}
+	// Taken means taken: two tabs racing must not apply the same change twice.
+	if again := srv.takePending(1); again != nil {
+		t.Errorf("a held call was answerable twice: %+v", again)
+	}
+}
+
+func TestPendingIsScopedToHousehold(t *testing.T) {
+	srv := &Server{pendingChat: map[int64]*agent.Pending{}}
+	srv.putPending(1, &agent.Pending{Tool: "move_meal"})
+
+	if got := srv.takePending(2); got != nil {
+		t.Errorf("household 2 could take household 1's pending call: %+v", got)
+	}
+	if got := srv.takePending(1); got == nil {
+		t.Error("household 1 lost its own pending call")
+	}
+}

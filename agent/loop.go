@@ -36,6 +36,11 @@ type Reply struct {
 	// finishing. The reply is still returned - partial work has been done and
 	// hiding it would be worse - but the caller can say so.
 	HitLimit bool
+
+	// Pending is set when the run paused on a mutating call awaiting
+	// confirmation. Text is empty in that case: the assistant has not finished
+	// speaking, it is waiting.
+	Pending *Pending
 }
 
 // The protocol.
@@ -80,6 +85,11 @@ type Runner struct {
 	Registry *Registry
 	// MaxSteps overrides the package default when non-zero (tests).
 	MaxSteps int
+
+	// ConfirmMutations holds every tool marked Mutates until a person approves
+	// it. Off by default so a caller with its own safeguards - or a test - is
+	// not forced through the confirmation dance.
+	ConfirmMutations bool
 }
 
 // Run answers one user message, calling tools as needed.
@@ -89,13 +99,6 @@ type Runner struct {
 // a half-finished change that is reported is recoverable, one that is silently
 // discarded is not.
 func (r *Runner) Run(ctx context.Context, s *Session, history []Message, userMsg string) (Reply, error) {
-	limit := r.MaxSteps
-	if limit <= 0 {
-		limit = MaxSteps
-	}
-
-	system := protocolPrompt + r.Registry.Describe() + "\n" + householdContext(s)
-
 	// The running transcript the model sees. Tool results are appended as
 	// plain text turns rather than a provider-specific tool-result type, for
 	// the same portability reason the protocol itself is JSON.
@@ -110,8 +113,57 @@ func (r *Runner) Run(ctx context.Context, s *Session, history []Message, userMsg
 	b.WriteString(userMsg)
 	b.WriteString("\n")
 
-	reply := Reply{}
-	for step := 0; step < limit; step++ {
+	return r.step(ctx, s, b.String(), 0)
+}
+
+// Resume continues a run that paused for confirmation.
+//
+// Approving runs the held call; declining records the refusal in the
+// transcript and lets the model carry on, which is what makes "no, the other
+// Tuesday" a conversation rather than a dead end.
+func (r *Runner) Resume(ctx context.Context, s *Session, p *Pending, approved bool) (Reply, error) {
+	if p == nil {
+		return Reply{}, fmt.Errorf("nothing was waiting to be confirmed")
+	}
+	transcript := p.Resume
+
+	if !approved {
+		transcript += fmt.Sprintf(
+			"SYSTEM: the user declined the %s call. Do not retry it; ask what they want instead.\n", p.Tool)
+		return r.step(ctx, s, transcript, 0)
+	}
+
+	res, err := r.Registry.Call(ctx, s, p.Tool, p.Args)
+	if err != nil {
+		transcript += fmt.Sprintf("TOOL %s ERROR: %s\n", p.Tool, err.Error())
+	} else {
+		transcript += fmt.Sprintf("TOOL %s OK: %s\n", p.Tool, res.Summary)
+		if res.Data != nil {
+			if blob, mErr := json.Marshal(res.Data); mErr == nil {
+				transcript += "DATA: " + string(blob) + "\n"
+			}
+		}
+	}
+	// The approved call counts against the budget, so a conversation cannot
+	// restart its own step allowance by pausing.
+	return r.step(ctx, s, transcript, 1)
+}
+
+// step drives the model until it answers, asks for confirmation, errors, or
+// runs out of steps. spent is how many steps the run has already used.
+func (r *Runner) step(ctx context.Context, s *Session, transcript string, spent int) (Reply, error) {
+	limit := r.MaxSteps
+	if limit <= 0 {
+		limit = MaxSteps
+	}
+
+	system := protocolPrompt + r.Registry.Describe() + "\n" + householdContext(s)
+
+	var b strings.Builder
+	b.WriteString(transcript)
+
+	reply := Reply{Steps: spent}
+	for step := spent; step < limit; step++ {
 		resp, err := r.Gen.Generate(ctx, llm.GenerateRequest{
 			System: system,
 			Prompt: b.String(),
@@ -140,7 +192,22 @@ func (r *Runner) Run(ctx context.Context, s *Session, history []Message, userMsg
 		if action.Say != "" {
 			reply.Text = action.Say
 			reply.Audit = s.Audit
-			reply.Steps = step
+			return reply, nil
+		}
+
+		// Hold anything that changes data. Per call, not per turn: a run that
+		// moves three meals asks three times rather than presenting one opaque
+		// "apply 3 changes?", because the whole point is being able to reject
+		// one of them.
+		if t := r.Registry.Get(action.Tool); r.ConfirmMutations && t != nil && t.Mutates {
+			reply.Audit = s.Audit
+			reply.Pending = &Pending{
+				Tool:        action.Tool,
+				Args:        action.Args,
+				Description: t.Description,
+				Detail:      describeCall(t, action.Args),
+				Resume:      b.String(),
+			}
 			return reply, nil
 		}
 

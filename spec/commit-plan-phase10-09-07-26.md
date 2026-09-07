@@ -190,7 +190,33 @@ Files: `agent/confirm.go` (new) + `agent/confirm_test.go` (new),
 ```
 agent: hold destructive tool calls for confirmation
 ```
-Status: ⬜
+Status: ✅
+
+**The loop split into `Run` / `Resume` / `step`.** A held call has to be
+resumable, so the transcript at the moment of the pause *is* the resume token
+(`Pending.Resume`) - the model then continues from exactly where it stopped
+rather than being re-prompted from scratch and possibly deciding something
+different.
+
+**Declining continues the conversation** rather than ending the turn: the
+refusal goes into the transcript and the model is told not to retry, which is
+what makes "no, the other Tuesday" a conversation instead of a dead end.
+
+**The approved call counts against the step budget**, so a run cannot restart
+its own allowance by pausing.
+
+**Pending state is in memory, keyed by household.** A held call is meaningful
+for the seconds between proposing and answering; persisting it would mean an
+"apply?" prompt surviving a reboot and applying a change nobody remembers
+being asked about. Taking it removes it, so two tabs racing cannot apply the
+same change twice, and a newer question supersedes an unanswered prompt rather
+than stacking.
+
+**Nothing is written to the conversation while a call is held.** Recording
+"the assistant did X" before X was agreed to would be a lie in the transcript.
+
+**`ConfirmMutations` is opt-in**, so nothing that already used the runner
+changed behaviour silently. The web chat sets it.
 
 ---
 
@@ -201,7 +227,7 @@ Status: ⬜
 | 1 | ✅ Pantry deduction | — |
 | 2 | ✅ Price history chart | — |
 | 3 | ✅ In-store mode | — |
-| 4 | Agent confirmation | — |
+| 4 | ✅ Agent confirmation | — |
 
 All four are independent. Commit 1 is a correctness fix to a claim the UI
 already makes and should land first.

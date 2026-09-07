@@ -79,6 +79,62 @@
         if (MUTATING.has(entry.tool) && !entry.error) dirty = true;
     }
 
+    // A change the assistant wants to make, shown before it happens. The panel
+    // stays busy while this is up: the run is paused mid-turn on the server,
+    // and letting a second message start would abandon it.
+    function addConfirm(p) {
+        const box = el('div', 'chat-confirm');
+        box.appendChild(el('div', 'chat-confirm__title', 'Apply this change?'));
+        box.appendChild(el('div', 'chat-confirm__tool', p.tool));
+        if (p.description) box.appendChild(el('div', 'chat-confirm__desc', p.description));
+        if (p.detail) box.appendChild(el('div', 'chat-confirm__detail', p.detail));
+
+        const actions = el('div', 'chat-confirm__actions');
+        const no = el('button', 'btn btn-ghost btn-sm', 'No');
+        const yes = el('button', 'btn btn-primary btn-sm', 'Apply');
+        no.type = 'button';
+        yes.type = 'button';
+
+        function answer(approve) {
+            // Replace the box with what was decided, so the transcript still
+            // reads correctly after a reload.
+            box.replaceWith(el('div', 'chat-step', approve ? 'Applied.' : 'Left it alone.'));
+            confirmAnswer(approve);
+        }
+        no.addEventListener('click', function () { answer(false); });
+        yes.addEventListener('click', function () { answer(true); });
+
+        actions.appendChild(no);
+        actions.appendChild(yes);
+        box.appendChild(actions);
+        log.appendChild(box);
+        scrollDown();
+        yes.focus();
+    }
+
+    function confirmAnswer(approve) {
+        fetch('/chat/confirm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrf(),
+            },
+            body: 'approve=' + (approve ? '1' : '0'),
+        })
+            .then(function (resp) {
+                if (!resp.ok || !resp.body) {
+                    return resp.json().then(function (d) {
+                        throw new Error((d && d.error) || 'That did not go through.');
+                    });
+                }
+                return readStream(resp.body.getReader());
+            })
+            .catch(function (err) {
+                addStep({ tool: 'error', error: err.message || 'Something went wrong.' });
+            })
+            .finally(function () { setBusy(false); input.focus(); });
+    }
+
     function setBusy(on) {
         busy = on;
         sendBtn.disabled = on;
@@ -219,7 +275,15 @@
             .catch(function (err) {
                 addStep({ tool: 'error', error: err.message || 'Something went wrong.' });
             })
-            .finally(function () { setBusy(false); input.focus(); });
+            .finally(function () {
+                // A turn paused on a confirmation is not over: the run is held
+                // mid-flight on the server, and letting another message start
+                // would abandon it. confirmAnswer releases the panel instead.
+                if (!log.querySelector('.chat-confirm')) {
+                    setBusy(false);
+                    input.focus();
+                }
+            });
     });
 
     // Minimal SSE reader: events arrive as "event: X\ndata: {...}\n\n".
@@ -258,6 +322,7 @@
 
         if (name === 'step') addStep(payload);
         else if (name === 'done') addMessage('assistant', payload.content);
+        else if (name === 'confirm') addConfirm(payload);
         else if (name === 'error') addStep({ tool: 'error', error: payload.error });
     }
 })();
