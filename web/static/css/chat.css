@@ -1,0 +1,236 @@
+/* ---------------------------------------------------------------------------
+ * The site-wide assistant: launcher and panel.
+ *
+ * Deliberately not a modal. A modal takes the page away and makes <main>
+ * inert, and the whole point of this panel is to sit beside the plan you are
+ * talking about while it changes underneath you.
+ * ------------------------------------------------------------------------ */
+
+.chat-launcher {
+  position: fixed;
+  right: var(--sp-5);
+  bottom: var(--sp-5);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.chat-launcher:hover {
+  transform: translateY(-2px);
+}
+
+.chat-launcher svg { width: 24px; height: 24px; }
+
+/* Below the launcher's z-index on purpose, so the launcher stays clickable as
+   the panel's own close control on a small screen. */
+.chat-panel {
+  position: fixed;
+  right: var(--sp-5);
+  bottom: calc(var(--sp-5) + 4rem);
+  z-index: 890;
+  display: flex;
+  flex-direction: column;
+  width: min(26rem, calc(100vw - 2 * var(--sp-5)));
+  height: min(34rem, calc(100vh - 8rem));
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.chat-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-panel__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semi);
+}
+
+.chat-panel__title svg { width: 18px; height: 18px; }
+
+.chat-panel__actions { display: flex; gap: var(--sp-1); }
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ── Messages ──────────────────────────────────────────────────────────── */
+
+.chat-msg { display: flex; }
+.chat-msg--user { justify-content: flex-end; }
+
+.chat-msg__body {
+  max-width: 85%;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-msg--user .chat-msg__body {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+.chat-msg--assistant .chat-msg__body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* ── Tool steps ────────────────────────────────────────────────────────────
+ * Every action the assistant takes, shown as it happens. This is the part
+ * that makes the assistant auditable rather than something that says "done"
+ * and leaves you to find out what it meant.
+ */
+
+.chat-step {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+  padding: var(--sp-1) var(--sp-2);
+  border-left: 2px solid var(--accent-border);
+  background: var(--accent-bg);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.chat-step--error {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.chat-step__tool {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.chat-step__text { overflow-wrap: anywhere; }
+
+/* ── Empty state ───────────────────────────────────────────────────────── */
+
+.chat-empty {
+  margin: auto 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.chat-empty ul {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.chat-suggestion {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.chat-suggestion:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Composer ──────────────────────────────────────────────────────────── */
+
+.chat-form {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-end;
+  padding: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+/* A screen-reader-only label. The composer's own placeholder is not a label. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* On a phone the panel is the screen. The launcher stays put as the way back
+   out, so it sits above the panel rather than behind it. */
+@media (max-width: 640px) {
+  .chat-panel {
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 80vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .chat-launcher {
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    z-index: 901;
+  }
+}
+
+/* The launcher would sit on top of the printed page for no reason. */
+@media print {
+  .chat-launcher,
+  .chat-panel { display: none !important; }
+}

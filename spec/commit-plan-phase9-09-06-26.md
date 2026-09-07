@@ -546,7 +546,27 @@ Depends on commit 11a.
 ```
 web: add the site-wide AI chat widget
 ```
-Status: ⬜
+Status: ✅
+
+**Not on the shared modal chrome.** A modal takes the page away and makes
+`<main>` inert, and the whole point of this panel is to sit beside the plan you
+are talking about while it changes underneath you.
+
+**SSE carries progress, not tokens.** The agent loop makes whole `Generate`
+calls, so there is no token stream to forward; pretending otherwise would be a
+lie in the UI. What streams is one event per tool call as it completes, via a
+new `Session.OnStep` hook - so a user watching "Moved Chicken Quesadillas to
+monday dinner." appear knows immediately that they were understood. `fetch`
+with a hand-rolled SSE reader rather than `EventSource`, which is GET-only and
+cannot carry the CSRF header.
+
+**The page is reloaded on close, not mid-turn.** A turn that changed data
+leaves the page behind it stale; reloading while someone is still typing would
+be worse than the staleness.
+
+**Bug found:** nothing in the app rendered a `#csrf-token` element, so
+`main.js`'s `goeatCSRF()` - used by the autosave forms - had been returning
+`""` since it was written. The layout now provides it for signed-in users.
 
 ---
 
@@ -583,7 +603,7 @@ Status: ⬜
 | 9 | About connectivity live | — |
 | 10 | ✅ Persist generated recipes | 5 |
 | 11a | ✅ Agent tool registry + loop | 1, 7, 7b |
-| 11b | Chat widget | 11a |
+| 11b | ✅ Chat widget | 11a |
 | 12 | Responsive pass | all |
 
 Migrations are claimed in commit order: `00018` household members (6b),

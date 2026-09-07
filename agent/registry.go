@@ -32,6 +32,13 @@ type Session struct {
 	// Audit records what the assistant actually did, in order. The UI shows
 	// it so a user can see the work rather than trusting a summary.
 	Audit []AuditEntry
+
+	// OnStep, when set, is called with each audit entry as it is recorded.
+	// A turn can run several tools and take a while, and a UI that says
+	// nothing until it finishes is worse than no assistant at all. Called
+	// synchronously from the run, so a slow handler slows the run - keep it to
+	// writing one event.
+	OnStep func(AuditEntry)
 }
 
 // AuditEntry is one tool call and how it went.
@@ -137,7 +144,7 @@ func (r *Registry) Call(ctx context.Context, s *Session, name string, args json.
 		return Result{}, ErrUnknownTool{Name: name}
 	}
 	if err := validateArgs(t, args); err != nil {
-		s.Audit = append(s.Audit, AuditEntry{Tool: name, Args: string(args), Error: err.Error()})
+		s.record(AuditEntry{Tool: name, Args: string(args), Error: err.Error()})
 		return Result{}, err
 	}
 
@@ -146,8 +153,16 @@ func (r *Registry) Call(ctx context.Context, s *Session, name string, args json.
 	if err != nil {
 		entry.Error = err.Error()
 	}
-	s.Audit = append(s.Audit, entry)
+	s.record(entry)
 	return res, err
+}
+
+// record appends to the audit and notifies any watcher.
+func (s *Session) record(e AuditEntry) {
+	s.Audit = append(s.Audit, e)
+	if s.OnStep != nil {
+		s.OnStep(e)
+	}
 }
 
 // validateArgs checks required parameters are present before a tool runs.

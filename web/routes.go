@@ -64,6 +64,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /plan/days/{date}/headcount", requireAuth(http.HandlerFunc(s.handlePlanHeadcount)))
 	mux.Handle("GET /plan/days/{date}/status-impact", requireAuth(http.HandlerFunc(s.handleDayStatusImpact)))
 	mux.Handle("POST /plan/days/{date}/status", requireAuth(http.HandlerFunc(s.handleDayStatus)))
+	mux.Handle("GET /chat/history", requireAuth(http.HandlerFunc(s.handleChatHistory)))
+	mux.Handle("POST /chat/send", requireAuth(http.HandlerFunc(s.handleChatSend)))
+	mux.Handle("POST /chat/clear", requireAuth(http.HandlerFunc(s.handleChatClear)))
+
 	mux.Handle("GET /plan/recipe-options", requireAuth(http.HandlerFunc(s.handleRecipeOptions)))
 	mux.Handle("POST /plan/days/{date}/{slot}/fill", requireAuth(http.HandlerFunc(s.handleMealFill)))
 	mux.Handle("POST /plan/{id}/delete", requireAuth(http.HandlerFunc(s.handlePlanDelete)))

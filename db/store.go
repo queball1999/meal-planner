@@ -201,6 +201,10 @@ type Store interface {
 	DeleteItemAlias(ctx context.Context, householdID, id int64) error
 	MergeItems(ctx context.Context, householdID, from, to int64) error
 	SetShoppingListItemItem(ctx context.Context, id int64, itemID *int64) error
+
+	AppendChatMessage(ctx context.Context, householdID int64, role, content, auditJSON string) (int64, error)
+	ListChatMessages(ctx context.Context, householdID int64, limit int) ([]*ChatMessage, error)
+	ClearChatMessages(ctx context.Context, householdID int64) error
 	DeletePantryItem(ctx context.Context, id int64) error
 	DeleteAllPantryItemsForHousehold(ctx context.Context, householdID int64) error
 	SetPantryItemItem(ctx context.Context, id int64, itemID *int64) error

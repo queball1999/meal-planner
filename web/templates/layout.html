@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/static/css/components.css">
     <link rel="stylesheet" href="/static/css/wizard.css">
     <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
     <link rel="stylesheet" href="/static/css/choices.min.css">
     <link rel="stylesheet" href="/static/css/choices-overrides.css">
 </head>
@@ -81,6 +82,13 @@
         </div>
     </header>
 
+    {{if .User}}
+    {{/* The raw CSRF token, for fetch() calls that cannot post a form field:
+         main.js's autosave and chat.js both read it from here. It had no
+         element to read before, so goeatCSRF() was returning "". */}}
+    <input type="hidden" id="csrf-token" value="{{.CSRFToken}}">
+    {{end}}
+
     <main class="site-main" id="main-content" tabindex="-1">
         {{if .Notify}}
         <script>window.__notify = { msg: "{{.Notify}}", kind: "{{.NotifyKind}}" };</script>
@@ -97,9 +105,12 @@
         {{end}}
     </footer>
 
+    {{if .User}}{{template "chatWidget" .}}{{end}}
+
     <script src="/static/js/choices.min.js" defer></script>
     <script src="/static/js/modal.js" defer></script>
     <script src="/static/js/tooltip.js" defer></script>
     <script src="/static/js/main.js" defer></script>
+    {{if .User}}<script src="/static/js/chat.js" defer></script>{{end}}
 </body>
 </html>

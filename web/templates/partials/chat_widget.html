@@ -1,0 +1,42 @@
+{{/* The site-wide assistant: a launcher in the bottom-right of every page and
+     the panel it opens.
+
+     Rendered from layout.html for a signed-in user, so the assistant is
+     reachable from wherever they happen to be rather than from one page they
+     have to navigate to first.
+
+     Not on the shared modal chrome: a modal takes the page away and makes
+     <main> inert, and the entire point of this panel is to sit beside the plan
+     you are talking about while it changes underneath you. */}}
+{{define "chatWidget"}}
+<button type="button" class="chat-launcher" id="chat-launcher"
+        aria-label="Open the assistant" aria-expanded="false" aria-controls="chat-panel"
+        title="Ask the assistant">
+    {{icon "chef-hat"}}
+</button>
+
+<section class="chat-panel" id="chat-panel" hidden aria-label="Assistant">
+    <header class="chat-panel__head">
+        <h2 class="chat-panel__title">{{icon "chef-hat"}} Assistant</h2>
+        <div class="chat-panel__actions">
+            <button type="button" class="btn-icon" id="chat-clear"
+                    title="Clear this conversation" aria-label="Clear this conversation">
+                {{icon "delete"}}
+            </button>
+            <button type="button" class="btn-icon" id="chat-close"
+                    title="Close" aria-label="Close the assistant">
+                {{icon "close"}}
+            </button>
+        </div>
+    </header>
+
+    <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-atomic="false"></div>
+
+    <form class="chat-form" id="chat-form">
+        <label class="visually-hidden" for="chat-input">Ask the assistant</label>
+        <textarea class="chat-input" id="chat-input" rows="2" autocomplete="off"
+                  placeholder="e.g. move chicken quesadillas to Monday"></textarea>
+        <button type="submit" class="btn btn-primary btn-sm" id="chat-send">Send</button>
+    </form>
+</section>
+{{end}}
