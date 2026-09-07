@@ -11,7 +11,7 @@ The work falls into **7 logical commits**, each self-contained and reviewable:
 
 ## Commits
 
-### 1. web: add stores catalog, state-aware store picker, and context view
+### 1. web: add stores catalog, state-aware store picker, and context view ✅
 Files: `web/stores_catalog.go` (new), `web/scrape_context_view.go` (new),
 `web/handlers_stores.go` (extend), `web/handlers_scrape.go` (extend),
 `web/templates/stores.html` (rewrite), `web/templates/scrape_config.html` (extend),
@@ -47,7 +47,7 @@ Status: ⬜
 
 ---
 
-### 2. web: add pagination package and wire it to history + admin prices
+### 2. web: add pagination package and wire it to history + admin prices ✅
 Files: `web/pagination.go` (new), `web/pagination_test.go` (new),
 `web/handlers_plan.go` (extend), `web/handlers_admin.go` (extend),
 `web/templates/history.html` (extend), `web/templates/admin_prices.html` (extend)
@@ -86,7 +86,7 @@ Status: ⬜
 
 ---
 
-### 3. web: add AI logos, template partials, and settings registry
+### 3. web: add AI logos, template partials, and settings registry ✅
 Files: `web/ai_logos.go` (new), `settings/registry.go` (new),
 `settings/render.go` (new),
 `web/templates/partials/` (new directory — partial templates),
@@ -129,7 +129,7 @@ Status: ⬜
 
 ---
 
-### 4. web: upgrade toast notifications, dark mode icons, and autosave
+### 4. web: upgrade toast notifications, dark mode icons, and autosave ✅
 Files: `web/static/js/main.js` (extend), `web/static/css/wizard.css` (extend),
 `web/templates/layout.html` (extend)
 
@@ -164,7 +164,7 @@ Status: ⬜
 
 ---
 
-### 5. web: add LLM debug log page and plan generation improvements
+### 5. web: add LLM debug log page and plan generation improvements ✅
 Files: `web/handlers_settings.go` (extend), `web/templates/llm_log.html` (new),
 `web/handlers_plan.go` (extend), `web/templates/plan_generate.html` (extend),
 `plan/generate.go` (extend), `llm/debug.go` (extend),
@@ -314,18 +314,18 @@ Files: `web/handlers.go` (extend), `web/helpers.go` (extend),
 ```
 misc: migrate flash→notify, fix UTF-8 encoding, update configs and migrations
 ```
-Status: ⬜
+Status: ✅
 
 ---
 
 ## Summary
 
-7 commits:
-1. **Stores catalog + context view** — KnownStores, state-aware picker, scrape context
-2. **Pagination** — generic package, wired to history + admin prices
-3. **AI logos + settings registry + partials** — provider logos, settings CRUD, reusable templates
-4. **Toast + icons + autosave** — universal toast, SVG dark mode icons, wizard CSS
-5. **LLM log + plan generation** — debug log page, progress screen, markdown fence fix
-6. **Misc cleanup** — flash→notify migration, UTF-8 fixes, config/migration updates
+6 commits:
+1. ✅ **Stores catalog + context view** — KnownStores, state-aware picker, scrape context
+2. ✅ **Pagination** — generic package, wired to history + admin prices
+3. ✅ **AI logos + settings registry + partials** — provider logos, settings CRUD, reusable templates
+4. ✅ **Toast + icons + autosave** — universal toast, SVG dark mode icons, wizard CSS
+5. ✅ **LLM log + plan generation** — debug log page, progress screen, markdown fence fix
+6. ✅ **Misc cleanup** — flash→notify migration, UTF-8 fixes, config/migration updates
 
-After these commits, all uncommitted work is accounted for and the working tree is clean.
+All Phase 7 commits complete. Working tree is clean.
