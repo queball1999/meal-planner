@@ -153,9 +153,10 @@ func ProposeWithAI(ctx context.Context, gen AIClient, pageHTML string) (*Proposa
 	for attempt := 1; attempt <= aiSelectorAttempts; attempt++ {
 		prompt := aiSelectorPrompt(condensed, lastNote)
 		res, err := gen.Generate(ctx, llm.GenerateRequest{
-			System:    aiSelectorSystem,
-			Prompt:    prompt,
-			MaxTokens: 1200,
+			System:            aiSelectorSystem,
+			Prompt:            prompt,
+			MaxTokens:         2048,
+			SuppressReasoning: true,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("scrape: LLM call failed: %w", err)
@@ -302,8 +303,9 @@ func ExtractWithAI(ctx context.Context, gen AIClient, pageHTML, term string) ([]
 Reply with ONE JSON object and nothing else:
 {"products":[{"name":"...","price":0.00,"pack_size":"5 lb"}]}
 Rules: price is a number in dollars for the shelf price of the whole package - never a unit price like "$0.41/oz". Omit products with no visible price. Return at most 5, most relevant first. If nothing is visible, return {"products":[]}.`,
-		Prompt:    "Shopper searched for: " + term + "\n\nCondensed page markup:\n\n" + condensed,
-		MaxTokens: 1200,
+		Prompt:            "Shopper searched for: " + term + "\n\nCondensed page markup:\n\n" + condensed,
+		MaxTokens:         2048,
+		SuppressReasoning: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scrape: LLM call failed: %w", err)

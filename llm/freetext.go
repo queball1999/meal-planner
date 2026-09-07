@@ -35,9 +35,10 @@ func ParseMealDescription(ctx context.Context, gen Generator, slot, text string)
 
 	prompt := fmt.Sprintf("Meal slot: %s\n\nDescription: %s", slot, text)
 	resp, err := gen.Generate(ctx, GenerateRequest{
-		System:    freetextSystem,
-		Prompt:    prompt,
-		MaxTokens: 512,
+		System:            freetextSystem,
+		Prompt:            prompt,
+		MaxTokens:         1024,
+		SuppressReasoning: true,
 	})
 	if err != nil {
 		return "null", 0, 0, fmt.Errorf("parse meal description: %w", err)

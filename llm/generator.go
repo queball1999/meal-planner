@@ -12,6 +12,18 @@ type GenerateRequest struct {
 	System    string // system prompt
 	Prompt    string // user turn
 	MaxTokens int    // 0 → use provider default
+
+	// SuppressReasoning asks a reasoning-capable model to answer directly
+	// instead of thinking out loud first. Set it on short, strictly-formatted
+	// calls (a price estimate, a selector guess) where the chain of thought is
+	// worthless and actively harmful: a thinking model spends the whole token
+	// budget on reasoning and returns empty content, which reads downstream as
+	// "unexpected end of JSON input". Leave it off for the big generation
+	// calls, which have the headroom and benefit from the reasoning.
+	//
+	// Honoured only by backends that expose the switch; on the rest it is a
+	// no-op and the larger token budget is what saves the call.
+	SuppressReasoning bool
 }
 
 // GenerateResponse is the output from Generator.Generate.

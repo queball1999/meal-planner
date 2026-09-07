@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -82,6 +83,14 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 		if c.sampling.MinP > 0 {
 			body.MinP = &c.sampling.MinP
 		}
+		// Qwen3-family chat templates (llama.cpp, vLLM, LM Studio, Ollama)
+		// take enable_thinking through chat_template_kwargs. Sent only for a
+		// generic OpenAI-compatible endpoint, and only when the caller asked
+		// for a direct answer - api.openai.com and the Gemini compatibility
+		// layer reject unknown fields.
+		if req.SuppressReasoning {
+			body.ChatTemplateKwargs = map[string]any{"enable_thinking": false}
+		}
 	}
 
 	raw, err := json.Marshal(body)
@@ -121,8 +130,35 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 		return GenerateResponse{}, fmt.Errorf("openai: no choices in response")
 	}
 
+	choice := cr.Choices[0]
+	content := stripThinkBlocks(choice.Message.Content)
+
+	// A reasoning model that runs out of budget mid-thought answers with empty
+	// content and its whole output in reasoning_content. Callers then fail to
+	// parse "" and report "unexpected end of JSON input", which says nothing
+	// about the actual cause. Name it instead.
+	if strings.TrimSpace(content) == "" {
+		reasoned := strings.TrimSpace(choice.Message.ReasoningContent)
+		switch {
+		case choice.FinishReason == "length" && reasoned != "":
+			return GenerateResponse{}, fmt.Errorf(
+				"openai: model spent all %d output tokens reasoning and returned no answer - raise max_tokens or disable thinking for this call",
+				cr.Usage.CompletionTokens)
+		case choice.FinishReason == "length":
+			return GenerateResponse{}, fmt.Errorf(
+				"openai: response was cut off at the %d-token limit before any content was produced",
+				cr.Usage.CompletionTokens)
+		case reasoned != "":
+			return GenerateResponse{}, fmt.Errorf(
+				"openai: model returned only reasoning, no answer (finish_reason %q)", choice.FinishReason)
+		default:
+			return GenerateResponse{}, fmt.Errorf(
+				"openai: model returned empty content (finish_reason %q)", choice.FinishReason)
+		}
+	}
+
 	return GenerateResponse{
-		Content:      cr.Choices[0].Message.Content,
+		Content:      content,
 		InputTokens:  cr.Usage.PromptTokens,
 		OutputTokens: cr.Usage.CompletionTokens,
 		ProviderName: c.provider,
@@ -135,6 +171,10 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 type chatMsg struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// ReasoningContent is where OpenAI-compatible servers put a reasoning
+	// model's chain of thought, separate from the answer. Never sent on a
+	// request; read only to explain an empty Content.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 type chatReq struct {
@@ -146,15 +186,39 @@ type chatReq struct {
 	PresencePenalty *float64  `json:"presence_penalty,omitempty"`
 	TopK            *int      `json:"top_k,omitempty"`
 	MinP            *float64  `json:"min_p,omitempty"`
+
+	// ChatTemplateKwargs passes arguments into the server's chat template -
+	// the standard way to toggle Qwen-style thinking.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 type chatResp struct {
 	Model   string `json:"model"`
 	Choices []struct {
-		Message chatMsg `json:"message"`
+		Message      chatMsg `json:"message"`
+		FinishReason string  `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
 	} `json:"usage"`
+}
+
+// stripThinkBlocks removes inline <think>…</think> reasoning. Servers that
+// separate reasoning into reasoning_content leave nothing to strip; the ones
+// that inline it into the answer would otherwise hand every caller a blob of
+// prose wrapped around the JSON they asked for. An unterminated block means
+// the reply was cut off mid-thought, so nothing usable follows it either.
+func stripThinkBlocks(s string) string {
+	for {
+		open := strings.Index(s, "<think>")
+		if open < 0 {
+			return strings.TrimSpace(s)
+		}
+		close := strings.Index(s[open:], "</think>")
+		if close < 0 {
+			return strings.TrimSpace(s[:open])
+		}
+		s = s[:open] + s[open+close+len("</think>"):]
+	}
 }
