@@ -260,6 +260,63 @@
 </div>
 {{end}}
 
+{{/* ── Danger zone: irreversible per-household data wipes ──────────────── */}}
+<div class="card form-section danger-zone" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "alert"}} Danger zone</h2>
+    <p class="field-hint" style="margin-top:0">
+        These permanently delete data for this household. There is no undo and no archive -
+        unlike regenerating a plan, nothing here is kept for history. Type carefully.
+    </p>
+
+    <div class="danger-zone__row">
+        <div>
+            <strong>Recipe catalog</strong>
+            <p class="field-hint">Deletes every saved recipe (imported or hand-entered) under /recipes.</p>
+        </div>
+        <form method="POST" action="/settings/danger/recipes"
+              onsubmit="return confirm('Permanently delete every saved recipe? This cannot be undone.');">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe recipes</button>
+        </form>
+    </div>
+
+    <div class="danger-zone__row">
+        <div>
+            <strong>Pantry</strong>
+            <p class="field-hint">Deletes every pantry item and stock level.</p>
+        </div>
+        <form method="POST" action="/settings/danger/pantry"
+              onsubmit="return confirm('Permanently delete your entire pantry? This cannot be undone.');">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe pantry</button>
+        </form>
+    </div>
+
+    <div class="danger-zone__row">
+        <div>
+            <strong>Shopping lists</strong>
+            <p class="field-hint">Clears every generated shopping-list line (checked items, prices) across all plans - the plans and meals themselves are untouched.</p>
+        </div>
+        <form method="POST" action="/settings/danger/lists"
+              onsubmit="return confirm('Permanently clear every shopping list? This cannot be undone.');">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe shopping lists</button>
+        </form>
+    </div>
+
+    <div class="danger-zone__row">
+        <div>
+            <strong>Meal plans</strong>
+            <p class="field-hint">Deletes every weekly plan - past and present - along with their meals, recipes, ingredients, and shopping lists. Unlike a regenerate, this does not keep anything in Plan History.</p>
+        </div>
+        <form method="POST" action="/settings/danger/plans"
+              onsubmit="return confirm('Permanently delete every meal plan, including all history? This cannot be undone.');">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe all plans</button>
+        </form>
+    </div>
+</div>
+
 <script>
 (function () {
     function csrfToken() {
@@ -268,21 +325,35 @@
     }
     window.goeatCSRF = window.goeatCSRF || csrfToken;
 
-    /* ── Settings autosave ──────────────────────────────────────────── */
+    /* ── Settings autosave ──────────────────────────────────────────────
+       Only persists a field when its value actually changed from what was
+       last loaded/saved, and only after a debounce pause. Clicking in and
+       out of a field, or re-picking the same option, saves nothing. */
+    var SETTINGS_DEBOUNCE_MS = 700;
     document.querySelectorAll('[data-setting-key]').forEach(function (input) {
+        var baseline = input.value;   // last known-saved value ("" for secrets)
+        var timer = null;
+        var saving = false;
+
         function save() {
+            timer = null;
+            if (saving) return;
+            var value = input.value;
+            if (value === baseline) return;          // nothing actually changed
+            saving = true;
             var key = input.dataset.settingKey;
             var wrap = input.closest('.settings-field');
             fetch('/settings/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-                body: JSON.stringify({ key: key, value: input.value })
+                body: JSON.stringify({ key: key, value: value })
             })
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (d.ok) {
                     window.showToast && window.showToast('Saved - restart to apply', 'success');
-                    if (input.type === 'password') input.value = '';
+                    if (input.type === 'password') { input.value = ''; baseline = ''; }
+                    else { baseline = value; }
                 } else {
                     window.showToast && window.showToast(d.error || 'Save failed', 'error');
                     if (wrap) wrap.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -291,9 +362,25 @@
             })
             .catch(function () {
                 window.showToast && window.showToast('Save failed', 'error');
-            });
+            })
+            .finally(function () { saving = false; });
         }
-        input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'blur', save);
+
+        function schedule() {
+            clearTimeout(timer);
+            if (input.value === baseline) { timer = null; return; }
+            timer = setTimeout(save, SETTINGS_DEBOUNCE_MS);
+        }
+
+        if (input.tagName === 'SELECT') {
+            input.addEventListener('change', schedule);
+        } else {
+            input.addEventListener('input', schedule);
+        }
+        // Leaving an edited field flushes the pending save immediately.
+        input.addEventListener('blur', function () {
+            if (timer) { clearTimeout(timer); save(); }
+        });
     });
 
     /* ── Provider picker ────────────────────────────────────────────── */
@@ -376,7 +463,8 @@
             }
             box.hidden = true;
             box.value = sel.value;
-            box.dispatchEvent(new Event('blur'));
+            box.dispatchEvent(new Event('input'));  // schedule the debounced save
+            box.dispatchEvent(new Event('blur'));   // then flush it immediately
         });
     });
 

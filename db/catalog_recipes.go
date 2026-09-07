@@ -60,6 +60,13 @@ func (s *store) DeleteCatalogRecipe(ctx context.Context, id int64) error {
 	return err
 }
 
+// DeleteAllCatalogRecipesForHousehold wipes the entire recipe catalog for a
+// household (Settings → Danger zone). catalog_recipe_ingredients/steps cascade.
+func (s *store) DeleteAllCatalogRecipesForHousehold(ctx context.Context, householdID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM catalog_recipes WHERE household_id = ?`, householdID)
+	return err
+}
+
 func (s *store) AddCatalogRecipeIngredient(ctx context.Context, catalogRecipeID int64, name, quantity, unit string, position int) error {
 	normalized := normalizeTerm(name)
 	_, err := s.db.ExecContext(ctx, `
