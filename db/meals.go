@@ -202,3 +202,33 @@ func (s *store) DeleteMeal(ctx context.Context, mealID int64) error {
 	}
 	return tx.Commit()
 }
+
+// SetMealBaseline records a meal's current amounts as its as-created baseline
+// (00017): base_servings, base_cooked_portions, and every ingredient's
+// base_quantity.
+//
+// ScaleMealsForDay always rescales from these, never from the current values,
+// which is what makes repeated headcount changes idempotent. A meal created
+// outside plan generation - materialised from a saved recipe - is written at
+// whatever the day needed at the time, so that amount is its baseline; without
+// this call its base columns stay 0 and the first rescale would find nothing
+// to scale from and skip the meal entirely.
+func (s *store) SetMealBaseline(ctx context.Context, mealID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE meals
+		SET base_servings = servings, base_cooked_portions = cooked_portions
+		WHERE id = ?`, mealID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE meal_ingredients SET base_quantity = quantity WHERE meal_id = ?`, mealID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

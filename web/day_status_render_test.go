@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"goeat/db"
+	"goeat/plan"
 )
 
 func planPageWithDays(days []calendarDay, members []*db.HouseholdMember, readOnly bool) planPageData {
@@ -140,5 +141,77 @@ func TestDayLabelFallsBackToRawString(t *testing.T) {
 	// Never render a zero date for something unparseable.
 	if got := dayLabel("not a date"); got != "not a date" {
 		t.Errorf("dayLabel(bad) = %q, want the raw string back", got)
+	}
+}
+
+// An empty slot has to offer a way out of being empty, and the picker dialog
+// has to be on the page for it to open.
+func TestPlanEmptySlotOffersFill(t *testing.T) {
+	days := []calendarDay{{
+		Date: "2026-01-05", DateLabel: "Mon Jan 5", Headcount: 2, Status: db.DayCooking,
+		Slots: map[string]calendarSlot{
+			"breakfast": {IsEmpty: true},
+			"lunch":     {IsEmpty: true},
+			"dinner":    {Title: "Chili", MealID: 3},
+		},
+	}}
+	out := renderPage(t, "plan", pageData{AppName: "Go Eat", Page: "plan", Data: planPageWithDays(days, nil, false)})
+
+	for _, want := range []string{
+		`data-fill-slot`,
+		`data-slot="breakfast"`,
+		`id="pick-recipe"`,
+		`id="pick-recipe-list"`,
+		`value="replace"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("plan page missing %q", want)
+		}
+	}
+	// A filled slot is not offered a fill button.
+	if strings.Contains(out, `data-slot="dinner"`) {
+		t.Error("a filled slot was offered an Add a meal button")
+	}
+
+	// A past plan is a record, not an editing surface.
+	ro := renderPage(t, "plan", pageData{AppName: "Go Eat", Page: "plan", Data: planPageWithDays(days, nil, true)})
+	if strings.Contains(ro, `data-fill-slot`) {
+		t.Error("read-only plan offers Add a meal")
+	}
+}
+
+func TestMealFillMessageNamesUnquantifiedLines(t *testing.T) {
+	res := &plan.MaterializeResult{Title: "Chili", Servings: 3}
+	if got := mealFillMessage(res, "dinner", "2026-01-05"); strings.Contains(got, "no amount") {
+		t.Errorf("clean recipe warned about amounts: %q", got)
+	}
+
+	// An unquantified line cannot be priced, so the shopping list will be short
+	// by it - the user has to be told which one.
+	res.Unquantified = []string{"salt"}
+	got := mealFillMessage(res, "dinner", "2026-01-05")
+	if !strings.Contains(got, "salt") || !strings.Contains(got, "no amount") {
+		t.Errorf("unquantified line not surfaced: %q", got)
+	}
+	if !strings.Contains(got, "set it on the meal") {
+		t.Errorf("singular wording wrong: %q", got)
+	}
+
+	res.Unquantified = []string{"salt", "pepper"}
+	if got := mealFillMessage(res, "dinner", "2026-01-05"); !strings.Contains(got, "set them on the meal") {
+		t.Errorf("plural wording wrong: %q", got)
+	}
+}
+
+func TestValidSlot(t *testing.T) {
+	for _, ok := range []string{"breakfast", "lunch", "dinner"} {
+		if !validSlot(ok) {
+			t.Errorf("validSlot(%q) = false", ok)
+		}
+	}
+	for _, bad := range []string{"", "brunch", "Dinner", "snack"} {
+		if validSlot(bad) {
+			t.Errorf("validSlot(%q) = true", bad)
+		}
 	}
 }

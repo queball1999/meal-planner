@@ -345,7 +345,30 @@ Depends on commits 6b, 7.
 ```
 plan: create a meal from a saved recipe, scaled to the day
 ```
-Status: ⬜
+Status: ✅
+
+**A quantity parser had to come first.** `catalog_recipe_ingredients.quantity`
+is TEXT (what an import gives you: "1 1/2", "2-3", "½", "a pinch") while
+`meal_ingredients.quantity` is a float to aggregate and price.
+`plan.ParseQuantity` bridges them. Two deliberate calls: a range takes its
+**low** end, because shopping one clove short is recoverable and rounding
+every range up all week is how a budget-first planner quietly overspends; and
+text with no number in it returns `ok=false` rather than 0, because a silent 0
+would price a whole ingredient at nothing. Unquantified lines are still added
+to the meal - dropping an ingredient silently is worse - and the caller is
+told which ones so the user can fill them in.
+
+**`SetMealBaseline` was the missing piece.** A meal created outside plan
+generation has zero in its `base_*` columns, and `ScaleMealsForDay` scales
+from those - so the first headcount change would find nothing to scale from
+and skip the meal entirely. The as-created amounts are now written as the
+baseline.
+
+**Also reachable from an empty slot**, not only from the day-status dialog: an
+empty meal card gets an "Add a meal" button. The "replace" resolution clears
+the orphans and returns with `?fill=date|slot`, which reopens the picker aimed
+at the emptied slot - the meals have to be gone before a replacement is
+chosen, so it cannot happen in one request.
 
 ---
 
@@ -461,7 +484,7 @@ Status: ⬜
 | 6 | ✅ Shopping total fix + already-have | — |
 | 6b | ✅ Household members + portion sizing | 1 |
 | 7 | ✅ Day headcount autosave + day status | 1, 2, 6b |
-| 7b | Meal from saved recipe | 6b, 7 |
+| 7b | ✅ Meal from saved recipe | 6b, 7 |
 | 8 | Dashboard hover cards + chip cleanup | 1 |
 | 9 | About connectivity live | — |
 | 10 | Persist generated recipes | 5 |

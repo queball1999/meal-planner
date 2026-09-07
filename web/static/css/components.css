@@ -1649,3 +1649,50 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 /* The name takes the slack so every portion multiplier lines up on the right. */
 .people-picker__option > span:first-of-type { flex: 1; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RECIPE PICKER (filling a plan slot from a saved recipe)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.recipe-picker {
+    list-style: none;
+    margin: var(--sp-3) 0 0;
+    padding: 0;
+    /* Capped and scrollable: the dialog must not grow past the viewport on a
+     * household with fifty saved recipes. */
+    max-height: 22rem;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.recipe-picker__row + .recipe-picker__row {
+    border-top: 1px solid var(--border);
+}
+
+.recipe-picker__btn {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    width: 100%;
+    padding: var(--sp-3) var(--sp-4);
+    border: none;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.recipe-picker__btn:hover { background: var(--accent-bg); }
+
+.recipe-picker__title { font-weight: var(--weight-medium); }
+
+.recipe-picker__meta {
+    font-size: var(--text-xs);
+    white-space: nowrap;
+}
+
+/* Sits under "No meal" on an empty slot, so the card is an invitation rather
+ * than a dead end. */
+.meal-card__fill { margin-top: var(--sp-2); }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"goeat/db"
@@ -83,6 +84,10 @@ func (s *Server) handleDayStatusImpact(w http.ResponseWriter, r *http.Request) {
 //	cascade - mark the dependent days with the same status. "We're out
 //	          Tuesday, so Wednesday's leftovers aren't happening either."
 //	clear   - drop the orphaned meals, leaving those slots empty to fill.
+//	replace - clear them, then reopen the plan with the recipe picker aimed at
+//	          the first emptied slot. The picker cannot run inside this request
+//	          (the meals have to be gone before a replacement is chosen), so
+//	          the slot rides back on the redirect as ?fill=date|slot.
 //	ignore  - leave them alone. Chosen deliberately when the cook plans to
 //	          make something anyway; the meal keeps its leftover flag, which
 //	          is wrong-ish, but it is the user's call and nothing is lost.
@@ -129,7 +134,14 @@ func (s *Server) handleDayStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resolved := 0
-	switch r.FormValue("resolution") {
+	resolution := r.FormValue("resolution")
+	// "replace" is "clear" plus a follow-up, so it shares the clearing branch.
+	var fillDate, fillSlot string
+	if resolution == "replace" && len(orphans) > 0 {
+		fillDate, fillSlot = orphans[0].Day, orphans[0].Slot
+	}
+
+	switch resolution {
 	case "cascade":
 		// Dedupe: several orphaned meals can sit on the same day.
 		seen := map[string]bool{date: true}
@@ -144,7 +156,7 @@ func (s *Server) handleDayStatus(w http.ResponseWriter, r *http.Request) {
 			}
 			resolved++
 		}
-	case "clear":
+	case "clear", "replace":
 		for _, m := range orphans {
 			if err := s.store.DeleteMeal(ctx, m.ID); err != nil {
 				log.Printf("day status clear meal %d: %v", m.ID, err)
@@ -158,8 +170,13 @@ func (s *Server) handleDayStatus(w http.ResponseWriter, r *http.Request) {
 	// moves it - as does dropping meals.
 	s.repriceInBackground(p.ID, hh)
 
-	s.setNotify(w, NotifySuccess, dayStatusMessage(date, status, resolved, r.FormValue("resolution")))
-	http.Redirect(w, r, "/plan", http.StatusSeeOther)
+	s.setNotify(w, NotifySuccess, dayStatusMessage(date, status, resolved, resolution))
+
+	dest := "/plan"
+	if fillDate != "" {
+		dest += "?fill=" + url.QueryEscape(fillDate+"|"+fillSlot)
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
 
 func dayStatusMessage(date, status string, resolved int, resolution string) string {
@@ -171,6 +188,9 @@ func dayStatusMessage(date, status string, resolved int, resolution string) stri
 	switch resolution {
 	case "cascade":
 		return fmt.Sprintf("%s marked %s, along with %d day(s) that were living off it. The shopping list is updating.",
+			dayLabel(date), label, resolved)
+	case "replace":
+		return fmt.Sprintf("%s marked %s and %d leftover meal(s) cleared. Pick something for the first slot.",
 			dayLabel(date), label, resolved)
 	case "clear":
 		return fmt.Sprintf("%s marked %s and %d leftover meal(s) cleared. The shopping list is updating.",

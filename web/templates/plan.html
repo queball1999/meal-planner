@@ -128,6 +128,14 @@
             <span class="meal-card__slot">{{titleCase $slot}}</span>
             {{if $cell.IsEmpty}}
             <span class="meal-card__empty">No meal</span>
+            {{if not $.Data.ReadOnly}}
+            <button type="button" class="btn btn-ghost btn-sm meal-card__fill"
+                    data-fill-slot data-date="{{$day.Date}}" data-slot="{{$slot}}"
+                    data-label="{{$day.DateLabel}}"
+                    aria-label="Add a meal to {{$day.DateLabel}} {{$slot}}">
+                {{icon "plus"}} Add a meal
+            </button>
+            {{end}}
             {{else}}
             <a href="/meals/{{$cell.MealID}}" class="meal-card__title">{{$cell.Title}}</a>
             <div class="meal-card__meta">
@@ -162,6 +170,25 @@
 </div>
 
 {{if not .Data.ReadOnly}}
+{{template "partials/modal_open.html" dict "ID" "pick-recipe" "Title" "Pick a meal" "Form" true}}
+  <p id="pick-recipe-target" class="text-muted"></p>
+  <form method="POST" id="pick-recipe-form" action="">
+    {{.CSRFField}}
+    <input type="hidden" name="recipe_id" id="pick-recipe-id">
+    <div class="field">
+      <label class="field-label" for="pick-recipe-q">Search your saved recipes</label>
+      <input class="field-input" id="pick-recipe-q" type="search" autocomplete="off"
+             placeholder="Type to filter…">
+    </div>
+    <ul class="recipe-picker" id="pick-recipe-list" role="listbox"
+        aria-label="Saved recipes"></ul>
+    <p class="field-hint" id="pick-recipe-empty" hidden>
+      No saved recipes yet. Import or write one on the
+      <a href="/recipes">Recipes</a> page and it will show up here.
+    </p>
+  </form>
+{{template "partials/modal_close.html" .}}
+
 {{template "partials/modal_open.html" dict "ID" "day-status" "Title" "This day feeds another one"}}
   <p id="day-status-intro"></p>
   <ul id="day-status-meals"></ul>
@@ -174,6 +201,10 @@
     <label class="people-picker__option">
       <input type="radio" name="day-status-resolution" value="clear">
       <span>Clear those meals and leave the slots empty</span>
+    </label>
+    <label class="people-picker__option">
+      <input type="radio" name="day-status-resolution" value="replace">
+      <span>Clear them, then pick a replacement for the first one</span>
     </label>
     <label class="people-picker__option">
       <input type="radio" name="day-status-resolution" value="ignore">
@@ -189,6 +220,93 @@
     // what it costs and said what to do about it. The server is asked what
     // breaks *before* anything is written (GET status-impact); a day with no
     // dependents submits straight through with no dialog at all.
+    // ── Recipe picker ────────────────────────────────────────────────────
+    // One dialog for the whole board, retargeted per slot: 7 days x 3 slots is
+    // 21 pickers, and the recipe list is fetched rather than rendered into
+    // each of them because a household can have hundreds of saved recipes.
+    var pickForm = document.getElementById('pick-recipe-form');
+    var pickList = document.getElementById('pick-recipe-list');
+    var pickEmpty = document.getElementById('pick-recipe-empty');
+    var pickQ = document.getElementById('pick-recipe-q');
+    var pickTarget = document.getElementById('pick-recipe-target');
+    var pickID = document.getElementById('pick-recipe-id');
+    var pickTimer;
+
+    function loadRecipes(q) {
+        fetch('/plan/recipe-options' + (q ? '?q=' + encodeURIComponent(q) : ''), {
+            headers: { 'Accept': 'application/json' },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                pickList.innerHTML = '';
+                var rows = (d && d.recipes) || [];
+                pickEmpty.hidden = rows.length > 0 || !!q;
+                rows.forEach(function (rc) {
+                    var li = document.createElement('li');
+                    li.className = 'recipe-picker__row';
+
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'recipe-picker__btn';
+                    // textContent throughout: titles are user- and LLM-supplied.
+                    var title = document.createElement('span');
+                    title.className = 'recipe-picker__title';
+                    title.textContent = rc.title;
+                    var meta = document.createElement('span');
+                    meta.className = 'recipe-picker__meta text-muted';
+                    var bits = [];
+                    if (rc.servings) bits.push(rc.servings + ' srv');
+                    if (rc.minutes) bits.push(rc.minutes + ' min');
+                    if (rc.source) bits.push(rc.source);
+                    meta.textContent = bits.join(' · ');
+
+                    btn.appendChild(title);
+                    btn.appendChild(meta);
+                    btn.addEventListener('click', function () {
+                        pickID.value = rc.id;
+                        pickForm.submit();
+                    });
+                    li.appendChild(btn);
+                    pickList.appendChild(li);
+                });
+            })
+            .catch(function () {
+                pickList.innerHTML = '';
+                pickEmpty.hidden = false;
+            });
+    }
+
+    function openPicker(date, slot, label) {
+        pickForm.action = '/plan/days/' + date + '/' + slot + '/fill';
+        pickTarget.textContent = 'For ' + label + ' ' + slot +
+            ' - amounts are scaled to what that day is feeding.';
+        pickID.value = '';
+        pickQ.value = '';
+        loadRecipes('');
+        window.goeat.openModal('pick-recipe');
+    }
+
+    document.querySelectorAll('[data-fill-slot]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openPicker(btn.dataset.date, btn.dataset.slot, btn.dataset.label);
+        });
+    });
+
+    if (pickQ) {
+        pickQ.addEventListener('input', function () {
+            clearTimeout(pickTimer);
+            pickTimer = setTimeout(function () { loadRecipes(pickQ.value.trim()); }, 300);
+        });
+    }
+
+    // Arriving back from a "clear them, then pick a replacement" resolution:
+    // the meals are gone and the slot to fill rides on the query string.
+    var fill = new URLSearchParams(window.location.search).get('fill');
+    if (fill && fill.indexOf('|') > 0) {
+        var parts = fill.split('|');
+        openPicker(parts[0], parts[1], parts[0]);
+    }
+
     var pending = null;
     var intro = document.getElementById('day-status-intro');
     var mealList = document.getElementById('day-status-meals');
