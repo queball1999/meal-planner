@@ -39,58 +39,114 @@ func CostPlan(
 		return nil, fmt.Errorf("clear shopping list: %w", err)
 	}
 
-	items := AggregateIngredients(ingredients)
+	items, err := AggregateByItem(ctx, store, household.ID, ingredients)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate ingredients: %w", err)
+	}
 	region := household.ZIPCode
 
 	var totalCents int64
 	confidenceCounts := map[string]int{}
 
 	for _, item := range items {
-		var result *PriceResult
+		var priceCents int64
+		var packSize float64 = 1
+		var purchaseUnit, priceSource, confidence string
 		var resolvedStoreID *int64
+		priced := false
 
-		// Try each store in order; stop at the first answer.
-		for _, gs := range stores {
-			r, err := chain.Resolve(ctx, item.NormalizedTerm, gs.ID, region)
-			if err != nil {
-				log.Printf("costing: %v", err)
-				continue
-			}
-			if r != nil {
-				result = r
+		// 1. Prefer a per-store package for a catalogued item: it carries the
+		//    real "amount per package" in a known unit, so pack maths is exact.
+		if item.ItemID != nil {
+			conv, _ := store.ListConversionsForItem(ctx, *item.ItemID)
+			for _, gs := range stores {
+				pkg, perr := store.GetItemStorePackage(ctx, *item.ItemID, gs.ID)
+				if perr != nil {
+					log.Printf("costing: package lookup: %v", perr)
+					continue
+				}
+				if pkg == nil {
+					continue
+				}
+				packStock, okc := Convert(pkg.AmountPerPackage, pkg.PurchaseUnit, item.Unit, conv)
+				if !okc || packStock <= 0 {
+					packStock = pkg.AmountPerPackage // best effort; still better than nothing
+				}
+				packSize = packStock
+				purchaseUnit = pkg.PurchaseUnit
+				priceCents = pkg.PriceCents
+				priceSource = "manual"
+				confidence = ConfidenceManual
 				sid := gs.ID
 				resolvedStoreID = &sid
+				priced = true
 				break
 			}
 		}
 
-		var priceCents int64
-		var packSize float64 = 1
-		var purchaseUnit, priceSource, confidence string
-
-		if result != nil {
-			packSize = result.PackSize
-			purchaseUnit = result.PurchaseUnit
-			priceCents = result.PriceCents
-			priceSource = result.Source
-			confidence = result.Confidence
-		} else {
-			priceSource = "estimate"
-			confidence = ConfidenceEstimate
+		// 2. Fall back to the resolution chain keyed by normalized term.
+		if !priced {
+			for _, gs := range stores {
+				r, rerr := chain.Resolve(ctx, item.NormalizedTerm, gs.ID, region)
+				if rerr != nil {
+					log.Printf("costing: %v", rerr)
+					continue
+				}
+				if r != nil {
+					packSize = r.PackSize
+					purchaseUnit = r.PurchaseUnit
+					priceCents = r.PriceCents
+					priceSource = r.Source
+					confidence = r.Confidence
+					sid := gs.ID
+					resolvedStoreID = &sid
+					priced = true
+					break
+				}
+			}
 		}
 
-		packs := PacksNeeded(item.TotalQuantity, packSize)
-		lineTotal := priceCents * int64(packs)
+		// 3. Last resort: the meal-planning LLM's own price guess, captured per
+		// ingredient at generation time (plan.systemPrompt requires it). Used
+		// only when nothing above - including a fresh AI estimate in the chain
+		// above - could price the item, e.g. no stores configured, every
+		// provider errored, or the LLM provider was since removed.
+		if !priced && item.EstPriceCents > 0 {
+			packSize = item.TotalQuantity
+			purchaseUnit = item.Unit
+			priceCents = item.EstPriceCents
+			priceSource = "estimate"
+			confidence = ConfidenceEstimate
+			priced = true
+		}
+
+		var buyQuantity float64
+		var lineTotal int64
+		if priced {
+			packs := PacksNeeded(item.TotalQuantity, packSize)
+			buyQuantity = float64(packs) * packSize
+			lineTotal = priceCents * int64(packs)
+		} else {
+			// Truly nothing to go on: no live price, no chain estimate, and no
+			// initial LLM guess either. Show the recipe's own quantity/unit
+			// instead of rounding up to whole units in a blank purchase unit.
+			priceSource = "estimate"
+			confidence = ConfidenceEstimate
+			purchaseUnit = item.Unit
+			packSize = item.TotalQuantity
+			buyQuantity = item.TotalQuantity
+		}
 		totalCents += lineTotal
 		confidenceCounts[confidence]++
 
 		refsJSON, _ := json.Marshal(item.IngredientIDs)
-		_, err := store.CreateShoppingListItem(ctx, db.CreateShoppingListItemParams{
+		_, cerr := store.CreateShoppingListItem(ctx, db.CreateShoppingListItemParams{
 			PlanID:             planID,
 			StoreID:            resolvedStoreID,
+			ItemID:             item.ItemID,
 			MealIngredientRefs: string(refsJSON),
 			DisplayName:        item.DisplayName,
-			BuyQuantity:        float64(packs) * packSize,
+			BuyQuantity:        buyQuantity,
 			PackSize:           packSize,
 			PurchaseUnit:       purchaseUnit,
 			UnitPriceCents:     priceCents,
@@ -98,12 +154,12 @@ func CostPlan(
 			PriceSource:        priceSource,
 			Confidence:         confidence,
 		})
-		if err != nil {
-			log.Printf("costing: create shopping list item %q: %v", item.DisplayName, err)
+		if cerr != nil {
+			log.Printf("costing: create shopping list item %q: %v", item.DisplayName, cerr)
 		}
 	}
 
-	summary := buildConfidenceSummary(confidenceCounts, len(items))
+	summary := BuildConfidenceSummary(confidenceCounts, len(items))
 
 	if err := store.UpdatePlanTotal(ctx, planID, totalCents, summary); err != nil {
 		return nil, fmt.Errorf("update plan total: %w", err)
@@ -115,7 +171,9 @@ func CostPlan(
 	}, nil
 }
 
-func buildConfidenceSummary(counts map[string]int, total int) string {
+// BuildConfidenceSummary renders the plan-level "78% from live/cached prices,
+// 22% estimated" line from a tally of shopping-list line confidences.
+func BuildConfidenceSummary(counts map[string]int, total int) string {
 	if total == 0 {
 		return "no items"
 	}
@@ -130,4 +188,72 @@ func buildConfidenceSummary(counts map[string]int, total int) string {
 		return fmt.Sprintf("100%% estimated")
 	}
 	return fmt.Sprintf("%d%% from live/cached prices, %d%% estimated", livePct, estPct)
+}
+
+// EnsureShoppingList guarantees a plan has a shopping list, whatever happened
+// during pricing. CostPlan is the normal path and writes a fully priced list,
+// but it is optional (no pricing chain configured) and its failures are
+// non-fatal, which used to leave a finished plan with an empty list and no way
+// to shop it. This runs after pricing: if the list already has lines it is a
+// no-op, otherwise it writes one unpriced line per aggregated ingredient using
+// the plan LLM's own price guess where there is one.
+//
+// Returns the number of lines it created (0 when the list was already there).
+func EnsureShoppingList(ctx context.Context, store db.Store, planID int64, household *db.Household) (int, error) {
+	existing, err := store.ListShoppingListItems(ctx, planID)
+	if err != nil {
+		return 0, fmt.Errorf("list shopping items: %w", err)
+	}
+	if len(existing) > 0 {
+		return 0, nil
+	}
+
+	ingredients, err := store.ListIngredientsByPlan(ctx, planID)
+	if err != nil {
+		return 0, fmt.Errorf("list ingredients: %w", err)
+	}
+	if len(ingredients) == 0 {
+		return 0, nil
+	}
+
+	items, err := AggregateByItem(ctx, store, household.ID, ingredients)
+	if err != nil {
+		return 0, fmt.Errorf("aggregate ingredients: %w", err)
+	}
+
+	var written int
+	var totalCents int64
+	for _, item := range items {
+		refsJSON, _ := json.Marshal(item.IngredientIDs)
+		// No pack maths is possible without a resolved package, so the line
+		// buys exactly the recipe quantity and carries the LLM's guess (if any)
+		// as the line total.
+		lineTotal := item.EstPriceCents
+		totalCents += lineTotal
+		if _, cerr := store.CreateShoppingListItem(ctx, db.CreateShoppingListItemParams{
+			PlanID:             planID,
+			ItemID:             item.ItemID,
+			MealIngredientRefs: string(refsJSON),
+			DisplayName:        item.DisplayName,
+			BuyQuantity:        item.TotalQuantity,
+			PackSize:           item.TotalQuantity,
+			PurchaseUnit:       item.Unit,
+			UnitPriceCents:     lineTotal,
+			LineTotalCents:     lineTotal,
+			PriceSource:        "estimate",
+			Confidence:         ConfidenceEstimate,
+		}); cerr != nil {
+			log.Printf("costing: fallback shopping line %q: %v", item.DisplayName, cerr)
+			continue
+		}
+		written++
+	}
+
+	if written > 0 {
+		summary := BuildConfidenceSummary(map[string]int{ConfidenceEstimate: written}, written)
+		if err := store.UpdatePlanTotal(ctx, planID, totalCents, summary); err != nil {
+			log.Printf("costing: fallback plan total: %v", err)
+		}
+	}
+	return written, nil
 }

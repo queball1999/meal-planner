@@ -23,8 +23,9 @@ Return ONLY valid JSON matching this schema - no prose, no markdown fences, no e
       "servings": 2,
       "cooked_portions": 2,
       "ingredients": [
-        {"name": "rolled oats", "quantity": 1.0, "unit": "cup"},
-        {"name": "blueberries", "quantity": 0.5, "unit": "cup"}
+        {"name": "rolled oats", "quantity": 1.0, "unit": "cup", "est_price_cents": 60},
+        {"name": "blueberries", "quantity": 0.5, "unit": "cup", "est_price_cents": 150},
+        {"name": "canned black beans", "quantity": 1, "unit": "can", "est_price_cents": 129}
       ],
       "steps": ["Boil 2 cups water.", "Stir in oats and cook 5 min.", "Top with berries."]
     }
@@ -36,7 +37,24 @@ Rules:
 - slot values: breakfast, lunch, dinner
 - effort values: quick, standard, elaborate
 - Generate exactly 21 meals - one per slot per day, all 7 days covered
-- Ingredients use US/imperial units (cup, oz, lb, tbsp, tsp, piece, clove, etc.)
+- "servings" is the recipe's yield and MUST equal the household size stated below,
+  for every meal. Scale the ingredient quantities to match that yield - a 4-person
+  plan lists roughly twice the quantities of a 2-person one. The app rescales a
+  day's recipes from these numbers whenever the headcount for that day changes, so
+  an inconsistent servings/quantity pair skews every later adjustment.
+- "cooked_portions" is how many portions the recipe actually produces: equal to
+  "servings" for a normal meal, higher when you deliberately batch-cook for
+  leftovers. Never 0, and never below "servings".
+- Every ingredient MUST have a non-empty "unit" - never omit it or leave it blank.
+  Use whatever real, purchasable unit fits how the ingredient is actually bought/measured:
+  weight/volume (oz, lb, g, cup, tbsp, tsp) for bulk foods, or count units (each, can,
+  jar, package, bag, bunch, head, clove, slice) for items sold as discrete pieces.
+  A canned good is quantity in "can", never a bare number with no unit.
+- Every ingredient MUST have "est_price_cents": your own best-guess typical US grocery
+  price, as integer cents, for exactly the stated quantity (e.g. one 15 oz can of black
+  beans ≈ 129). This is a fallback the app keeps and uses only when no live price is
+  found later - it does not need to be precise, but it must be a real positive number,
+  never 0 or omitted.
 - Steps are numbered imperatives, 3-8 per meal
 - Plan slightly under the budget to leave headroom; the pricing engine will cost the actual total`
 
@@ -59,7 +77,7 @@ func storeNames(stores []*db.GroceryStore) (names []string, hasWarehouse bool) {
 func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time) (system, user string) {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "Household size: %d people\n", hh.HouseholdSize)
+	fmt.Fprintf(&b, "Household size: %d people - every meal must have servings = %d\n", hh.HouseholdSize, hh.HouseholdSize)
 	fmt.Fprintf(&b, "Weekly budget: $%.0f\n", float64(hh.WeeklyBudgetCents)/100)
 	fmt.Fprintf(&b, "Week: %s through %s\n", weekStart.Format("2006-01-02 (Monday)"), weekEnd.Format("2006-01-02 (Monday)"))
 

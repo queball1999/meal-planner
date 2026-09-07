@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -40,12 +41,18 @@ Return ONLY valid JSON - no prose, no markdown:
 		term, r,
 	)
 
+	// A one-line price lookup needs no chain of thought, and a reasoning model
+	// given one will burn the entire budget on it and answer with nothing. 512
+	// tokens is still ample for the ~30-token JSON object on backends that
+	// don't support the switch.
 	resp, err := a.gen.Generate(ctx, llm.GenerateRequest{
-		System:    "You are a grocery pricing assistant. Return only JSON.",
-		Prompt:    prompt,
-		MaxTokens: 128,
+		System:            "You are a grocery pricing assistant. Return only JSON.",
+		Prompt:            prompt,
+		MaxTokens:         512,
+		SuppressReasoning: true,
 	})
 	if err != nil {
+		log.Printf("pricing: ai estimate for %q: generate: %v", term, err)
 		return nil, nil // fail soft
 	}
 
@@ -54,8 +61,9 @@ Return ONLY valid JSON - no prose, no markdown:
 		PurchaseUnit string  `json:"purchase_unit"`
 		PackSize     float64 `json:"pack_size"`
 	}
-	raw := strings.TrimSpace(resp.Content)
+	raw := stripCodeFences(strings.TrimSpace(resp.Content))
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		log.Printf("pricing: ai estimate for %q: bad response %q: %v", term, raw, err)
 		return nil, nil // unparseable - fail soft
 	}
 	if out.PriceCents <= 0 {
@@ -73,4 +81,20 @@ Return ONLY valid JSON - no prose, no markdown:
 		Confidence:   ConfidenceEstimate,
 		FetchedAt:    time.Now().UTC(),
 	}, nil
+}
+
+// stripCodeFences strips a leading/trailing ```json or ``` fence. Many models
+// wrap "JSON only" responses in a fence anyway; without this every response
+// fails to parse and this provider silently returns "no answer" for everything.
+func stripCodeFences(s string) string {
+	for _, prefix := range []string{"```json", "```"} {
+		if strings.HasPrefix(s, prefix) {
+			s = strings.TrimPrefix(s, prefix)
+			s = strings.TrimPrefix(s, "\n")
+			s = strings.TrimSuffix(strings.TrimSpace(s), "```")
+			s = strings.TrimSpace(s)
+			break
+		}
+	}
+	return s
 }

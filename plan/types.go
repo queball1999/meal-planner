@@ -2,9 +2,10 @@ package plan
 
 // GeneratedIngredient is one ingredient line in the LLM's JSON output (§7.4).
 type GeneratedIngredient struct {
-	Name     string  `json:"name"`
-	Quantity float64 `json:"quantity"`
-	Unit     string  `json:"unit"`
+	Name          string  `json:"name"`
+	Quantity      float64 `json:"quantity"`
+	Unit          string  `json:"unit"`
+	EstPriceCents int64   `json:"est_price_cents"` // the LLM's own rough US grocery price for this quantity - kept as a last-resort pricing fallback (§6.4)
 }
 
 // GeneratedMeal is one meal in the LLM's JSON output (§7.4).
