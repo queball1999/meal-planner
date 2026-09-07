@@ -45,10 +45,27 @@ func newJob(householdID int64) *Job {
 	}
 }
 
+// Done returns a channel closed once the job's function has returned (success,
+// failure, or panic) - lets a caller (e.g. a test) block until generation
+// finishes instead of polling JobManager.Get.
+func (j *Job) Done() <-chan struct{} {
+	return j.done
+}
+
 func (j *Job) Emit(e JobEvent) {
 	j.mu.Lock()
 	j.events = append(j.events, e)
 	j.mu.Unlock()
+}
+
+// EmitStatus is a nil-safe shorthand for Emit(JobEvent{Type: "status", ...}) -
+// Generate and Repair take *Job as an optional progress sink, so every call
+// site would otherwise need its own "if j != nil" guard.
+func (j *Job) EmitStatus(message string) {
+	if j == nil {
+		return
+	}
+	j.Emit(JobEvent{Type: "status", Message: message})
 }
 
 // Subscribe returns all events emitted so far, then blocks until new ones
@@ -59,6 +76,13 @@ func (j *Job) Subscribe(w http.ResponseWriter) {
 
 	tick := time.NewTicker(200 * time.Millisecond)
 	defer tick.Stop()
+
+	// Generation can run for minutes with long silent stretches (a costing
+	// pass makes one LLM/scrape call per ingredient). Proxies and browsers
+	// drop a stream that sends nothing, so emit an SSE comment periodically -
+	// comments are ignored by EventSource but keep the connection alive.
+	beat := time.NewTicker(15 * time.Second)
+	defer beat.Stop()
 
 	for {
 		select {
@@ -82,6 +106,11 @@ func (j *Job) Subscribe(w http.ResponseWriter) {
 				writeSSE(w, ev)
 				cursor++
 			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		case <-beat.C:
+			fmt.Fprint(w, ": keepalive\n\n")
 			if flusher != nil {
 				flusher.Flush()
 			}
@@ -127,14 +156,22 @@ func (m *JobManager) Start(ctx context.Context, householdID int64, fn func(j *Jo
 	m.jobs[householdID] = j
 
 	go func() {
+		// Cleanup always runs: a panic in fn must still clear the job from
+		// the map and close done, or SSE subscribers block forever.
+		defer func() {
+			if rec := recover(); rec != nil {
+				j.Status = JobFailed
+				j.Error = fmt.Sprintf("generation panicked: %v", rec)
+				j.Emit(JobEvent{Type: "error", Message: j.Error})
+			}
+			m.mu.Lock()
+			if m.jobs[householdID] == j { // only clear if still this job
+				delete(m.jobs, householdID)
+			}
+			m.mu.Unlock()
+			close(j.done)
+		}()
 		fn(j)
-		m.mu.Lock()
-		// Only clear if it's still this job.
-		if m.jobs[householdID] == j {
-			delete(m.jobs, householdID)
-		}
-		m.mu.Unlock()
-		close(j.done)
 	}()
 
 	return j, true

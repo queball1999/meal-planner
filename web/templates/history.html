@@ -48,7 +48,8 @@
             <tr>
                 <td>{{fmtWeekRange .WeekStart .WeekEnd}}</td>
                 <td>
-                    {{if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
+                    {{if .Canceled}}<span class="badge badge--muted" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled</span>
+                    {{else if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
                     {{else if eq .Status "generating"}}<span class="badge badge--muted">Generating</span>
                     {{else}}<span class="badge badge--muted">{{.Status}}</span>{{end}}
                 </td>
@@ -63,7 +64,20 @@
                         {{end}}
                     {{else}} - {{end}}
                 </td>
-                <td><a href="/plan?week={{.WeekStart}}" class="btn btn--ghost btn--sm">{{icon "calendar-week"}} View</a></td>
+                <td class="data-table__actions">
+                    {{if and (eq .Status "generating") (not .Canceled)}}
+                    <a href="/plan/generate" class="btn-icon" title="View generation progress" aria-label="View generation progress">{{icon "autorenew"}}</a>
+                    {{else if eq .Status "ready"}}
+                    <a href="/plan?plan_id={{.ID}}" class="btn-icon" title="{{if .Canceled}}View archived plan{{else}}View plan{{end}}" aria-label="View plan">{{icon "calendar"}}</a>
+                    {{else}}
+                    <span class="btn-icon is-disabled" title="This plan didn't finish generating">{{icon "alert"}}</span>
+                    {{end}}
+                    <form method="POST" action="/plan/{{.ID}}/delete"
+                          onsubmit="return confirm('Delete this plan and its meals? This cannot be undone.');">
+                        {{$.CSRFField}}
+                        <button type="submit" class="btn-icon btn-icon--danger" title="Delete plan" aria-label="Delete plan">{{icon "delete"}}</button>
+                    </form>
+                </td>
             </tr>
             {{end}}
         </tbody>

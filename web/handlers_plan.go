@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
 	"goeat/plan"
@@ -44,7 +45,29 @@ type planPageData struct {
 	ConfidenceSummary string
 	Days              []calendarDay
 	HasLLM            bool
-	ReadOnly          bool // true when viewing a past plan via ?week=
+	ReadOnly          bool   // true when viewing a past or canceled plan
+	Canceled          bool   // true when viewing a plan superseded by a regenerate
+	Status            string // "ready" | "generating" | "error" - effective, reconciled
+
+	Tab  string                // "plan" (calendar) | "list" (shopping list)
+	List *shoppingListPageData // populated when Tab == "list"
+}
+
+// planTab returns the requested sub-tab, defaulting to the calendar.
+func planTab(r *http.Request) string {
+	if r.URL.Path == "/plan/list" || r.URL.Query().Get("tab") == "list" {
+		return "list"
+	}
+	return "plan"
+}
+
+// planNavSlug maps a plan sub-tab to the header nav key so exactly one nav
+// item highlights ("Plan" for the calendar, "Shopping List" for the list).
+func planNavSlug(tab string) string {
+	if tab == "list" {
+		return "list"
+	}
+	return "plan"
 }
 
 var slotOrder = []string{"breakfast", "lunch", "dinner"}
@@ -55,6 +78,11 @@ func buildPricer(store db.Store, chain *pricing.Chain) plan.Pricer {
 		return nil
 	}
 	return func(ctx context.Context, planID int64, hh *db.Household) error {
+		// Link every ingredient to a catalog item first so CostPlan can
+		// aggregate by item and use per-store package definitions.
+		if err := catalog.LinkPlanIngredients(ctx, store, hh.ID, planID); err != nil {
+			return err
+		}
 		stores, err := store.ListStores(ctx, hh.ID)
 		if err != nil {
 			return err
@@ -64,6 +92,40 @@ func buildPricer(store db.Store, chain *pricing.Chain) plan.Pricer {
 	}
 }
 
+// reconcilePlanStatus is the single source of truth for a plan's state across
+// the dashboard, the plan page, and the generation progress screen. A row left
+// at "generating" by a job that is no longer running (timeout, panic, process
+// restart) is repaired here: it becomes "ready" if meals were persisted, "error"
+// if not. Returns the effective status and mutates p.Status to match.
+func (s *Server) reconcilePlanStatus(ctx context.Context, hhID int64, p *db.Plan) string {
+	if p == nil {
+		return ""
+	}
+	if p.Status != "generating" {
+		return p.Status
+	}
+	if s.jobs != nil && s.jobs.Get(hhID) != nil {
+		return "generating" // a job really is working on it
+	}
+	effective := "error"
+	if meals, _ := s.store.ListMealsByPlan(ctx, p.ID); len(meals) > 0 {
+		effective = "ready"
+	}
+	_ = s.store.UpdatePlanStatus(ctx, p.ID, effective)
+	p.Status = effective
+	if effective == "ready" {
+		// The normal success path (plan.Generate) retires other plans for the
+		// same week once it confirms "ready" - do the same here, since a job
+		// that died without updating status (e.g. a server restart mid-run)
+		// bypasses that path entirely and leaves stale "ready" plans stacked
+		// up for the same week.
+		if err := s.store.CancelOtherPlansForWeek(ctx, hhID, p.WeekStart, p.ID); err != nil {
+			log.Printf("reconcile: cancel other plans for week %s failed: %v", p.WeekStart, err)
+		}
+	}
+	return effective
+}
+
 func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
@@ -71,26 +133,53 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	tab := planTab(r)
 
-	// ?week=YYYY-MM-DD loads a specific past plan in read-only mode.
+	var listView *shoppingListPageData
+	if tab == "list" {
+		v := s.buildShoppingListView(ctx, hh)
+		listView = &v
+	}
+
+	// ?plan_id=123 loads one specific plan (e.g. a canceled one from
+	// /plan/history - its own week now resolves to whatever superseded it, so
+	// it can only be reached by id). ?week=YYYY-MM-DD loads that week's
+	// current plan. Either way the view is read-only.
 	readOnly := false
 	var p *db.Plan
-	if week := r.URL.Query().Get("week"); week != "" {
+	if idStr := r.URL.Query().Get("plan_id"); idStr != "" {
+		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			if found, _ := s.store.GetPlanByID(ctx, id); found != nil && found.HouseholdID == hh.ID {
+				p = found
+			}
+		}
+		readOnly = true
+	} else if week := r.URL.Query().Get("week"); week != "" {
 		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, week)
 		readOnly = true
 	} else {
 		p, _ = s.store.GetLatestPlan(ctx, hh.ID)
 	}
 
-	if p == nil || p.Status == "generating" || p.Status == "error" {
-		if p != nil && p.Status == "error" {
+	status := s.reconcilePlanStatus(ctx, hh.ID, p)
+
+	// Show any plan that actually has meals, whatever its status - a plan
+	// still finishing (or one that erred after persisting some meals) is far
+	// more useful on screen than an empty "no plan" card. Only fall back to
+	// the empty state when there is genuinely nothing to show.
+	var meals []*db.Meal
+	if p != nil {
+		meals, _ = s.store.ListMealsByPlan(ctx, p.ID)
+	}
+	if p == nil || len(meals) == 0 {
+		if status == "error" {
 			s.setNotify(w, NotifyDanger, "The last plan generation failed. Check Settings → AI Logs for details, then regenerate.")
+		} else if status == "generating" {
+			s.setNotify(w, NotifyInfo, "Your plan is still generating. This page will fill in once it's ready.")
 		}
-		s.render(w, r, "plan", planPageData{HasPlan: false, HasLLM: s.gen != nil})
+		s.renderWithPage(w, r, "plan", planNavSlug(tab), planPageData{HasPlan: false, HasLLM: s.gen != nil, Tab: tab, List: listView})
 		return
 	}
-
-	meals, _ := s.store.ListMealsByPlan(ctx, p.ID)
 
 	// Build a map keyed by "date|slot" for fast calendar lookup.
 	mealMap := make(map[string]calendarSlot, len(meals))
@@ -145,7 +234,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		totalLabel = fmt.Sprintf("$%.2f", float64(p.TotalCents)/100)
 	}
 
-	s.render(w, r, "plan", planPageData{
+	s.renderWithPage(w, r, "plan", planNavSlug(tab), planPageData{
 		HasPlan:           true,
 		PlanID:            p.ID,
 		WeekStart:         p.WeekStart,
@@ -157,6 +246,10 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		Days:              days,
 		HasLLM:            s.gen != nil,
 		ReadOnly:          readOnly,
+		Canceled:          p.Canceled,
+		Status:            status,
+		Tab:               tab,
+		List:              listView,
 	})
 }
 
@@ -189,6 +282,67 @@ func (s *Server) handlePlanHistory(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "history", historyPageData{Plans: plans, From: from, To: to, Page: page})
 }
 
+// handlePlanDelete removes a plan (and its meals/recipes/ingredients via
+// cascade). Scoped to the caller's household.
+func (s *Server) handlePlanDelete(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.DeletePlan(r.Context(), hh.ID, id); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not delete that plan.")
+	} else {
+		s.setNotify(w, NotifySuccess, "Plan deleted.")
+	}
+
+	// Land on history regardless of which page the delete came from.
+	http.Redirect(w, r, "/plan/history", http.StatusSeeOther)
+}
+
+// startPlanGeneration launches a background generation job for a household
+// unless one is already running (single-flight, see plan.JobManager). Shared
+// by the manual "Regenerate"/"Plan my week" button and the auto-plan
+// scheduler (§ RunAutoPlanScheduler) so both paths report progress the same
+// way and can never run two generations for the same household at once.
+func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
+	store := s.store
+	gen := s.gen
+	chain := s.chain
+
+	return s.jobs.Start(context.Background(), hhID, func(j *plan.Job) {
+		j.EmitStatus("Resolving preferences…")
+
+		// Hard ceiling: a stalled LLM or pricing call must not leave the job
+		// (and the progress screen) spinning forever. Costing a full week can
+		// mean a live scrape or AI price estimate per ingredient (30+ calls),
+		// so this needs real headroom - 5 minutes was cutting pricing off
+		// mid-pass, silently leaving items unpriced and the plan total at $0.
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+		defer cancel()
+
+		j.EmitStatus("Asking the AI to build your week… (15-30s)")
+
+		pricer := buildPricer(store, chain)
+		planID, err := plan.Generate(ctx, store, gen, hhID, pricer, j)
+		if err != nil {
+			log.Printf("plan generation error household=%d: %v", hhID, err)
+			j.Status = plan.JobFailed
+			j.Error = err.Error()
+			j.Emit(plan.JobEvent{Type: "error", Message: err.Error()})
+			return
+		}
+		j.Status = plan.JobDone
+		j.PlanID = planID
+		j.Emit(plan.JobEvent{Type: "done", Message: "Plan ready", PlanID: planID})
+	})
+}
+
 // handlePlanGenerate starts a background generation job, then redirects to
 // the progress screen.
 func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
@@ -202,33 +356,7 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store := s.store
-	gen := s.gen
-	chain := s.chain
-	hhID := hh.ID
-
-	_, started := s.jobs.Start(r.Context(), hhID, func(j *plan.Job) {
-		j.Emit(plan.JobEvent{Type: "status", Message: "Resolving preferences…"})
-
-		ctx := context.Background()
-
-		pricer := buildPricer(store, chain)
-		planID, err := plan.Generate(ctx, store, gen, hhID, pricer)
-		if err != nil {
-			log.Printf("plan generation error household=%d: %v", hhID, err)
-			j.Status = plan.JobFailed
-			j.Error = err.Error()
-			j.Emit(plan.JobEvent{Type: "error", Message: err.Error()})
-			return
-		}
-		j.Status = plan.JobDone
-		j.PlanID = planID
-		j.Emit(plan.JobEvent{Type: "done", Message: "Plan ready", PlanID: planID})
-	})
-
-	if !started {
-		// Already running - just redirect to the progress page.
-	}
+	s.startPlanGeneration(hh.ID)
 	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 }
 
@@ -241,7 +369,11 @@ func (s *Server) handlePlanGeneratePage(w http.ResponseWriter, r *http.Request) 
 	s.render(w, r, "plan_generate", nil)
 }
 
-// handlePlanHeadcount saves a per-day headcount override (§5.6).
+// handlePlanHeadcount saves a per-day headcount override (§5.6) and rescales
+// that day's meals to match: servings, cooked portions, the recipe yield, and
+// every ingredient quantity are recomputed from the as-generated baseline
+// (db.ScaleMealsForDay). The shopping list is then rebuilt in the background,
+// since the quantities it aggregates have just changed.
 func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
@@ -267,12 +399,77 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
 		return
 	}
-	_ = s.store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
+	if err := s.store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
 		PlanID:    p.ID,
 		Date:      date,
 		Headcount: headcount,
-	})
+	}); err != nil {
+		log.Printf("headcount: save plan day %s: %v", date, err)
+		s.setNotify(w, NotifyDanger, "Couldn't save that headcount. Try again.")
+		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		return
+	}
+
+	scaled, err := s.store.ScaleMealsForDay(ctx, p.ID, date, headcount)
+	if err != nil {
+		// The headcount itself is saved; only the rescale failed. Say so
+		// rather than implying the portions moved.
+		log.Printf("headcount: scale meals for %s: %v", date, err)
+		s.setNotify(w, NotifyDanger, "Headcount saved, but the portions couldn't be rescaled. Check the logs.")
+		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		return
+	}
+
+	if scaled.MealsScaled == 0 {
+		s.setNotify(w, NotifySuccess, fmt.Sprintf("Headcount for %s set to %d.", date, headcount))
+		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		return
+	}
+
+	s.repriceInBackground(p.ID, hh)
+	s.setNotify(w, NotifySuccess, fmt.Sprintf(
+		"%s now serves %d - rescaled %d meals. The shopping list is updating.",
+		date, headcount, scaled.MealsScaled))
 	http.Redirect(w, r, "/plan", http.StatusSeeOther)
+}
+
+// repriceInBackground rebuilds a plan's shopping list off the request path.
+// Costing can make a live lookup per ingredient and run for minutes, which is
+// far too long to hold a form POST open, so the user gets an immediate redirect
+// and the list catches up. At most one rebuild per plan runs at a time.
+func (s *Server) repriceInBackground(planID int64, hh *db.Household) {
+	pricer := buildPricer(s.store, s.chain)
+
+	s.repriceMu.Lock()
+	if s.repricingPlans[planID] {
+		s.repriceMu.Unlock()
+		return
+	}
+	s.repricingPlans[planID] = true
+	s.repriceMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.repriceMu.Lock()
+			delete(s.repricingPlans, planID)
+			s.repriceMu.Unlock()
+		}()
+
+		// Detached from the request: the response is long gone by now.
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+		defer cancel()
+
+		if pricer != nil {
+			if err := pricer(ctx, planID, hh); err != nil {
+				log.Printf("reprice: costing plan %d: %v", planID, err)
+			}
+		}
+		// Same guarantee as generation: the plan keeps a shopping list even
+		// when pricing is unavailable or failed.
+		if _, err := pricing.EnsureShoppingList(ctx, s.store, planID, hh); err != nil {
+			log.Printf("reprice: shopping list fallback for plan %d: %v", planID, err)
+		}
+	}()
 }
 
 // handlePlanGenerateStatus streams SSE events for the active generation job.
@@ -283,13 +480,31 @@ func (s *Server) handlePlanGenerateStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// The server sets a 30s WriteTimeout for ordinary requests, but a
+	// generation stream stays open for minutes. Without clearing the write
+	// deadline the response is severed mid-run, the browser reports a
+	// connection error, and the progress screen shows "Generation failed"
+	// even though the background job goes on to finish the plan.
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Time{})
+	}
+
 	job := s.jobs.Get(hh.ID)
 	if job == nil {
-		// No active job - send a synthetic done so the client can redirect.
+		// No active job: it finished (or never ran) before the browser
+		// connected. Report the real outcome from the plan row so the
+		// progress screen doesn't bounce the user to an empty plan page.
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
-		fmt.Fprintf(w, "event: done\ndata: no active job\n\n")
+		event, msg := "done", "no active job"
+		if p, _ := s.store.GetLatestPlan(r.Context(), hh.ID); p != nil {
+			if s.reconcilePlanStatus(r.Context(), hh.ID, p) == "error" {
+				event = "error"
+				msg = "The last plan generation didn't finish. Check Settings → AI Logs, then regenerate."
+			}
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, msg)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
