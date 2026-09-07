@@ -190,19 +190,26 @@ type Plan struct {
 	TotalCents        int64
 	ConfidenceSummary string
 	Status            string // "generating" | "ready" | "error"
+	Canceled          bool   // true once superseded by a regenerate for the same week (00016) - kept for history
 	CreatedAt         time.Time
 }
 
 // Meal is one slot in a plan (§10.1).
 type Meal struct {
-	ID                   int64
-	PlanID               int64
-	Day                  string // YYYY-MM-DD
-	Slot                 string // "breakfast" | "lunch" | "dinner"
-	Title                string
-	Effort               string // "quick" | "standard" | "elaborate"
-	Servings             int
-	CookedPortions       int
+	ID             int64
+	PlanID         int64
+	Day            string // YYYY-MM-DD
+	Slot           string // "breakfast" | "lunch" | "dinner"
+	Title          string
+	Effort         string // "quick" | "standard" | "elaborate"
+	Servings       int
+	CookedPortions int
+	// Base* hold the meal as the LLM generated it. Per-day headcount changes
+	// rescale Servings/CookedPortions (and every ingredient quantity) from
+	// these, never from the current values, so repeated adjustments are
+	// idempotent instead of drifting (00017).
+	BaseServings         int
+	BaseCookedPortions   int
 	IsLeftover           bool
 	LeftoverSourceMealID *int64
 	Locked               bool
@@ -224,8 +231,11 @@ type MealIngredient struct {
 	MealID         int64
 	Name           string
 	Quantity       float64
+	BaseQuantity   float64 // as-generated amount; Quantity = BaseQuantity × headcount/base_servings (00017)
 	Unit           string
 	NormalizedTerm string
+	ItemID         *int64 // catalog item, nil when unlinked (00010_items.sql)
+	EstPriceCents  int64  // the plan-generation LLM's own price guess for this quantity (00015)
 }
 
 // CreatePlanParams bundles inputs for creating a plan.
@@ -248,6 +258,13 @@ type CreateMealParams struct {
 	AIRunID        *int64
 }
 
+// ScaleDayResult reports what ScaleMealsForDay changed, so a caller can decide
+// whether the plan's shopping list needs rebuilding.
+type ScaleDayResult struct {
+	MealsScaled       int
+	IngredientsScaled int
+}
+
 // CreateMealRecipeParams bundles inputs for creating a meal recipe.
 type CreateMealRecipeParams struct {
 	MealID    int64
@@ -257,11 +274,16 @@ type CreateMealRecipeParams struct {
 }
 
 // CreateMealIngredientParams bundles inputs for creating one ingredient.
+// NormalizedTerm and ItemID are optional: leave them zero to store an unlinked
+// row (the catalog linking pass fills them in later).
 type CreateMealIngredientParams struct {
-	MealID   int64
-	Name     string
-	Quantity float64
-	Unit     string
+	MealID         int64
+	Name           string
+	Quantity       float64
+	Unit           string
+	NormalizedTerm string
+	ItemID         *int64
+	EstPriceCents  int64
 }
 
 // ── Phase 4 - Pricing (§6, §10.1) ────────────────────────────────────────────
@@ -337,6 +359,22 @@ type ShoppingListItem struct {
 	Confidence         string
 	Checked            bool
 	InPantry           bool
+	ItemID             *int64 // catalog item, nil when unlinked (00010_items.sql)
+}
+
+// UpdateShoppingListItemPriceParams rewrites one shopping-list line's price and
+// resolved store/item after a manual edit via the pencil-icon price modal.
+type UpdateShoppingListItemPriceParams struct {
+	ID             int64
+	StoreID        *int64
+	ItemID         *int64
+	BuyQuantity    float64
+	PackSize       float64
+	PurchaseUnit   string
+	UnitPriceCents int64
+	LineTotalCents int64
+	PriceSource    string
+	Confidence     string
 }
 
 // UpsertPriceCacheParams bundles inputs for writing a price to the cache.
@@ -397,6 +435,7 @@ type UpdateScrapeConfigParams struct {
 type CreateShoppingListItemParams struct {
 	PlanID             int64
 	StoreID            *int64
+	ItemID             *int64
 	MealIngredientRefs string
 	DisplayName        string
 	BuyQuantity        float64
@@ -406,6 +445,120 @@ type CreateShoppingListItemParams struct {
 	LineTotalCents     int64
 	PriceSource        string
 	Confidence         string
+}
+
+// ── Items catalog + quantity conversions (00010_items.sql) ───────────────────
+
+// Item is one canonical grocery item in a household's catalog. It gives a
+// normalized_term a real row with metadata: category, photo, a stock unit it is
+// aggregated/held in, and a default purchase quantity.
+type Item struct {
+	ID                 int64
+	HouseholdID        int64
+	Name               string
+	NormalizedTerm     string
+	Category           string
+	StockUnit          string // unit the item is aggregated/held in (Grocy QU_STOCK)
+	DefaultPurchaseQty float64
+	ImagePath          string // relative path under ITEM_IMAGE_DIR; "" = none
+	ImageAttribution   string // required credit line for the photo
+	ImageSourceURL     string // where the photo is lazily fetched from
+	Source             string // "builtin" | "manual" | "auto"
+	Notes              string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+// UnitConversion is one edge in the quantity-conversion graph: 1 FromUnit =
+// Factor ToUnit. ItemID nil is a global conversion (mass, volume); a non-nil
+// ItemID is an item-specific bridge, usually count -> mass/volume.
+type UnitConversion struct {
+	ID       int64
+	ItemID   *int64
+	FromUnit string
+	ToUnit   string
+	Factor   float64
+	Derived  bool // true = machine-generated bridge to an item's stock unit
+}
+
+// ItemStorePackage is how one item is sold at one store: the purchase unit, the
+// amount per package (in that unit), and the price. Supersedes the pack_size /
+// purchase_unit scalars on manual_prices / price_cache for catalogued items.
+type ItemStorePackage struct {
+	ID               int64
+	ItemID           int64
+	StoreID          int64
+	PurchaseUnit     string
+	AmountPerPackage float64
+	PriceCents       int64
+	UpdatedBy        string
+	UpdatedAt        time.Time
+}
+
+// PriceHistoryEntry is one recorded price for an (item, store) pair over time
+// (00014_price_history.sql). Written every time UpsertItemStorePackage runs, so
+// it captures edits from the item detail page, the admin prices page, and the
+// shopping list's pencil-icon price editor alike.
+type PriceHistoryEntry struct {
+	ID               int64
+	ItemID           int64
+	StoreID          int64
+	PriceCents       int64
+	PurchaseUnit     string
+	AmountPerPackage float64
+	RecordedBy       string
+	RecordedAt       time.Time
+}
+
+// ItemFilter holds optional filters for FilterItems.
+type ItemFilter struct {
+	Q        string // name text search
+	Category string // exact category match
+}
+
+// CreateItemParams bundles inputs for creating a catalog item.
+type CreateItemParams struct {
+	HouseholdID        int64
+	Name               string
+	NormalizedTerm     string
+	Category           string
+	StockUnit          string
+	DefaultPurchaseQty float64
+	ImageSourceURL     string
+	ImageAttribution   string
+	Source             string // "builtin" | "manual" | "auto"; defaults to "auto"
+	Notes              string
+}
+
+// UpdateItemParams bundles the editable fields of a catalog item. An empty
+// ImagePath leaves the existing image untouched.
+type UpdateItemParams struct {
+	ID                 int64
+	Name               string
+	Category           string
+	StockUnit          string
+	DefaultPurchaseQty float64
+	Notes              string
+	ImagePath          string
+}
+
+// UpsertUnitConversionParams bundles inputs for one conversion edge. ItemID nil
+// writes a global conversion.
+type UpsertUnitConversionParams struct {
+	ItemID   *int64
+	FromUnit string
+	ToUnit   string
+	Factor   float64
+}
+
+// UpsertItemStorePackageParams bundles inputs for one per-store package.
+type UpsertItemStorePackageParams struct {
+	ItemID           int64
+	StoreID          int64
+	PurchaseUnit     string
+	AmountPerPackage float64
+	PriceCents       int64
+	UpdatedBy        string
 }
 
 // ── Phase 5.7 - Recipe catalog (§5.7, §10.1) ─────────────────────────────────
@@ -500,6 +653,7 @@ type PantryItem struct {
 	Unit           string
 	Barcode        string
 	UpdatedAt      time.Time
+	ItemID         *int64 // catalog item, nil when unlinked (00010_items.sql)
 }
 
 // PlanDay holds per-day overrides (headcount, notes) for one day of a plan (§5.6).

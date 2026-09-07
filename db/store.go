@@ -89,6 +89,9 @@ type Store interface {
 
 	CreatePlan(ctx context.Context, p CreatePlanParams) (*Plan, error)
 	UpdatePlanStatus(ctx context.Context, planID int64, status string) error
+	DeletePlan(ctx context.Context, householdID, planID int64) error
+	DeleteAllPlansForHousehold(ctx context.Context, householdID int64) error
+	CancelOtherPlansForWeek(ctx context.Context, householdID int64, weekStart string, keepPlanID int64) error
 	GetLatestPlan(ctx context.Context, householdID int64) (*Plan, error)
 	GetPlanByID(ctx context.Context, planID int64) (*Plan, error)
 	ListPlans(ctx context.Context, householdID int64) ([]*Plan, error)
@@ -99,6 +102,7 @@ type Store interface {
 
 	CreateMeal(ctx context.Context, p CreateMealParams) (*Meal, error)
 	ListMealsByPlan(ctx context.Context, planID int64) ([]*Meal, error)
+	ListMealsByHouseholdRange(ctx context.Context, householdID int64, from, to string) ([]*Meal, error)
 	UpdateMealLocked(ctx context.Context, mealID int64, locked bool) error
 
 	// ── Meal recipes (§5.2, §10.1) ───────────────────────────────────────────
@@ -109,8 +113,10 @@ type Store interface {
 	// ── Meal ingredients (§5.2, §6.3, §10.1) ────────────────────────────────
 
 	CreateMealIngredient(ctx context.Context, p CreateMealIngredientParams) error
+	SetMealIngredientItem(ctx context.Context, ingredientID int64, itemID *int64, normalizedTerm string) error
 	ListIngredientsByMeal(ctx context.Context, mealID int64) ([]*MealIngredient, error)
 	ListIngredientsByPlan(ctx context.Context, planID int64) ([]*MealIngredient, error)
+	ListMealTitlesByIngredientID(ctx context.Context, planID int64) (map[int64]string, error)
 
 	// ── Price cache (§6.0, §6.5) ──────────────────────────────────────────────
 
@@ -140,8 +146,11 @@ type Store interface {
 
 	CreateShoppingListItem(ctx context.Context, p CreateShoppingListItemParams) (*ShoppingListItem, error)
 	ListShoppingListItems(ctx context.Context, planID int64) ([]*ShoppingListItem, error)
+	GetShoppingListItem(ctx context.Context, id int64) (*ShoppingListItem, error)
+	UpdateShoppingListItemPrice(ctx context.Context, p UpdateShoppingListItemPriceParams) error
 	CheckShoppingListItem(ctx context.Context, id int64, checked bool) error
 	DeleteShoppingListItems(ctx context.Context, planID int64) error
+	DeleteAllShoppingListItemsForHousehold(ctx context.Context, householdID int64) error
 
 	// ── Plan total (§6.4) ─────────────────────────────────────────────────────
 
@@ -163,6 +172,7 @@ type Store interface {
 	ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, error)
 	UpsertPlanDay(ctx context.Context, p UpsertPlanDayParams) error
 	GetPlanDay(ctx context.Context, planID int64, date string) (*PlanDay, error)
+	ScaleMealsForDay(ctx context.Context, planID int64, date string, headcount int) (ScaleDayResult, error)
 
 	// ── Pantry items (§5.4) ───────────────────────────────────────────────────
 
@@ -170,6 +180,8 @@ type Store interface {
 	ListPantryItems(ctx context.Context, householdID int64) ([]*PantryItem, error)
 	UpdatePantryItem(ctx context.Context, p UpdatePantryItemParams) error
 	DeletePantryItem(ctx context.Context, id int64) error
+	DeleteAllPantryItemsForHousehold(ctx context.Context, householdID int64) error
+	SetPantryItemItem(ctx context.Context, id int64, itemID *int64) error
 
 	// ── Shopping list - pantry flag (§5.4) ───────────────────────────────────
 
@@ -182,6 +194,7 @@ type Store interface {
 	ListCatalogRecipes(ctx context.Context, householdID int64) ([]*CatalogRecipe, error)
 	FilterCatalogRecipes(ctx context.Context, householdID int64, f CatalogRecipeFilter) ([]*CatalogRecipe, error)
 	DeleteCatalogRecipe(ctx context.Context, id int64) error
+	DeleteAllCatalogRecipesForHousehold(ctx context.Context, householdID int64) error
 	UpdateCatalogRecipe(ctx context.Context, p UpdateCatalogRecipeParams) error
 	ClearCatalogRecipeImage(ctx context.Context, id int64) error
 	DeleteCatalogRecipeIngredients(ctx context.Context, catalogRecipeID int64) error
@@ -190,6 +203,31 @@ type Store interface {
 	ListCatalogRecipeIngredients(ctx context.Context, catalogRecipeID int64) ([]*CatalogRecipeIngredient, error)
 	AddCatalogRecipeStep(ctx context.Context, catalogRecipeID int64, position int, text string) error
 	ListCatalogRecipeSteps(ctx context.Context, catalogRecipeID int64) ([]*CatalogRecipeStep, error)
+
+	// ── Items catalog + quantity conversions (00010_items.sql) ───────────────
+
+	CreateItem(ctx context.Context, p CreateItemParams) (*Item, error)
+	GetItem(ctx context.Context, id int64) (*Item, error)
+	GetItemByTerm(ctx context.Context, householdID int64, term string) (*Item, error)
+	ListItems(ctx context.Context, householdID int64) ([]*Item, error)
+	FilterItems(ctx context.Context, householdID int64, f ItemFilter) ([]*Item, error)
+	UpdateItem(ctx context.Context, p UpdateItemParams) error
+	DeleteItem(ctx context.Context, id int64) error
+	SetItemImage(ctx context.Context, id int64, imagePath, attribution string) error
+	ClearItemImage(ctx context.Context, id int64) error
+
+	UpsertUnitConversion(ctx context.Context, p UpsertUnitConversionParams) error
+	ListGlobalConversions(ctx context.Context) ([]*UnitConversion, error)
+	ListConversionsForItem(ctx context.Context, itemID int64) ([]*UnitConversion, error)
+	DeleteUnitConversion(ctx context.Context, id int64) error
+	ReplaceDerivedItemConversions(ctx context.Context, itemID int64, edges []UpsertUnitConversionParams) error
+
+	UpsertItemStorePackage(ctx context.Context, p UpsertItemStorePackageParams) error
+	ListPackagesForItem(ctx context.Context, itemID int64) ([]*ItemStorePackage, error)
+	ListPackagesForStore(ctx context.Context, storeID int64) ([]*ItemStorePackage, error)
+	GetItemStorePackage(ctx context.Context, itemID, storeID int64) (*ItemStorePackage, error)
+	DeleteItemStorePackage(ctx context.Context, id int64) error
+	ListPriceHistory(ctx context.Context, itemID, storeID int64) ([]*PriceHistoryEntry, error)
 
 	// ── Search (§8.4c) ────────────────────────────────────────────────────────
 
@@ -213,4 +251,18 @@ type Store interface {
 	SetSetting(ctx context.Context, key, value string) error
 	ListSettings(ctx context.Context) ([]*Setting, error)
 	GetSetting(ctx context.Context, key string) (*Setting, error)
+
+	// ── Encrypted secrets (see package cryptbox) ─────────────────────────────
+
+	SetSecret(ctx context.Context, key, ciphertext string) error
+	GetSecret(ctx context.Context, key string) (string, bool, error)
+
+	// ── Home Assistant sync map (00012_ha_sync.sql) ─────────────────────────
+
+	UpsertHASyncRow(ctx context.Context, p UpsertHASyncRowParams) (*HASyncRow, error)
+	ListHASyncRows(ctx context.Context, householdID int64) ([]*HASyncRow, error)
+	GetHASyncByTerm(ctx context.Context, householdID int64, term string) (*HASyncRow, error)
+	SetHASyncPushed(ctx context.Context, id int64, haUID, haStatus, summary string, localChecked bool) error
+	SetHASyncPulled(ctx context.Context, id int64, haStatus string, localChecked bool) error
+	DeleteHASyncRow(ctx context.Context, id int64) error
 }
