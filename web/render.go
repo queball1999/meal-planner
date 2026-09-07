@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -36,6 +37,16 @@ type pageData struct {
 	TemplateMs float64
 }
 
+// leadingStepNum matches an ordinal prefix the LLM (or an imported recipe)
+// sometimes bakes into a step string: "1. ", "2) ", "3 - ", "Step 4: ".
+// The templates render steps inside <ol>, which supplies its own number, so
+// the baked-in one has to come off or every step reads "1. 1. …".
+var leadingStepNum = regexp.MustCompile(`^\s*(?:[Ss]tep\s*)?\d+\s*[.)\-:]\s+`)
+
+func stripStepNumber(s string) string {
+	return strings.TrimSpace(leadingStepNum.ReplaceAllString(s, ""))
+}
+
 // formatDurationMs renders a millisecond duration the way the footer wants it:
 // sub-10ms keeps one decimal (render times are often well under 1ms), whole
 // milliseconds otherwise, and seconds past 1000ms.
@@ -55,7 +66,15 @@ func formatDurationMs(ms float64) string {
 // a func added here can never go missing from the test and blow up at runtime.
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"icon":       iconFunc,
+		"icon":     iconFunc,
+		"stepText": stripStepNumber,
+		"slots":    func() []string { return []string{"breakfast", "lunch", "dinner"} },
+		"titleCase": func(s string) string {
+			if s == "" {
+				return s
+			}
+			return strings.ToUpper(s[:1]) + s[1:]
+		},
 		"storeLogo":  StoreLogoURL,
 		"aiLogo":     aiProviderLogo,
 		"ctxCookies": storeContextCookies,
@@ -84,10 +103,17 @@ func templateFuncs() template.FuncMap {
 // Page templates live at web/templates/<name>.html and must define a
 // "content" block consumed by layout.html.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data any) {
+	s.renderWithPage(w, r, name, name, data)
+}
+
+// renderWithPage is render() with an explicit nav slug, for pages whose
+// template name and active-nav key differ (e.g. /plan renders "plan" but its
+// "Shopping list" sub-tab wants the nav key "list").
+func (s *Server) renderWithPage(w http.ResponseWriter, r *http.Request, name, pageSlug string, data any) {
 	pd := pageData{
 		AppName:   s.cfg.AppName,
 		Version:   s.version,
-		Page:      name,
+		Page:      pageSlug,
 		User:      middleware.UserFromCtx(r),
 		Household: middleware.HouseholdFromCtx(r),
 		CSRFField: csrf.TemplateField(r),

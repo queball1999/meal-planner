@@ -1,12 +1,18 @@
 package web
 
 import (
+	"context"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
+	"goeat/pricing"
 )
 
 // shoppingStoreGroup groups shopping list items under one store heading.
@@ -26,6 +32,26 @@ type shoppingLineItem struct {
 	BadgeClass  string // "badge-live" | "badge-cached" | "badge-manual" | "badge-estimate"
 	BadgeText   string // "Live" | "Cached" | "Manual" | "Estimated"
 	Checked     bool
+	Meals       []mealTag // which meal(s) this line was pulled from, deduped, color-coded
+}
+
+// mealTag is one pill on a shopping-list line naming a meal it belongs to.
+// ColorClass is a stable hash of the title, so the same meal always gets the
+// same color everywhere it appears on the list.
+type mealTag struct {
+	Title      string
+	ColorClass string
+}
+
+// mealColorClass picks one of a fixed 8-hue pill palette (badge-meal-1..8,
+// components.css) deterministically from the meal title, so repeated views
+// (and different lines that share a meal) get a consistent color.
+func mealColorClass(title string) string {
+	var h uint32
+	for i := 0; i < len(title); i++ {
+		h = h*31 + uint32(title[i])
+	}
+	return fmt.Sprintf("badge-meal-%d", (h%8)+1)
 }
 
 type shoppingListPageData struct {
@@ -39,22 +65,23 @@ type shoppingListPageData struct {
 	UnassignedItems []shoppingLineItem
 }
 
-func (s *Server) handleShoppingListPage(w http.ResponseWriter, r *http.Request) {
-	hh := middleware.HouseholdFromCtx(r)
-	if hh == nil {
-		http.Redirect(w, r, "/setup", http.StatusSeeOther)
-		return
-	}
-	ctx := r.Context()
+// handleShoppingListRedirect keeps the old /list URL working - the shopping
+// list now lives as a tab on /plan.
+func (s *Server) handleShoppingListRedirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/plan/list", http.StatusMovedPermanently)
+}
 
+// buildShoppingListView assembles the shopping-list view model for the current
+// plan. Shared by the /plan "Shopping list" tab.
+func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) shoppingListPageData {
 	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
 	if p == nil || p.Status == "generating" {
-		s.render(w, r, "shopping_list", shoppingListPageData{HasPlan: false})
-		return
+		return shoppingListPageData{HasPlan: false}
 	}
 
 	rawItems, _ := s.store.ListShoppingListItems(ctx, p.ID)
 	stores, _ := s.store.ListStores(ctx, hh.ID)
+	mealTitles, _ := s.store.ListMealTitlesByIngredientID(ctx, p.ID)
 
 	storeMap := make(map[int64]string, len(stores))
 	for _, gs := range stores {
@@ -67,7 +94,7 @@ func (s *Server) handleShoppingListPage(w http.ResponseWriter, r *http.Request) 
 	var unassigned []shoppingLineItem
 
 	for _, item := range rawItems {
-		line := buildLineItem(item)
+		line := buildLineItem(item, mealTitles)
 		if item.StoreID == nil {
 			unassigned = append(unassigned, line)
 			continue
@@ -113,7 +140,7 @@ func (s *Server) handleShoppingListPage(w http.ResponseWriter, r *http.Request) 
 		_ = g
 	}
 
-	s.render(w, r, "shopping_list", shoppingListPageData{
+	return shoppingListPageData{
 		HasPlan:         true,
 		PlanID:          p.ID,
 		WeekStart:       p.WeekStart,
@@ -122,10 +149,10 @@ func (s *Server) handleShoppingListPage(w http.ResponseWriter, r *http.Request) 
 		OverBudget:      p.TotalCents > p.BudgetCents && p.TotalCents > 0,
 		Groups:          groups,
 		UnassignedItems: unassigned,
-	})
+	}
 }
 
-func buildLineItem(item *db.ShoppingListItem) shoppingLineItem {
+func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string) shoppingLineItem {
 	buyLabel := fmt.Sprintf("%.4g %s", item.BuyQuantity, item.PurchaseUnit)
 	priceLabel := ""
 	if item.UnitPriceCents > 0 {
@@ -144,7 +171,31 @@ func buildLineItem(item *db.ShoppingListItem) shoppingLineItem {
 		BadgeClass:  badgeClass,
 		BadgeText:   badgeText,
 		Checked:     item.Checked,
+		Meals:       mealTagsFor(item.MealIngredientRefs, mealTitleByIngredient),
 	}
+}
+
+// mealTagsFor resolves a shopping-list line's meal_ingredient_refs (a JSON
+// []int64) to the distinct meal titles they came from, in first-seen order.
+func mealTagsFor(refsJSON string, mealTitleByIngredient map[int64]string) []mealTag {
+	if refsJSON == "" || len(mealTitleByIngredient) == 0 {
+		return nil
+	}
+	var refs []int64
+	if err := json.Unmarshal([]byte(refsJSON), &refs); err != nil {
+		return nil
+	}
+	seen := make(map[string]bool, len(refs))
+	var tags []mealTag
+	for _, id := range refs {
+		title := mealTitleByIngredient[id]
+		if title == "" || seen[title] {
+			continue
+		}
+		seen[title] = true
+		tags = append(tags, mealTag{Title: title, ColorClass: mealColorClass(title)})
+	}
+	return tags
 }
 
 func confidenceBadge(conf string) (class, text string) {
@@ -162,6 +213,54 @@ func confidenceBadge(conf string) (class, text string) {
 	}
 }
 
+// handleShoppingListExport streams the current shopping list as a downloadable
+// CSV (the only format for now; ?format is accepted for forward compat).
+func (s *Server) handleShoppingListExport(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	ctx := r.Context()
+	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
+	if p == nil {
+		http.Error(w, "no plan", http.StatusNotFound)
+		return
+	}
+	items, _ := s.store.ListShoppingListItems(ctx, p.ID)
+	stores, _ := s.store.ListStores(ctx, hh.ID)
+	storeName := map[int64]string{}
+	for _, gs := range stores {
+		storeName[gs.ID] = gs.Name
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="shopping-list-%s.csv"`, p.WeekStart))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"Store", "Item", "Buy quantity", "Unit", "Line total", "Checked"})
+	for _, it := range items {
+		store := "Unassigned"
+		if it.StoreID != nil {
+			if n := storeName[*it.StoreID]; n != "" {
+				store = n
+			}
+		}
+		checked := ""
+		if it.Checked {
+			checked = "yes"
+		}
+		_ = cw.Write([]string{
+			store,
+			it.DisplayName,
+			fmt.Sprintf("%.4g", it.BuyQuantity),
+			it.PurchaseUnit,
+			fmt.Sprintf("%.2f", float64(it.LineTotalCents)/100),
+			checked,
+		})
+	}
+	cw.Flush()
+}
+
 func (s *Server) handleShoppingListCheck(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -175,4 +274,328 @@ func (s *Server) handleShoppingListCheck(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── Manual price editor (pencil icon on the shopping list) ──────────────────
+
+type shoppingPriceStoreOption struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+type shoppingPriceHistoryRow struct {
+	PriceLabel string `json:"price_label"`
+	RecordedBy string `json:"recorded_by"`
+	RecordedAt string `json:"recorded_at"`
+}
+
+type shoppingPriceModalResp struct {
+	OK               bool                      `json:"ok"`
+	Error            string                    `json:"error,omitempty"`
+	DisplayName      string                    `json:"display_name"`
+	StoreID          int64                     `json:"store_id"`
+	Stores           []shoppingPriceStoreOption `json:"stores"`
+	PriceDollars     string                    `json:"price_dollars"`
+	AmountPerPackage float64                   `json:"amount_per_package"`
+	PurchaseUnit     string                    `json:"purchase_unit"`
+	History          []shoppingPriceHistoryRow `json:"history"`
+}
+
+// loadOwnedShoppingListItem returns the shopping-list line for id, or nil when
+// it doesn't exist or its plan belongs to a different household.
+func (s *Server) loadOwnedShoppingListItem(ctx context.Context, hh *db.Household, id int64) (*db.ShoppingListItem, error) {
+	line, err := s.store.GetShoppingListItem(ctx, id)
+	if err != nil || line == nil {
+		return nil, err
+	}
+	plan, err := s.store.GetPlanByID(ctx, line.PlanID)
+	if err != nil || plan == nil || plan.HouseholdID != hh.ID {
+		return nil, err
+	}
+	return line, nil
+}
+
+// resolveLineItemID returns the catalog item already linked to a shopping list
+// line, falling back to a term lookup for lines priced before items existed.
+func (s *Server) resolveLineItemID(ctx context.Context, hh *db.Household, line *db.ShoppingListItem) int64 {
+	if line.ItemID != nil {
+		return *line.ItemID
+	}
+	if it, _ := s.store.GetItemByTerm(ctx, hh.ID, pricing.Normalize(line.DisplayName)); it != nil {
+		return it.ID
+	}
+	return 0
+}
+
+// handleShoppingItemPriceGet serves the pencil-icon modal's current values plus
+// recent price_history for the (item, store) pair.
+func (s *Server) handleShoppingItemPriceGet(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, shoppingPriceModalResp{Error: "no household"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, shoppingPriceModalResp{Error: "bad id"})
+		return
+	}
+	ctx := r.Context()
+	line, err := s.loadOwnedShoppingListItem(ctx, hh, id)
+	if err != nil || line == nil {
+		writeJSON(w, http.StatusNotFound, shoppingPriceModalResp{Error: "not found"})
+		return
+	}
+
+	stores, _ := s.store.ListStores(ctx, hh.ID)
+	resp := shoppingPriceModalResp{
+		OK:           true,
+		DisplayName:  line.DisplayName,
+		PurchaseUnit: line.PurchaseUnit,
+	}
+	for _, gs := range stores {
+		resp.Stores = append(resp.Stores, shoppingPriceStoreOption{ID: gs.ID, Name: gs.Name})
+	}
+	switch {
+	case line.StoreID != nil:
+		resp.StoreID = *line.StoreID
+	case len(stores) > 0:
+		resp.StoreID = stores[0].ID
+	}
+
+	if itemID := s.resolveLineItemID(ctx, hh, line); itemID != 0 && resp.StoreID != 0 {
+		if pkg, _ := s.store.GetItemStorePackage(ctx, itemID, resp.StoreID); pkg != nil {
+			resp.PriceDollars = fmt.Sprintf("%.2f", float64(pkg.PriceCents)/100)
+			resp.AmountPerPackage = pkg.AmountPerPackage
+			resp.PurchaseUnit = pkg.PurchaseUnit
+		}
+		hist, _ := s.store.ListPriceHistory(ctx, itemID, resp.StoreID)
+		for _, h := range hist {
+			resp.History = append(resp.History, shoppingPriceHistoryRow{
+				PriceLabel: fmt.Sprintf("$%.2f / %s", float64(h.PriceCents)/100, h.PurchaseUnit),
+				RecordedBy: h.RecordedBy,
+				RecordedAt: h.RecordedAt.Format("Jan 2, 2006 3:04pm"),
+			})
+		}
+	}
+	if resp.AmountPerPackage <= 0 {
+		if line.PackSize > 0 {
+			resp.AmountPerPackage = line.PackSize
+		} else {
+			resp.AmountPerPackage = 1
+		}
+	}
+	if resp.PriceDollars == "" && line.UnitPriceCents > 0 {
+		resp.PriceDollars = fmt.Sprintf("%.2f", float64(line.UnitPriceCents)/100)
+	}
+	if resp.PurchaseUnit == "" {
+		resp.PurchaseUnit = "each"
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleShoppingItemPriceSet saves a manually entered price for the item this
+// line resolves to (creating the catalog item on first use), records it to
+// price_history via UpsertItemStorePackage, and patches the line itself so the
+// shopping list reflects it without a full re-price of the plan.
+func (s *Server) handleShoppingItemPriceSet(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad id"})
+		return
+	}
+	ctx := r.Context()
+	line, err := s.loadOwnedShoppingListItem(ctx, hh, id)
+	if err != nil || line == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "not found"})
+		return
+	}
+
+	var body struct {
+		StoreID          int64   `json:"store_id"`
+		PriceDollars     string  `json:"price_dollars"`
+		AmountPerPackage float64 `json:"amount_per_package"`
+		PurchaseUnit     string  `json:"purchase_unit"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad request body"})
+		return
+	}
+	if body.StoreID == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "choose a store"})
+		return
+	}
+	priceCents := parseDollarsToCents(body.PriceDollars)
+	if priceCents <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "enter a positive price"})
+		return
+	}
+	amt := body.AmountPerPackage
+	if amt <= 0 {
+		amt = 1
+	}
+	unit := strings.TrimSpace(body.PurchaseUnit)
+	if unit == "" {
+		unit = "each"
+	}
+
+	item, err := s.store.GetItem(ctx, s.resolveLineItemID(ctx, hh, line))
+	if err != nil || item == nil {
+		item, err = catalog.EnsureItem(ctx, s.store, hh.ID, line.DisplayName)
+	}
+	if err != nil || item == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "could not resolve item"})
+		return
+	}
+
+	user := ""
+	if u := middleware.UserFromCtx(r); u != nil {
+		user = u.Username
+	}
+	if err := s.store.UpsertItemStorePackage(ctx, db.UpsertItemStorePackageParams{
+		ItemID:           item.ID,
+		StoreID:          body.StoreID,
+		PurchaseUnit:     unit,
+		AmountPerPackage: amt,
+		PriceCents:       priceCents,
+		UpdatedBy:        user,
+	}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "could not save price"})
+		return
+	}
+
+	// Re-derive this line's pack size in the item's stock unit so future
+	// display stays consistent with the costing chain's own math (§6.4).
+	conv, _ := s.store.ListConversionsForItem(ctx, item.ID)
+	packSize, ok := pricing.Convert(amt, unit, item.StockUnit, conv)
+	if !ok || packSize <= 0 {
+		packSize = amt
+	}
+	needed := line.BuyQuantity
+	if needed <= 0 {
+		needed = packSize
+	}
+	packs := pricing.PacksNeeded(needed, packSize)
+
+	storeID := body.StoreID
+	itemID := item.ID
+	if err := s.store.UpdateShoppingListItemPrice(ctx, db.UpdateShoppingListItemPriceParams{
+		ID:             line.ID,
+		StoreID:        &storeID,
+		ItemID:         &itemID,
+		BuyQuantity:    float64(packs) * packSize,
+		PackSize:       packSize,
+		PurchaseUnit:   unit,
+		UnitPriceCents: priceCents,
+		LineTotalCents: priceCents * int64(packs),
+		PriceSource:    "manual",
+		Confidence:     pricing.ConfidenceManual,
+	}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "could not update shopping list line"})
+		return
+	}
+
+	updated, _ := s.store.GetShoppingListItem(ctx, line.ID)
+	storeName := ""
+	if stores, _ := s.store.ListStores(ctx, hh.ID); stores != nil {
+		for _, gs := range stores {
+			if gs.ID == body.StoreID {
+				storeName = gs.Name
+				break
+			}
+		}
+	}
+	resp := map[string]any{"ok": true, "store_name": storeName}
+	if updated != nil {
+		mealTitles, _ := s.store.ListMealTitlesByIngredientID(ctx, updated.PlanID)
+		resp["line"] = buildLineItem(updated, mealTitles)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleShoppingAICostAnalysis prices every zero-cost line on the current plan
+// via the AI estimate provider directly (not the full resolution chain - the
+// button is specifically "ask the AI", not "try every provider again"), then
+// recomputes the plan total and confidence summary from all lines.
+func (s *Server) handleShoppingAICostAnalysis(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	if s.gen == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "no AI provider configured"})
+		return
+	}
+	ctx := r.Context()
+	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
+	if p == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "no plan"})
+		return
+	}
+	lines, _ := s.store.ListShoppingListItems(ctx, p.ID)
+	ai := pricing.NewAIEstimateProvider(s.gen, hh.ZIPCode)
+
+	updated := 0
+	for _, ln := range lines {
+		if ln.LineTotalCents > 0 {
+			continue
+		}
+		term := ""
+		if ln.ItemID != nil {
+			if it, _ := s.store.GetItem(ctx, *ln.ItemID); it != nil {
+				term = it.NormalizedTerm
+			}
+		}
+		if term == "" {
+			term = pricing.Normalize(ln.DisplayName)
+		}
+		if term == "" {
+			continue
+		}
+
+		res, err := ai.Lookup(ctx, term, 0, hh.ZIPCode)
+		if err != nil || res == nil {
+			continue
+		}
+		needed := ln.BuyQuantity
+		if needed <= 0 {
+			needed = res.PackSize
+		}
+		packs := pricing.PacksNeeded(needed, res.PackSize)
+
+		if err := s.store.UpdateShoppingListItemPrice(ctx, db.UpdateShoppingListItemPriceParams{
+			ID:             ln.ID,
+			StoreID:        ln.StoreID,
+			ItemID:         ln.ItemID,
+			BuyQuantity:    float64(packs) * res.PackSize,
+			PackSize:       res.PackSize,
+			PurchaseUnit:   res.PurchaseUnit,
+			UnitPriceCents: res.PriceCents,
+			LineTotalCents: res.PriceCents * int64(packs),
+			PriceSource:    res.Source,
+			Confidence:     res.Confidence,
+		}); err == nil {
+			updated++
+		}
+	}
+
+	// Recompute the plan total and confidence summary from every line, not
+	// just the ones this pass touched.
+	lines, _ = s.store.ListShoppingListItems(ctx, p.ID)
+	var total int64
+	counts := map[string]int{}
+	for _, ln := range lines {
+		total += ln.LineTotalCents
+		counts[ln.Confidence]++
+	}
+	summary := pricing.BuildConfidenceSummary(counts, len(lines))
+	_ = s.store.UpdatePlanTotal(ctx, p.ID, total, summary)
+
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": updated})
 }

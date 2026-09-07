@@ -1,0 +1,386 @@
+{{/* Shopping-list body, rendered inside the /plan "Shopping list" tab.
+     Expects the full pageData as dot; the list view model is .Data.List. */}}
+{{define "shoppingListBody"}}
+{{$root := .}}
+{{with .Data.List}}
+{{if not .HasPlan}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "cart"}}</div>
+    <h2 class="skeleton-card__title">No shopping list yet</h2>
+    <p class="skeleton-card__body">
+        Generate a meal plan on the <a href="/plan">Plan</a> tab - the shopping list is built from it.
+    </p>
+</div>
+{{else}}
+
+<div class="shopping-summary{{if .OverBudget}} shopping-summary--over{{end}}">
+    <span class="shopping-summary__total">
+        {{if .OverBudget}}{{icon "alert"}}{{end}}
+        {{.TotalLabel}} estimated total
+    </span>
+    <span class="shopping-summary__budget">of {{.BudgetLabel}} budget</span>
+</div>
+
+<div class="list-toolbar no-print" style="display:flex;gap:.5rem;margin:.75rem 0 1rem">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()"
+            title="Print" aria-label="Print shopping list">{{icon "printer"}} Print</button>
+    <a class="btn btn-ghost btn-sm" href="/list/export?format=csv"
+       title="Export CSV" aria-label="Export shopping list as CSV">{{icon "download"}} Export</a>
+    <button type="button" class="btn btn-ghost btn-sm" id="ha-sync-btn"
+            title="Sync to Home Assistant" aria-label="Sync to Home Assistant">{{icon "sync"}} Sync</button>
+    {{if $root.Data.HasLLM}}
+    <button type="button" class="btn btn-outline btn-sm" id="ai-cost-btn" style="margin-left:auto"
+            title="Ask the AI to price every item that has no cost yet"
+            aria-label="Run AI cost analysis on unpriced items">{{icon "chef-hat"}} AI cost analysis</button>
+    {{end}}
+</div>
+
+{{template "haSetupDialog" $root}}
+
+<dialog id="price-edit" class="modal">
+    <form method="dialog" class="modal__x"><button aria-label="Close">{{icon "close"}}</button></form>
+    <h2 class="modal__title">{{icon "pencil"}} <span id="price-edit-name">Set known price</span></h2>
+    <p class="modal__desc">
+        Set the price for this item at a store. Saved prices are reused by future
+        plans and every change is kept in that item's price history.
+    </p>
+
+    <div class="field">
+        <label class="field-label" for="price-edit-store">Store</label>
+        <select class="field-input" id="price-edit-store"></select>
+    </div>
+    <div class="field-row">
+        <div class="field field--sm">
+            <label class="field-label" for="price-edit-price">Price ($)</label>
+            <input class="field-input" id="price-edit-price" type="number" min="0.01" step="0.01" placeholder="8.99">
+        </div>
+        <div class="field field--sm">
+            <label class="field-label" for="price-edit-amount">Pack size</label>
+            <input class="field-input" id="price-edit-amount" type="number" min="0.01" step="0.01" placeholder="1" value="1">
+        </div>
+        <div class="field field--sm">
+            <label class="field-label" for="price-edit-unit">Unit</label>
+            <input class="field-input" id="price-edit-unit" type="text" placeholder="lb" value="each">
+        </div>
+    </div>
+
+    <p class="modal__status" id="price-edit-status" role="status" aria-live="polite"></p>
+
+    <div id="price-edit-history"></div>
+
+    <div class="modal__actions">
+        <button type="button" class="btn btn-primary btn-sm" id="price-edit-save">{{icon "check"}} Save price</button>
+    </div>
+</dialog>
+
+{{range .Groups}}
+<section class="shopping-group" aria-labelledby="store-{{.StoreName}}">
+    <div class="shopping-group__header">
+        <h2 class="shopping-group__title" id="store-{{.StoreName}}">
+            {{icon "store"}} {{.StoreName}}
+        </h2>
+        <span class="shopping-group__subtotal">{{.SubtotalLabel}}</span>
+    </div>
+    <ul class="shopping-list" role="list">
+        {{range .Items}}
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}" data-id="{{.ID}}">
+            <label class="shopping-item__check">
+                <input type="checkbox" class="shopping-item__checkbox"
+                       data-id="{{.ID}}"
+                       {{if .Checked}}checked{{end}}
+                       onchange="toggleCheck(this)">
+                <span class="shopping-item__name-wrap">
+                    <span class="shopping-item__name">{{.DisplayName}}</span>
+                    {{if .Meals}}
+                    <span class="shopping-item__meals">
+                        {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
+                    </span>
+                    {{end}}
+                </span>
+            </label>
+            <span class="shopping-item__qty">{{.BuyLabel}}</span>
+            {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
+            <button type="button" class="btn btn-ghost btn-icon btn-sm price-edit-btn no-print"
+                    data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
+                {{icon "pencil"}}
+            </button>
+            <span class="shopping-item__total">{{.TotalLabel}}</span>
+            <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
+        </li>
+        {{end}}
+    </ul>
+</section>
+{{end}}
+
+{{if .UnassignedItems}}
+<section class="shopping-group" aria-labelledby="store-unassigned">
+    <div class="shopping-group__header">
+        <h2 class="shopping-group__title" id="store-unassigned">Other items</h2>
+    </div>
+    <ul class="shopping-list" role="list">
+        {{range .UnassignedItems}}
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}" data-id="{{.ID}}">
+            <label class="shopping-item__check">
+                <input type="checkbox" class="shopping-item__checkbox"
+                       data-id="{{.ID}}"
+                       {{if .Checked}}checked{{end}}
+                       onchange="toggleCheck(this)">
+                <span class="shopping-item__name-wrap">
+                    <span class="shopping-item__name">{{.DisplayName}}</span>
+                    {{if .Meals}}
+                    <span class="shopping-item__meals">
+                        {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
+                    </span>
+                    {{end}}
+                </span>
+            </label>
+            <span class="shopping-item__qty">{{.BuyLabel}}</span>
+            {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
+            <button type="button" class="btn btn-ghost btn-icon btn-sm price-edit-btn no-print"
+                    data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
+                {{icon "pencil"}}
+            </button>
+            <span class="shopping-item__total">{{.TotalLabel}}</span>
+            <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
+        </li>
+        {{end}}
+    </ul>
+</section>
+{{end}}
+
+<form id="csrf-form" hidden>{{$root.CSRFField}}</form>
+<script>
+(function () {
+    var csrfInput = document.querySelector('#csrf-form input[name]');
+    var csrfToken = csrfInput ? csrfInput.value : '';
+    window.toggleCheck = function(cb) {
+        var id = cb.dataset.id;
+        var checked = cb.checked ? '1' : '0';
+        fetch('/list/' + id + '/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
+            body: 'checked=' + checked,
+        });
+        var li = cb.closest('li');
+        if (li) li.classList.toggle('shopping-item--checked', cb.checked);
+    };
+
+    var jsonHeaders = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken };
+    var syncBtn = document.getElementById('ha-sync-btn');
+    var dlg = document.getElementById('ha-setup');
+    var toast = function (msg, kind) { (window.showToast || function(){})(msg, kind || 'info'); };
+
+    function applyCheckedState(ids, checked) {
+        (ids || []).forEach(function (id) {
+            var li = document.querySelector('.shopping-item[data-id="' + id + '"]');
+            if (!li) return;
+            li.classList.toggle('shopping-item--checked', checked);
+            var cb = li.querySelector('.shopping-item__checkbox');
+            if (cb) cb.checked = checked;
+        });
+    }
+
+    function runSync() {
+        if (syncBtn) syncBtn.disabled = true;
+        fetch('/list/sync', { method: 'POST', headers: jsonHeaders })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.needs_setup) { if (dlg) dlg.showModal(); return; }
+                if (!d.ok) { toast(d.error || 'Sync failed', 'error'); return; }
+                applyCheckedState(d.checked_ids, true);
+                applyCheckedState(d.unchecked_ids, false);
+                toast('Synced: ' + d.pushed + ' added, ' + d.checked + ' checked off', 'success');
+            })
+            .catch(function () { toast('Sync failed', 'error'); })
+            .finally(function () { if (syncBtn) syncBtn.disabled = false; });
+    }
+    if (syncBtn) syncBtn.addEventListener('click', runSync);
+
+    var aiCostBtn = document.getElementById('ai-cost-btn');
+    if (aiCostBtn) {
+        aiCostBtn.addEventListener('click', function () {
+            aiCostBtn.disabled = true;
+            var original = aiCostBtn.innerHTML;
+            aiCostBtn.textContent = 'Pricing…';
+            fetch('/list/ai-cost', { method: 'POST', headers: jsonHeaders })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { toast(d.error || 'AI cost analysis failed', 'error'); return; }
+                    if (!d.updated) { toast('Nothing to price - every item already has a cost', 'info'); return; }
+                    toast('Priced ' + d.updated + ' item' + (d.updated === 1 ? '' : 's') + ' with AI', 'success');
+                    location.reload();
+                })
+                .catch(function () { toast('AI cost analysis failed', 'error'); })
+                .finally(function () {
+                    aiCostBtn.disabled = false;
+                    aiCostBtn.innerHTML = original;
+                });
+        });
+    }
+
+    if (dlg) {
+        var status = dlg.querySelector('#ha-status');
+        var baseInput = dlg.querySelector('#ha-base');
+        var tokenInput = dlg.querySelector('#ha-token');
+        var findBtn = dlg.querySelector('#ha-find-entities');
+        var entityList = dlg.querySelector('#ha-entity-list');
+        var payload = function () {
+            return JSON.stringify({
+                base_url: baseInput.value,
+                token: tokenInput.value,
+                todo_entity: dlg.querySelector('#ha-entity').value,
+                item_format: dlg.querySelector('#ha-format').value,
+            });
+        };
+        var syncFindEnabled = function () {
+            findBtn.disabled = !baseInput.value.trim() || !tokenInput.value.trim();
+        };
+        baseInput.addEventListener('input', syncFindEnabled);
+        tokenInput.addEventListener('input', syncFindEnabled);
+        syncFindEnabled();
+        findBtn.addEventListener('click', function () {
+            findBtn.disabled = true;
+            status.textContent = 'Looking up to-do lists…';
+            fetch('/settings/ha/entities', { method: 'POST', headers: jsonHeaders, body: payload() })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { status.textContent = d.error || 'Lookup failed'; return; }
+                    entityList.innerHTML = '';
+                    (d.entities || []).forEach(function (e) {
+                        var opt = document.createElement('option');
+                        opt.value = e.entity_id;
+                        opt.label = e.name;
+                        entityList.appendChild(opt);
+                    });
+                    status.textContent = (d.entities || []).length
+                        ? 'Found ' + d.entities.length + ' to-do list(s) — pick one from the entity field.'
+                        : 'No todo.* entities found on that instance.';
+                })
+                .catch(function () { status.textContent = 'Request failed'; })
+                .finally(function () { syncFindEnabled(); });
+        });
+        dlg.querySelector('#ha-test').addEventListener('click', function () {
+            status.textContent = 'Testing…';
+            fetch('/settings/ha/test', { method: 'POST', headers: jsonHeaders, body: payload() })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { status.textContent = d.ok ? '✓ Connected to Home Assistant' : (d.error || 'Failed'); })
+                .catch(function () { status.textContent = 'Request failed'; });
+        });
+        dlg.querySelector('#ha-save').addEventListener('click', function () {
+            status.textContent = 'Saving…';
+            fetch('/settings/ha/save', { method: 'POST', headers: jsonHeaders, body: payload() })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { status.textContent = d.error || 'Save failed'; return; }
+                    applyCheckedState(d.checked_ids, true);
+                    applyCheckedState(d.unchecked_ids, false);
+                    dlg.close();
+                    toast(d.synced ? ('Connected — pushed ' + d.pushed + ' items') : 'Saved', d.synced ? 'success' : 'info');
+                })
+                .catch(function () { status.textContent = 'Request failed'; });
+        });
+    }
+
+    // ── Manual price editor (pencil icon) ───────────────────────────────────
+    var priceDlg = document.getElementById('price-edit');
+    if (priceDlg) {
+        var priceItemId = null;
+        var nameEl = document.getElementById('price-edit-name');
+        var storeSel = document.getElementById('price-edit-store');
+        var priceInput = document.getElementById('price-edit-price');
+        var amountInput = document.getElementById('price-edit-amount');
+        var unitInput = document.getElementById('price-edit-unit');
+        var statusEl = document.getElementById('price-edit-status');
+        var historyEl = document.getElementById('price-edit-history');
+        var saveBtn = document.getElementById('price-edit-save');
+
+        function renderHistory(rows) {
+            if (!rows || !rows.length) { historyEl.innerHTML = ''; return; }
+            var html = '<table class="data-table" aria-label="Price history"><thead><tr>' +
+                '<th>Price</th><th>Updated</th><th>By</th></tr></thead><tbody>';
+            rows.forEach(function (row) {
+                html += '<tr><td data-label="Price">' + row.price_label + '</td>' +
+                    '<td data-label="Updated">' + row.recorded_at + '</td>' +
+                    '<td data-label="By">' + (row.recorded_by || '') + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            historyEl.innerHTML = html;
+        }
+
+        document.querySelectorAll('.price-edit-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                priceItemId = btn.dataset.id;
+                statusEl.textContent = 'Loading…';
+                historyEl.innerHTML = '';
+                nameEl.textContent = 'Set known price';
+                priceDlg.showModal();
+                fetch('/list/' + priceItemId + '/price')
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.ok) { statusEl.textContent = d.error || 'Could not load'; return; }
+                        statusEl.textContent = '';
+                        nameEl.textContent = d.display_name || 'Set known price';
+                        storeSel.innerHTML = '';
+                        (d.stores || []).forEach(function (st) {
+                            var opt = document.createElement('option');
+                            opt.value = st.id;
+                            opt.textContent = st.name;
+                            if (st.id === d.store_id) opt.selected = true;
+                            storeSel.appendChild(opt);
+                        });
+                        priceInput.value = d.price_dollars || '';
+                        amountInput.value = d.amount_per_package || 1;
+                        unitInput.value = d.purchase_unit || 'each';
+                        renderHistory(d.history);
+                    })
+                    .catch(function () { statusEl.textContent = 'Request failed'; });
+            });
+        });
+
+        saveBtn.addEventListener('click', function () {
+            if (!priceItemId) return;
+            statusEl.textContent = 'Saving…';
+            fetch('/list/' + priceItemId + '/price', {
+                method: 'POST',
+                headers: jsonHeaders,
+                body: JSON.stringify({
+                    store_id: parseInt(storeSel.value, 10) || 0,
+                    price_dollars: priceInput.value,
+                    amount_per_package: parseFloat(amountInput.value) || 1,
+                    purchase_unit: unitInput.value,
+                }),
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { statusEl.textContent = d.error || 'Save failed'; return; }
+                    var li = document.querySelector('.shopping-item[data-id="' + priceItemId + '"]');
+                    if (li && d.line) {
+                        var priceEl = li.querySelector('.shopping-item__unit-price');
+                        var totalEl = li.querySelector('.shopping-item__total');
+                        var badgeEl = li.querySelector('.badge');
+                        if (totalEl) totalEl.textContent = d.line.TotalLabel;
+                        if (badgeEl) {
+                            badgeEl.textContent = d.line.BadgeText;
+                            badgeEl.className = 'badge ' + d.line.BadgeClass;
+                        }
+                        if (d.line.PriceLabel) {
+                            if (priceEl) { priceEl.textContent = d.line.PriceLabel; }
+                            else {
+                                var span = document.createElement('span');
+                                span.className = 'shopping-item__unit-price';
+                                span.textContent = d.line.PriceLabel;
+                                li.querySelector('.shopping-item__qty').insertAdjacentElement('afterend', span);
+                            }
+                        }
+                    }
+                    toast('Price saved for ' + (d.store_name || 'store'), 'success');
+                    priceDlg.close();
+                })
+                .catch(function () { statusEl.textContent = 'Request failed'; });
+        });
+    }
+})();
+</script>
+{{end}}
+{{end}}
+{{end}}

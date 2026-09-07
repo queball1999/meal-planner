@@ -39,6 +39,18 @@
     --info-bg:        #e3f2fd;
     --info-border:    #90caf9;
 
+    /* ── Meal tags (shopping list "used in" pills, §8.4) ──────────────────
+       Fixed 8-hue palette; a meal title hashes to one of these so the same
+       meal always gets the same color everywhere it appears on the list. */
+    --meal-1-bg: #e3f2fd; --meal-1-text: #0d47a1; /* blue */
+    --meal-2-bg: #f3e5f5; --meal-2-text: #6a1b9a; /* purple */
+    --meal-3-bg: #e0f2f1; --meal-3-text: #00695c; /* teal */
+    --meal-4-bg: #fff8e1; --meal-4-text: #ff8f00; /* amber */
+    --meal-5-bg: #fce4ec; --meal-5-text: #ad1457; /* pink */
+    --meal-6-bg: #e8eaf6; --meal-6-text: #283593; /* indigo */
+    --meal-7-bg: #efebe9; --meal-7-text: #6d4c41; /* brown */
+    --meal-8-bg: #e0f7fa; --meal-8-text: #00838f; /* cyan */
+
     /* ── Layout ───────────────────────────────────────────────────────── */
     --nav-h:          56px;      /* sticky header height (§8.1) */
     --content-max:    1200px;
@@ -109,6 +121,15 @@
         --danger-bg:      #2e0a0a;
         --info-bg:        #0a1a2e;
 
+        --meal-1-bg: #0d2338; --meal-1-text: #90caf9;
+        --meal-2-bg: #2a1a30; --meal-2-text: #ce93d8;
+        --meal-3-bg: #0a2624; --meal-3-text: #80cbc4;
+        --meal-4-bg: #2e2200; --meal-4-text: #ffd54f;
+        --meal-5-bg: #2e0f1e; --meal-5-text: #f48fb1;
+        --meal-6-bg: #1a1d33; --meal-6-text: #9fa8da;
+        --meal-7-bg: #251e1b; --meal-7-text: #bcaaa4;
+        --meal-8-bg: #062a2e; --meal-8-text: #80deea;
+
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
         --shadow:    0 2px 8px rgba(0, 0, 0, 0.4);
         --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
@@ -132,6 +153,15 @@
     --warning-bg:     #2e1e00;
     --danger-bg:      #2e0a0a;
     --info-bg:        #0a1a2e;
+
+    --meal-1-bg: #0d2338; --meal-1-text: #90caf9;
+    --meal-2-bg: #2a1a30; --meal-2-text: #ce93d8;
+    --meal-3-bg: #0a2624; --meal-3-text: #80cbc4;
+    --meal-4-bg: #2e2200; --meal-4-text: #ffd54f;
+    --meal-5-bg: #2e0f1e; --meal-5-text: #f48fb1;
+    --meal-6-bg: #1a1d33; --meal-6-text: #9fa8da;
+    --meal-7-bg: #251e1b; --meal-7-text: #bcaaa4;
+    --meal-8-bg: #062a2e; --meal-8-text: #80deea;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow:    0 2px 8px rgba(0, 0, 0, 0.4);
