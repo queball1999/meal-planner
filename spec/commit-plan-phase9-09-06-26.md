@@ -181,7 +181,31 @@ total for priced lines, and that an already-have line is excluded from it).
 ```
 web: recompute shopping list total from current lines
 ```
-Status: ⬜
+Status: ✅
+
+**Root cause, confirmed.** `TotalLabel` read `p.TotalCents` from the plan row,
+and only `UpdatePlanTotal` writes that - so the pencil price editor, a
+headcount rescale, and `EnsureShoppingList`'s unpriced fallback all left it
+stale at whatever it last was, usually 0. Now summed from the current lines by
+`summarizeLines`, which cannot go stale by construction. Store subtotals go
+through the same function, and a dead no-op loop that pretended to compute
+them was removed.
+
+**No migration needed for already-have.** `shopping_list_items.in_pantry` has
+existed since `00005_pricing.sql`, with a store method and an HA-sync skip
+already built on it - it was simply never surfaced or settable. This exposes
+it as the "I already have this" control, so the line drops out of the
+estimated total and its store subtotal while staying visible on the list.
+
+**Stocking the pantry.** Marking a line adds it to the pantry with the
+quantity from the dialog, but *only when it is missing*: `CreatePantryItem`'s
+upsert adds to an existing quantity, so re-ticking a line the user already
+tracks would silently inflate their stock each time. Un-ticking takes nothing
+back out - you did have it.
+
+Also fixes `handlePantryStock`, which multiplied `BuyQuantity` (already
+packs x pack_size) by the pack size again and stocked several times what was
+bought.
 
 ---
 
@@ -386,7 +410,7 @@ Status: ⬜
 | 3 | ✅ Colored pills | — |
 | 4 | Item modals + quick add | 1 |
 | 5 | Item aliases + link status | 1, 3 |
-| 6 | Shopping total fix | — |
+| 6 | ✅ Shopping total fix + already-have | — |
 | 6b | ✅ Household members + portion sizing | 1 |
 | 7 | Day headcount autosave + day status | 1, 2, 6b |
 | 8 | Dashboard hover cards + chip cleanup | 1 |
@@ -396,7 +420,7 @@ Status: ⬜
 | 12 | Responsive pass | all |
 
 Migrations are claimed in commit order: `00018` household members (6b),
-`00019` item aliases (5), `00020` day status (7), `00021` chat history (11), `00022` already-have (6).
+`00019` item aliases (5), `00020` day status (7), `00021` chat history (11).
 
 Commits 1–3 are the shared platform and should land first. Commits 6 and 9 are
 independent bug fixes and can be pulled forward if a release is needed sooner.

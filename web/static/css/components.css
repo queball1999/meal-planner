@@ -1529,3 +1529,31 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
         flex: 1 1 100%;
     }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SHOPPING LIST: "I ALREADY HAVE THIS"
+   Deliberately styled unlike shopping-item--checked. Checked means "picked it
+   up on this trip"; already-have means "it is in the cupboard, do not buy it",
+   and that line is excluded from the estimated total. Two different states
+   that look the same would be worse than one.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.have-btn { color: var(--text-muted); }
+.have-btn:hover { color: var(--accent); }
+
+.have-btn--on,
+.have-btn--on:hover {
+    color: var(--success);
+    background: var(--success-bg);
+}
+
+/* Dimmed, not struck through - the line is still worth reading, it just is
+   not being bought. Striking it out is what checking off already does. */
+.shopping-item--have {
+    opacity: 0.65;
+}
+
+.shopping-item--have .shopping-item__total {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}

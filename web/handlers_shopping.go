@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,6 +34,16 @@ type shoppingLineItem struct {
 	BadgeText   string // "Live" | "Cached" | "Manual" | "Estimated"
 	Checked     bool
 	Meals       []mealTag // which meal(s) this line was pulled from, deduped, color-coded
+
+	// InPantry is the "I already have this" state: the line is kept on the
+	// list for reference but is not something to buy, so it is excluded from
+	// the estimated total and skipped by the Home Assistant sync. Distinct
+	// from Checked, which means "picked up on this trip".
+	InPantry bool
+	// The raw numbers behind BuyLabel, so the have-it dialog can prefill the
+	// quantity it will stock the pantry with.
+	BuyQuantity float64
+	Unit        string
 }
 
 // mealTag is one pill on a shopping-list line naming a meal it belongs to.
@@ -108,23 +119,7 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) sh
 		}
 	}
 
-	// Compute per-store subtotals.
-	for i := range groups {
-		var sub int64
-		for _, item := range groups[i].Items {
-			// Re-derive cents from the label for display only - avoid re-querying.
-			// The subtotal is computed from the raw items below instead.
-			_ = item
-		}
-		_ = sub
-	}
-	// Compute subtotals properly from raw items.
-	storeSubs := make(map[int64]int64)
-	for _, item := range rawItems {
-		if item.StoreID != nil {
-			storeSubs[*item.StoreID] += item.LineTotalCents
-		}
-	}
+	total, storeSubs := summarizeLines(rawItems)
 	for i, g := range groups {
 		var sid int64
 		for k, v := range groupIndex {
@@ -141,12 +136,36 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) sh
 		HasPlan:         true,
 		PlanID:          p.ID,
 		WeekStart:       p.WeekStart,
-		TotalLabel:      fmt.Sprintf("$%.2f", float64(p.TotalCents)/100),
+		TotalLabel:      fmt.Sprintf("$%.2f", float64(total)/100),
 		BudgetLabel:     fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100),
-		OverBudget:      p.TotalCents > p.BudgetCents && p.TotalCents > 0,
+		OverBudget:      total > p.BudgetCents && total > 0,
 		Groups:          groups,
 		UnassignedItems: unassigned,
 	}
+}
+
+// summarizeLines adds up what the trip will cost, in total and per store.
+//
+// The total used to be read from plan.total_cents, which only UpdatePlanTotal
+// writes - so every other path that changes a price (the pencil editor, a
+// headcount rescale, the unpriced-list fallback) left it stale, and a list
+// full of priced lines reported "$0.00 estimated total". Summing the current
+// lines cannot go stale by construction.
+//
+// A line marked "I already have this" is excluded: it stays on the list for
+// reference but is not being bought, so counting it would overstate the trip.
+func summarizeLines(items []*db.ShoppingListItem) (total int64, byStore map[int64]int64) {
+	byStore = make(map[int64]int64)
+	for _, item := range items {
+		if item.InPantry {
+			continue
+		}
+		total += item.LineTotalCents
+		if item.StoreID != nil {
+			byStore[*item.StoreID] += item.LineTotalCents
+		}
+	}
+	return total, byStore
 }
 
 func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string) shoppingLineItem {
@@ -169,6 +188,9 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 		BadgeText:   badgeText,
 		Checked:     item.Checked,
 		Meals:       mealTagsFor(item.MealIngredientRefs, mealTitleByIngredient),
+		InPantry:    item.InPantry,
+		BuyQuantity: item.BuyQuantity,
+		Unit:        item.PurchaseUnit,
 	}
 }
 
@@ -273,6 +295,115 @@ func (s *Server) handleShoppingListCheck(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleShoppingListHave toggles a line's "I already have this" state.
+//
+// This is a different thing from the check-off box next to it. Checked means
+// "picked this up on the trip"; already-have means "it is in the cupboard, do
+// not buy it" - so an already-have line drops out of the estimated total and
+// is skipped by the Home Assistant sync, while a checked one still counts.
+//
+// Turning it on also stocks the pantry, because saying you have something and
+// then not having it recorded anywhere is how the pantry drifts out of date.
+// The quantity comes from the request, defaulting to the amount the line was
+// going to buy.
+//
+// It only creates a pantry row that is *missing*. CreatePantryItem's upsert
+// adds to an existing quantity, so re-ticking a line the user already tracks
+// would silently inflate their stock every time.
+func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad id"})
+		return
+	}
+	have := r.FormValue("have") == "1"
+	ctx := r.Context()
+
+	if err := s.store.MarkShoppingListItemInPantry(ctx, id, have); err != nil {
+		log.Printf("list have: mark %d: %v", id, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't save that"})
+		return
+	}
+	if !have {
+		// Un-ticking does not take anything back out of the pantry: you did
+		// have it, and how much is left is the pantry page's business.
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "have": false})
+		return
+	}
+
+	line := s.shoppingLineByID(ctx, hh.ID, id)
+	if line == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "have": true})
+		return
+	}
+
+	qty := line.BuyQuantity
+	if raw := strings.TrimSpace(r.FormValue("quantity")); raw != "" {
+		if q, perr := strconv.ParseFloat(raw, 64); perr == nil && q > 0 {
+			qty = q
+		}
+	}
+	unit := strings.TrimSpace(r.FormValue("unit"))
+	if unit == "" {
+		unit = line.PurchaseUnit
+	}
+
+	term := pricing.Normalize(line.DisplayName)
+	existing, _ := s.store.GetPantryItemByTerm(ctx, hh.ID, term)
+	if existing != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "have": true, "pantry": "existing",
+			"message": fmt.Sprintf("%s is already in your pantry - quantity left as it was.", existing.Name),
+		})
+		return
+	}
+
+	pi, cerr := s.store.CreatePantryItem(ctx, db.CreatePantryItemParams{
+		HouseholdID:    hh.ID,
+		Name:           line.DisplayName,
+		NormalizedTerm: term,
+		QuantityOnHand: qty,
+		Unit:           unit,
+	})
+	if cerr != nil {
+		log.Printf("list have: stock pantry for %d: %v", id, cerr)
+		// The line is marked either way; only the pantry write failed.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "have": true, "pantry": "failed",
+			"message": "Marked as already have, but couldn't add it to the pantry.",
+		})
+		return
+	}
+	linkPantryItem(r, s.store, hh.ID, pi)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "have": true, "pantry": "added",
+		"message": fmt.Sprintf("Added %.4g %s of %s to your pantry.", qty, unit, line.DisplayName),
+	})
+}
+
+// shoppingLineByID finds one line on the household's current plan. Scoped
+// through the plan rather than looked up by id alone, so a line id from
+// another household resolves to nothing.
+func (s *Server) shoppingLineByID(ctx context.Context, householdID, id int64) *db.ShoppingListItem {
+	p, _ := s.store.GetLatestPlan(ctx, householdID)
+	if p == nil {
+		return nil
+	}
+	lines, _ := s.store.ListShoppingListItems(ctx, p.ID)
+	for _, ln := range lines {
+		if ln.ID == id {
+			return ln
+		}
+	}
+	return nil
+}
+
 // ── Manual price editor (pencil icon on the shopping list) ──────────────────
 
 type shoppingPriceStoreOption struct {
@@ -287,15 +418,15 @@ type shoppingPriceHistoryRow struct {
 }
 
 type shoppingPriceModalResp struct {
-	OK               bool                      `json:"ok"`
-	Error            string                    `json:"error,omitempty"`
-	DisplayName      string                    `json:"display_name"`
-	StoreID          int64                     `json:"store_id"`
+	OK               bool                       `json:"ok"`
+	Error            string                     `json:"error,omitempty"`
+	DisplayName      string                     `json:"display_name"`
+	StoreID          int64                      `json:"store_id"`
 	Stores           []shoppingPriceStoreOption `json:"stores"`
-	PriceDollars     string                    `json:"price_dollars"`
-	AmountPerPackage float64                   `json:"amount_per_package"`
-	PurchaseUnit     string                    `json:"purchase_unit"`
-	History          []shoppingPriceHistoryRow `json:"history"`
+	PriceDollars     string                     `json:"price_dollars"`
+	AmountPerPackage float64                    `json:"amount_per_package"`
+	PurchaseUnit     string                     `json:"purchase_unit"`
+	History          []shoppingPriceHistoryRow  `json:"history"`
 }
 
 // loadOwnedShoppingListItem returns the shopping-list line for id, or nil when

@@ -83,7 +83,7 @@
     </div>
     <ul class="shopping-list" role="list">
         {{range .Items}}
-        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}" data-id="{{.ID}}">
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}" data-id="{{.ID}}">
             <label class="shopping-item__check">
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
@@ -103,6 +103,15 @@
             <button type="button" class="btn btn-ghost btn-icon btn-sm price-edit-btn no-print"
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
                 {{icon "pencil"}}
+            </button>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm have-btn no-print{{if .InPantry}} have-btn--on{{end}}"
+                    data-id="{{.ID}}" data-name="{{.DisplayName}}"
+                    data-qty="{{.BuyQuantity}}" data-unit="{{.Unit}}"
+                    data-have="{{if .InPantry}}1{{else}}0{{end}}"
+                    title="{{if .InPantry}}Already in the pantry - not being bought{{else}}I already have this{{end}}"
+                    aria-pressed="{{if .InPantry}}true{{else}}false{{end}}"
+                    aria-label="Mark {{.DisplayName}} as already in the pantry">
+                {{icon "fridge-outline"}}
             </button>
             <span class="shopping-item__total">{{.TotalLabel}}</span>
             <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
@@ -119,7 +128,7 @@
     </div>
     <ul class="shopping-list" role="list">
         {{range .UnassignedItems}}
-        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}" data-id="{{.ID}}">
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}" data-id="{{.ID}}">
             <label class="shopping-item__check">
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
@@ -140,6 +149,15 @@
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
                 {{icon "pencil"}}
             </button>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm have-btn no-print{{if .InPantry}} have-btn--on{{end}}"
+                    data-id="{{.ID}}" data-name="{{.DisplayName}}"
+                    data-qty="{{.BuyQuantity}}" data-unit="{{.Unit}}"
+                    data-have="{{if .InPantry}}1{{else}}0{{end}}"
+                    title="{{if .InPantry}}Already in the pantry - not being bought{{else}}I already have this{{end}}"
+                    aria-pressed="{{if .InPantry}}true{{else}}false{{end}}"
+                    aria-label="Mark {{.DisplayName}} as already in the pantry">
+                {{icon "fridge-outline"}}
+            </button>
             <span class="shopping-item__total">{{.TotalLabel}}</span>
             <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
         </li>
@@ -147,6 +165,28 @@
     </ul>
 </section>
 {{end}}
+
+{{template "partials/modal_open.html" dict "ID" "have-it" "Title" "I already have this"}}
+  <p id="have-it-desc">
+    This stays on the list for reference but is not counted in the estimated
+    total, and is skipped when the list syncs to Home Assistant.
+  </p>
+  <div class="field">
+    <label class="field-label" for="have-it-qty">How much do you have?</label>
+    <div style="display:flex;gap:var(--sp-2);align-items:center">
+      <input class="field-input" id="have-it-qty" type="number" step="any" min="0" style="flex:1">
+      <span id="have-it-unit" class="text-muted"></span>
+    </div>
+    <p class="field-hint" id="have-it-hint">
+      Added to your pantry if it is not there yet. If you already track it,
+      the quantity you have recorded is left alone.
+    </p>
+  </div>
+  <div class="modal-dialog__footer">
+    <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+    <button type="button" class="btn btn-primary" id="have-it-save">{{icon "check"}} I have it</button>
+  </div>
+{{template "partials/modal_close.html" $root}}
 
 <form id="csrf-form" hidden>{{$root.CSRFField}}</form>
 <script>
@@ -164,6 +204,76 @@
         var li = cb.closest('li');
         if (li) li.classList.toggle('shopping-item--checked', cb.checked);
     };
+
+    // ── "I already have this" ────────────────────────────────────────────
+    // One dialog for the whole page, retargeted on each click: a shopping list
+    // runs to dozens of lines, and one modal per line would be dozens of
+    // overlays in the DOM for a control most of them never open.
+    var haveTarget = null;
+    var haveQty = document.getElementById('have-it-qty');
+    var haveUnit = document.getElementById('have-it-unit');
+
+    function setHaveState(btn, on) {
+        btn.dataset.have = on ? '1' : '0';
+        btn.classList.toggle('have-btn--on', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.title = on ? 'Already in the pantry - not being bought' : 'I already have this';
+        var li = btn.closest('li');
+        if (li) li.classList.toggle('shopping-item--have', on);
+    }
+
+    function postHave(btn, on, quantity) {
+        var body = 'have=' + (on ? '1' : '0');
+        if (on && quantity) {
+            body += '&quantity=' + encodeURIComponent(quantity) +
+                    '&unit=' + encodeURIComponent(btn.dataset.unit || '');
+        }
+        return fetch('/list/' + btn.dataset.id + '/have', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
+            body: body,
+        }).then(function (r) { return r.json(); });
+    }
+
+    document.querySelectorAll('.have-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            // Already marked: one click takes it back off, no dialog - there
+            // is no quantity to ask about when un-marking.
+            if (btn.dataset.have === '1') {
+                setHaveState(btn, false);
+                postHave(btn, false).catch(function () { setHaveState(btn, true); });
+                return;
+            }
+            haveTarget = btn;
+            if (haveQty) haveQty.value = btn.dataset.qty || '';
+            if (haveUnit) haveUnit.textContent = btn.dataset.unit || '';
+            window.goeat.openModal('have-it');
+        });
+    });
+
+    var haveSave = document.getElementById('have-it-save');
+    if (haveSave) {
+        haveSave.addEventListener('click', function () {
+            if (!haveTarget) return;
+            var btn = haveTarget;
+            var qty = haveQty ? haveQty.value : '';
+            window.goeat.closeModal('have-it');
+            setHaveState(btn, true);
+            postHave(btn, true, qty)
+                .then(function (d) {
+                    if (!d || !d.ok) {
+                        setHaveState(btn, false);
+                        toast((d && d.error) || 'Could not save that', 'error');
+                        return;
+                    }
+                    if (d.message) toast(d.message, d.pantry === 'failed' ? 'warning' : 'success');
+                })
+                .catch(function () {
+                    setHaveState(btn, false);
+                    toast('Could not save that', 'error');
+                });
+        });
+    }
 
     var jsonHeaders = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken };
     var syncBtn = document.getElementById('ha-sync-btn');

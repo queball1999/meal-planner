@@ -81,6 +81,15 @@ func (s *store) SetPantryItemItem(ctx context.Context, id int64, itemID *int64) 
 	return err
 }
 
+// GetPantryItemByTerm looks a pantry row up by its normalized term, returning
+// nil when the household has none. Callers use it to tell "already tracked" from
+// "not in the pantry at all" - CreatePantryItem's upsert *adds* to an existing
+// quantity, so a caller that only wants to stock something it does not already
+// have has to check first.
+func (s *store) GetPantryItemByTerm(ctx context.Context, householdID int64, term string) (*PantryItem, error) {
+	return s.getPantryItemByTerm(ctx, householdID, term)
+}
+
 func (s *store) getPantryItemByTerm(ctx context.Context, householdID int64, term string) (*PantryItem, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, household_id, name, normalized_term, quantity_on_hand, unit, barcode, updated_at

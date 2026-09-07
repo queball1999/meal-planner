@@ -187,6 +187,7 @@ type Store interface {
 	CreatePantryItem(ctx context.Context, p CreatePantryItemParams) (*PantryItem, error)
 	ListPantryItems(ctx context.Context, householdID int64) ([]*PantryItem, error)
 	UpdatePantryItem(ctx context.Context, p UpdatePantryItemParams) error
+	GetPantryItemByTerm(ctx context.Context, householdID int64, term string) (*PantryItem, error)
 	DeletePantryItem(ctx context.Context, id int64) error
 	DeleteAllPantryItemsForHousehold(ctx context.Context, householdID int64) error
 	SetPantryItemItem(ctx context.Context, id int64, itemID *int64) error

@@ -124,7 +124,10 @@ func (s *Server) handlePantryStock(w http.ResponseWriter, r *http.Request) {
 		HouseholdID:    hh.ID,
 		Name:           target.DisplayName,
 		NormalizedTerm: normalized,
-		QuantityOnHand: target.BuyQuantity * float64(target.PackSize),
+		// BuyQuantity is already the total amount in purchase units (costing
+		// stores packs x pack_size), so multiplying by the pack size again
+		// stocked the pantry with several times what was bought.
+		QuantityOnHand: target.BuyQuantity,
 		Unit:           target.PurchaseUnit,
 	})
 	linkPantryItem(r, s.store, hh.ID, pi)
