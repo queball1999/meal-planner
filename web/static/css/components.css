@@ -1566,7 +1566,6 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
  */
 
 .people-picker {
-    position: relative;
     flex: 1;
     min-width: 0;
 }
@@ -1591,17 +1590,23 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .people-picker__summary svg { width: 14px; height: 14px; }
 
+/* In flow, not absolutely positioned.
+ *
+ * `.plan-board` has `overflow-x: auto`, and a box whose overflow is not
+ * `visible` on one axis computes the other to `auto` too - so the board is a
+ * scroll container in both directions and clips any absolutely positioned
+ * descendant, whatever its z-index. That is the same trap tooltip.js and
+ * hovercard.js each document and solve with `position: fixed`; here the menu
+ * is short and lives at the top of a column, so simply letting it push the
+ * day's meal cards down is cheaper than positioning it in script, and it
+ * behaves the same on a phone as on a desktop. */
 .people-picker__menu {
-    position: absolute;
-    z-index: 20;
-    top: calc(100% + 4px);
-    left: 0;
-    min-width: max(100%, 12rem);
+    margin-top: var(--sp-1);
     padding: var(--sp-2);
     background: var(--surface-raised);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-sm);
 }
 
 .people-picker__option {
@@ -1897,4 +1902,118 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 @keyframes probe-pulse {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.45; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE PASS
+   What the rest of this file gets right on a phone is left alone: tables
+   card-stack under 600px, the plan board scrolls with snap points, the nav
+   collapses. This is the set of things that were actually broken.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tables between the card-stack and full width ──────────────────────────
+ * The card-stack treatment starts at 600px, so 601-900px had wide tables
+ * (the item catalog is six columns) pushing out of their card with nothing to
+ * scroll them - the page itself scrolled sideways instead, taking the header
+ * and everything else with it. A scroll container per table keeps the
+ * overflow local.
+ *
+ * Above 600px only: below that the table is no longer a table, and a scroll
+ * container around a stack of cards would be pointless.
+ */
+@media (min-width: 601px) {
+    .card > .data-table,
+    .card > table.data-table {
+        display: block;
+        overflow-x: auto;
+        /* A block-level table loses its own width:100%, so the cells stop
+           filling the card. min-width restores that without capping how wide
+           the content may get. */
+        min-width: 100%;
+    }
+}
+
+/* ── Shopping list rows ────────────────────────────────────────────────────
+ * A row is a name, its meal pills, a link chip, a quantity, a unit price, a
+ * pencil, a have-it button, a total and a confidence badge - nine things in
+ * one flex line. On a phone they crushed into unreadable slivers. Below
+ * 640px the name gets its own line and everything else sits under it,
+ * right-aligned, which is also where a thumb is.
+ */
+@media (max-width: 640px) {
+    .shopping-item,
+    .ingredient-item {
+        flex-wrap: wrap;
+        row-gap: var(--sp-1);
+    }
+
+    .shopping-item__check {
+        flex: 1 1 100%;
+    }
+
+    /* Push the numbers and actions to the right of their own line. */
+    .shopping-item__qty {
+        margin-left: auto;
+    }
+
+    .shopping-item__meals {
+        flex-basis: 100%;
+    }
+}
+
+/* ── Calendar ──────────────────────────────────────────────────────────────
+ * Seven columns at 375px is 50px each, which fits a day number and nothing
+ * else. The month view survives that - it is an overview, and the dot of a
+ * meal is the information. The week view does not: its cells are 132px tall
+ * and carry meal titles, so it becomes a list.
+ */
+@media (max-width: 640px) {
+    .cal-grid--week {
+        display: block;
+        background: transparent;
+        border: 0;
+    }
+
+    /* The weekday header row is redundant once each cell names its own day. */
+    .cal-grid--week .cal-grid__dow { display: none; }
+
+    .cal-grid--week .cal-cell {
+        min-height: 0;
+        margin-bottom: 1px;
+    }
+
+    .cal-grid--month .cal-cell { min-height: 64px; }
+    .cal-grid--month .cal-meal__title { display: none; }
+}
+
+/* ── Touch targets ─────────────────────────────────────────────────────────
+ * An icon button was padding around a 16px icon - about 32px square, under
+ * the 44px a finger needs. Raised on touch devices only: on a mouse-driven
+ * page the same change would make every row noticeably taller for no gain.
+ */
+@media (hover: none) {
+    .btn-icon,
+    .link-chip,
+    .have-btn,
+    .price-edit-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .shopping-item__checkbox {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+/* ── Wide, unbreakable content ─────────────────────────────────────────────
+ * Scraped URLs, item names and error strings have no spaces to wrap at, and
+ * one of them is enough to widen the whole page. `anywhere` rather than
+ * `break-word`: the latter leaves the element's intrinsic min-content width
+ * unchanged, so a flex or grid track still sizes to the unbroken string.
+ */
+.data-table td,
+.shopping-item__name,
+.stats-chip__hint {
+    overflow-wrap: anywhere;
 }

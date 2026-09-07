@@ -663,7 +663,41 @@ plus per-page tweaks across `web/templates/`.
 ```
 web: responsive layout pass for mobile and desktop
 ```
-Status: ⬜
+Status: ✅
+
+**Most of the app was already fine**, and was left alone: tables card-stack
+under 600px, the plan board scrolls with snap points, the nav collapses, the
+stats strip reflows. What follows is what was actually broken.
+
+* **Tables at 601-900px.** The card-stack starts at 600px, so a six-column
+  item catalog between there and full width pushed out of its card with
+  nothing to scroll it - *the page* scrolled sideways instead, taking the
+  header with it. Each table gets its own scroll container above 600px.
+* **Shopping list rows.** Nine things in one flex line (name, meal pills, link
+  chip, quantity, unit price, pencil, have-it, total, badge) crushed into
+  slivers. The name takes its own line below 640px and the rest sits under it,
+  right-aligned - which is where a thumb is.
+* **The week calendar.** Seven columns at 375px is 50px each, which fits a day
+  number and nothing else. The month view survives that (the presence of a
+  meal is the information); the week view, with 132px cells carrying titles,
+  becomes a list.
+* **Touch targets.** Icon buttons were ~32px square. Raised to 44px under
+  `(hover: none)` only - doing it everywhere would make every desktop row
+  taller for nothing.
+* **Unbreakable strings.** Scraped URLs and long item names have nowhere to
+  wrap, and one is enough to widen the page. `overflow-wrap: anywhere`, not
+  `break-word`: the latter leaves min-content width unchanged, so a flex or
+  grid track still sizes to the unbroken string.
+
+**Bug found:** the people picker added in commit 7 was
+`position: absolute` inside `.plan-board`, which sets `overflow-x: auto` - and
+a box whose overflow is not `visible` on one axis computes the other to `auto`
+too, making it a scroll container in both directions that clips absolutely
+positioned descendants whatever their z-index. The menu was being cut off at
+every screen size, not just on mobile. It is in flow now, pushing the day's
+cards down. This is the same trap `tooltip.js` and `hovercard.js` each
+document and solve with `position: fixed`; here the menu is short and sits at
+the top of a column, so flow is cheaper than positioning it in script.
 
 ---
 
@@ -686,7 +720,7 @@ Status: ⬜
 | 10 | ✅ Persist generated recipes | 5 |
 | 11a | ✅ Agent tool registry + loop | 1, 7, 7b |
 | 11b | ✅ Chat widget | 11a |
-| 12 | Responsive pass | all |
+| 12 | ✅ Responsive pass | all |
 
 Migrations are claimed in commit order: `00018` household members (6b),
 `00019` item aliases (5), `00020` day status (7), `00021` chat history (11).

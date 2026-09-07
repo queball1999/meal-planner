@@ -29,3 +29,17 @@ func TestAllTemplatesParse(t *testing.T) {
 		}
 	}
 }
+
+// The viewport meta is the one thing without which none of the responsive CSS
+// does anything: a phone renders the page at ~980px and scales it down, so
+// every media query below that never matches.
+func TestLayoutDeclaresViewport(t *testing.T) {
+	out := renderPage(t, "index", pageData{
+		AppName: "Go Eat",
+		Page:    "index",
+		Data:    dashPageData{},
+	})
+	if !strings.Contains(out, `name="viewport"`) || !strings.Contains(out, "width=device-width") {
+		t.Error("layout.html does not declare a device-width viewport")
+	}
+}
