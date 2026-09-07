@@ -43,15 +43,12 @@ type mealTag struct {
 	ColorClass string
 }
 
-// mealColorClass picks one of a fixed 8-hue pill palette (badge-meal-1..8,
-// components.css) deterministically from the meal title, so repeated views
-// (and different lines that share a meal) get a consistent color.
+// mealColorClass picks a pill color from the meal title deterministically, so
+// repeated views (and different lines that share a meal) get a consistent
+// color. It is the shared 8-hue palette every other color-scanned column uses
+// - see web/pills.go.
 func mealColorClass(title string) string {
-	var h uint32
-	for i := 0; i < len(title); i++ {
-		h = h*31 + uint32(title[i])
-	}
-	return fmt.Sprintf("badge-meal-%d", (h%8)+1)
+	return hueClass(title)
 }
 
 type shoppingListPageData struct {

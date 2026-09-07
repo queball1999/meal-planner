@@ -196,15 +196,22 @@
 .badge-muted   { background: var(--border);     color: var(--text-muted); }
 .badge-accent  { background: var(--accent-bg);  color: var(--accent-text); }
 
-/* Meal tags (shopping list "used in" pills) - one of 8 hashed hues. */
-.badge-meal-1 { background: var(--meal-1-bg); color: var(--meal-1-text); }
-.badge-meal-2 { background: var(--meal-2-bg); color: var(--meal-2-text); }
-.badge-meal-3 { background: var(--meal-3-bg); color: var(--meal-3-text); }
-.badge-meal-4 { background: var(--meal-4-bg); color: var(--meal-4-text); }
-.badge-meal-5 { background: var(--meal-5-bg); color: var(--meal-5-text); }
-.badge-meal-6 { background: var(--meal-6-bg); color: var(--meal-6-text); }
-.badge-meal-7 { background: var(--meal-7-bg); color: var(--meal-7-text); }
-.badge-meal-8 { background: var(--meal-8-bg); color: var(--meal-8-text); }
+/* The 8-hue pill palette. One palette for every column that is scanned by
+ * color rather than read - the shopping list's meal tags, the item catalog's
+ * source / stock unit / category - so a value that appears in two places is
+ * the same color in both, and learning one column's colors teaches them all.
+ * Assigned in Go by web/pills.go (hash, with a few pinned source colors).
+ *
+ * The tokens are still named --meal-N-* from when meal tags were the only
+ * consumer; the classes are the palette's real name. */
+.badge-hue-1 { background: var(--meal-1-bg); color: var(--meal-1-text); }
+.badge-hue-2 { background: var(--meal-2-bg); color: var(--meal-2-text); }
+.badge-hue-3 { background: var(--meal-3-bg); color: var(--meal-3-text); }
+.badge-hue-4 { background: var(--meal-4-bg); color: var(--meal-4-text); }
+.badge-hue-5 { background: var(--meal-5-bg); color: var(--meal-5-text); }
+.badge-hue-6 { background: var(--meal-6-bg); color: var(--meal-6-text); }
+.badge-hue-7 { background: var(--meal-7-bg); color: var(--meal-7-text); }
+.badge-hue-8 { background: var(--meal-8-bg); color: var(--meal-8-text); }
 
 /* ══════════════════════════════════════════════════════════════════════════
    ANIMATED TOGGLE SWITCH (§8.4 - every boolean setting uses this)

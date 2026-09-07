@@ -12,8 +12,8 @@ func TestMealColorClass_StableAndInRange(t *testing.T) {
 		if c1 != c2 {
 			t.Fatalf("mealColorClass(%q) not stable: %q vs %q", title, c1, c2)
 		}
-		if !strings.HasPrefix(c1, "badge-meal-") {
-			t.Fatalf("mealColorClass(%q) = %q, want badge-meal-N", title, c1)
+		if !strings.HasPrefix(c1, "badge-hue-") {
+			t.Fatalf("mealColorClass(%q) = %q, want badge-hue-N", title, c1)
 		}
 	}
 }
@@ -74,8 +74,8 @@ func TestShoppingListBody_RendersMealPills(t *testing.T) {
 								BadgeClass:  "badge-estimate",
 								BadgeText:   "Estimated",
 								Meals: []mealTag{
-									{Title: "Chili", ColorClass: "badge-meal-3"},
-									{Title: "Taco Bowls", ColorClass: "badge-meal-6"},
+									{Title: "Chili", ColorClass: "badge-hue-3"},
+									{Title: "Taco Bowls", ColorClass: "badge-hue-6"},
 								},
 							},
 						},
@@ -86,9 +86,9 @@ func TestShoppingListBody_RendersMealPills(t *testing.T) {
 	})
 	for _, want := range []string{
 		`shopping-item__meals`,
-		`badge-meal-3`,
+		`badge-hue-3`,
 		`Chili`,
-		`badge-meal-6`,
+		`badge-hue-6`,
 		`Taco Bowls`,
 	} {
 		if !strings.Contains(out, want) {

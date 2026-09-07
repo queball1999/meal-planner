@@ -4,7 +4,7 @@
     <h1 class="page-title">{{icon "tag"}} {{.Data.Item.Name}}</h1>
     <p class="page-subtitle">
         <a href="/pantry/items" class="btn btn-ghost btn-sm">{{icon "arrow-left"}} All items</a>
-        <span class="badge badge--muted" style="margin-left:.5rem">{{.Data.Item.Source}}</span>
+        <span class="badge {{pill "source" .Data.Item.Source}}" style="margin-left:.5rem">{{.Data.Item.Source}}</span>
         <span style="margin-left:.5rem;color:var(--color-text-muted)">term: <code>{{.Data.Item.NormalizedTerm}}</code></span>
     </p>
 </div>
@@ -87,7 +87,7 @@
             {{range .Data.Packages}}
             <tr>
                 <td data-label="Store">{{.StoreName}}</td>
-                <td data-label="Purchase unit">{{.PurchaseUnit}}</td>
+                <td data-label="Purchase unit"><span class="badge {{pill "unit" .PurchaseUnit}}">{{.PurchaseUnit}}</span></td>
                 <td data-label="Amount / package">{{.AmountPerPackage}}</td>
                 <td data-label="Price">{{.PriceLabel}}</td>
                 <td data-label="">

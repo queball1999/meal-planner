@@ -80,9 +80,15 @@ list rows), `web/templates/history.html`, `items.html`, `llm_log.html`,
 `search_results.html`.
 
 ```
-web: auto-filter list pages on debounce and add skeleton loading states
+web: auto-filter list pages on debounce and drop Filter buttons
 ```
-Status: ⬜
+Status: ✅
+
+**Scope note on skeletons.** These pages are server-rendered, so their data
+is already in the first paint - there is nothing to skeleton on load. The
+skeleton that matters is the one covering the debounced filter's round trip,
+which is what shipped. Genuinely async fragments (dashboard hover cards,
+About probes, chat) get theirs in commits 8, 9 and 11.
 
 ---
 
@@ -99,7 +105,13 @@ Files: `web/render.go` (`pillClass` helper), `web/static/css/components.css`
 ```
 web: render item source, unit, and category as colored pills
 ```
-Status: ⬜
+Status: ✅
+
+The source column was already reaching for `badge-cached`/`badge-manual`/
+`badge-estimate`, none of which are defined in any stylesheet, so it rendered
+uncolored. The 8-hue meal-tag palette is now the one shared palette
+(`.badge-hue-1..8`), assigned in `web/pills.go` by hash with a few pinned
+source colors, and the shopping list's meal tags moved onto it too.
 
 ---
 
@@ -343,8 +355,8 @@ Status: ⬜
 |---|--------|-----------|
 | 1 | ✅ Dialog + tooltip primitives | — |
 | 1b | Migrate legacy modals | 1 |
-| 2 | Auto-filter + skeletons | — |
-| 3 | Colored pills | — |
+| 2 | ✅ Auto-filter + skeletons | — |
+| 3 | ✅ Colored pills | — |
 | 4 | Item modals + quick add | 1 |
 | 5 | Item aliases + link status | 1, 3 |
 | 6 | Shopping total fix | — |

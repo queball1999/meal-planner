@@ -89,10 +89,14 @@
                          loading="lazy" style="border-radius:6px;object-fit:cover">
                 </td>
                 <td data-label="Name"><a href="/pantry/items/{{.ID}}">{{.Name}}</a></td>
-                <td data-label="Category">{{.Category}}</td>
-                <td data-label="Stock unit">{{.StockUnit}}</td>
+                <td data-label="Category">
+                    {{if .Category}}<span class="badge {{pill "category" .Category}}">{{.Category}}</span>{{end}}
+                </td>
+                <td data-label="Stock unit">
+                    {{if .StockUnit}}<span class="badge {{pill "unit" .StockUnit}}">{{.StockUnit}}</span>{{end}}
+                </td>
                 <td data-label="Source">
-                    <span class="badge {{if eq .Source "builtin"}}badge-cached{{else if eq .Source "manual"}}badge-manual{{else}}badge-estimate{{end}}">{{.Source}}</span>
+                    <span class="badge {{pill "source" .Source}}">{{.Source}}</span>
                 </td>
                 <td data-label="">
                     <a href="/pantry/items/{{.ID}}" class="btn btn-ghost btn-sm"

@@ -94,6 +94,9 @@ func templateFuncs() template.FuncMap {
 			}
 			return strings.ToUpper(s[:1]) + s[1:]
 		},
+		// pill "source"|"unit"|"category" <value> -> the badge modifier that
+		// gives that value its color. See web/pills.go.
+		"pill":       pillClass,
 		"storeLogo":  StoreLogoURL,
 		"aiLogo":     aiProviderLogo,
 		"ctxCookies": storeContextCookies,
