@@ -123,6 +123,11 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return plan.ID, fmt.Errorf("validate plan: %w", err)
 	}
 
+	// Pull any physically absurd ingredient quantity back to a sane cap before
+	// it reaches the recipe and the shopping list. Non-fatal by design - see
+	// ClampQuantities.
+	ClampQuantities(gp)
+
 	j.EmitStatus("Saving your meals and recipes…")
 	if err := persistPlan(ctx, store, householdID, plan.ID, aiRun.ID, weekStart, gp); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
@@ -185,6 +190,18 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	return plan.ID, nil
 }
 
+// itemHintFrom carries the model's per-ingredient unit knowledge (the stock
+// unit it should be bought in, plus any odd conversions like "1 clove = 5 g")
+// into catalog item creation, so a new item lands with the right unit and a
+// full conversion table rather than defaulting to "each" with none.
+func itemHintFrom(ing GeneratedIngredient) catalog.ItemHint {
+	h := catalog.ItemHint{Unit: ing.ItemUnit}
+	for _, c := range ing.Conversions {
+		h.Conversions = append(h.Conversions, catalog.UnitEdge{From: c.From, To: c.To, Factor: c.Factor})
+	}
+	return h
+}
+
 // persistPlan writes a generated plan to the database: the meals, their steps,
 // and their ingredients - each linked to a catalog item as it is created - and
 // saves every meal to the household's recipe catalog.
@@ -236,7 +253,7 @@ func persistPlan(ctx context.Context, store db.Store, householdID, planID, aiRun
 			// it just shows as unmatched on the list.
 			var itemID *int64
 			term := pricing.Normalize(ing.Name)
-			if it, ierr := catalog.EnsureItem(ctx, store, householdID, ing.Name); ierr != nil {
+			if it, ierr := catalog.EnsureItemWithHint(ctx, store, householdID, ing.Name, itemHintFrom(ing)); ierr != nil {
 				log.Printf("plan: link ingredient %q: %v", ing.Name, ierr)
 			} else if it != nil {
 				itemID = &it.ID
