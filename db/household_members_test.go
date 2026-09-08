@@ -251,3 +251,90 @@ func TestUpsertPlanDayDefaultsPortionsToHeadcount(t *testing.T) {
 		t.Errorf("member ids = %v, want none", day.MemberIDs)
 	}
 }
+
+// Guests are non-household people eating that day. The count round-trips, and
+// the caller-supplied portion total (members + one portion per guest) is what
+// gets stored - the day rescales to it.
+func TestUpsertPlanDayPersistsGuests(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newPlansTestStore(t)
+	planID, _ := seedScalableDay(t, store, hh.ID)
+
+	adult, _ := store.CreateHouseholdMember(ctx, db.CreateHouseholdMemberParams{
+		HouseholdID: hh.ID, Name: "Adult", PortionFactor: 1.0,
+	})
+
+	// One adult (1.0) plus two guests (1.0 each) = 3.0 portions, headcount 3.
+	if err := store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
+		PlanID: planID, Date: "2026-01-05", Headcount: 3,
+		MemberIDs: []int64{adult}, Portions: 3.0, Guests: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	day, err := store.GetPlanDay(ctx, planID, "2026-01-05")
+	if err != nil || day == nil {
+		t.Fatalf("get day: %v", err)
+	}
+	if day.Guests != 2 {
+		t.Errorf("guests = %d, want 2", day.Guests)
+	}
+	if math.Abs(day.Portions-3.0) > 1e-9 {
+		t.Errorf("portions = %v, want 3.0", day.Portions)
+	}
+
+	// Guests leave: the count clears and portions drop back to the member total.
+	if err := store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
+		PlanID: planID, Date: "2026-01-05", Headcount: 1,
+		MemberIDs: []int64{adult}, Portions: 1.0, Guests: 0,
+	}); err != nil {
+		t.Fatalf("re-upsert: %v", err)
+	}
+	day, _ = store.GetPlanDay(ctx, planID, "2026-01-05")
+	if day.Guests != 0 {
+		t.Errorf("guests after clear = %d, want 0", day.Guests)
+	}
+
+	// ListPlanDays reads the column too.
+	days, err := store.ListPlanDays(ctx, planID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, d := range days {
+		if d.Date == "2026-01-05" && d.Guests != 0 {
+			t.Errorf("listed guests = %d, want 0", d.Guests)
+		}
+	}
+}
+
+// Guest slots round-trip through the plan_days row: a partial set is stored in
+// canonical order, and a set covering every slot collapses to "all" (nil).
+func TestUpsertPlanDayPersistsGuestSlots(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newPlansTestStore(t)
+	planID, _ := seedScalableDay(t, store, hh.ID)
+
+	// Submitted dinner-then-breakfast; stored breakfast,dinner.
+	if err := store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
+		PlanID: planID, Date: "2026-01-05", Headcount: 3, Portions: 3, Guests: 1,
+		GuestSlots: []string{"dinner", "breakfast"},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	day, _ := store.GetPlanDay(ctx, planID, "2026-01-05")
+	if len(day.GuestSlots) != 2 || day.GuestSlots[0] != "breakfast" || day.GuestSlots[1] != "dinner" {
+		t.Errorf("guest slots = %v, want [breakfast dinner] in canonical order", day.GuestSlots)
+	}
+
+	// All three slots means "every meal" - stored as nil, not a list.
+	if err := store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
+		PlanID: planID, Date: "2026-01-05", Headcount: 3, Portions: 3, Guests: 1,
+		GuestSlots: []string{"breakfast", "lunch", "dinner"},
+	}); err != nil {
+		t.Fatalf("upsert all: %v", err)
+	}
+	day, _ = store.GetPlanDay(ctx, planID, "2026-01-05")
+	if len(day.GuestSlots) != 0 {
+		t.Errorf("guest slots = %v, want nil (every slot)", day.GuestSlots)
+	}
+}

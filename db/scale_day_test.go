@@ -204,3 +204,60 @@ func TestScaleMealsForDayHandlesFractionalPortions(t *testing.T) {
 		t.Errorf("servings = %d, want 3 (2.5 rounded)", m.Servings)
 	}
 }
+
+// ScaleMealsForDayBySlot moves the whole day to a base portion count but scales
+// the named slots to their own number - which is how guests limited to dinner
+// end up on dinner's plate and nowhere else.
+func TestScaleMealsForDayBySlot(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newPlansTestStore(t)
+
+	p, err := store.CreatePlan(ctx, db.CreatePlanParams{HouseholdID: hh.ID, WeekStart: "2026-01-05", WeekEnd: "2026-01-11"})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	mk := func(slot string) int64 {
+		m, err := store.CreateMeal(ctx, db.CreateMealParams{
+			PlanID: p.ID, Day: "2026-01-05", Slot: slot, Title: slot, Effort: "quick",
+			Servings: 2, CookedPortions: 2,
+		})
+		if err != nil {
+			t.Fatalf("meal %s: %v", slot, err)
+		}
+		if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
+			MealID: m.ID, Name: "stuff", Quantity: 2, Unit: "cup",
+		}); err != nil {
+			t.Fatalf("ing %s: %v", slot, err)
+		}
+		return m.ID
+	}
+	bfast := mk("breakfast")
+	dinner := mk("dinner")
+
+	// 2 household members, 3 guests, guests eat dinner only.
+	res, err := store.ScaleMealsForDayBySlot(ctx, p.ID, "2026-01-05", 2, map[string]float64{"dinner": 5})
+	if err != nil {
+		t.Fatalf("scale by slot: %v", err)
+	}
+	if res.MealsScaled != 2 {
+		t.Fatalf("MealsScaled = %d, want 2", res.MealsScaled)
+	}
+
+	b, _ := store.GetMealByID(ctx, bfast)
+	if b.Servings != 2 {
+		t.Errorf("breakfast servings = %d, want 2 (guests not counted here)", b.Servings)
+	}
+	d, _ := store.GetMealByID(ctx, dinner)
+	if d.Servings != 5 {
+		t.Errorf("dinner servings = %d, want 5 (2 members + 3 guests)", d.Servings)
+	}
+
+	bq := qtyByName(t, store, bfast)
+	if bq["stuff"] != 2 {
+		t.Errorf("breakfast qty = %v, want 2 (base 2, scaled 1x)", bq["stuff"])
+	}
+	dq := qtyByName(t, store, dinner)
+	if dq["stuff"] != 5 {
+		t.Errorf("dinner qty = %v, want 5 (base 2, scaled 2.5x)", dq["stuff"])
+	}
+}

@@ -684,7 +684,15 @@ type PlanDay struct {
 	// what a plan from last month was scaled to.
 	MemberIDs []int64
 	Portions  float64
-
+	// Guests is how many non-household people are eating that day, on top of
+	// the members. Each guest counts as one standard portion in the serving
+	// maths (see UpsertPlanDay), and the plan page renders it as the
+	// "Guests x N" control.
+	Guests int
+	// GuestSlots is the set of slots ("breakfast"|"lunch"|"dinner") the guests
+	// are counted for. Empty means every slot - the default, and what a day
+	// with guests but no explicit slot choice means.
+	GuestSlots []string
 	// Status is "cooking" (the default), "eating_out", or "skipped". A day
 	// that is not being cooked contributes nothing to the shopping list.
 	Status string
@@ -769,4 +777,11 @@ type UpsertPlanDayParams struct {
 	// members (or a household with none) keeps working unchanged.
 	MemberIDs []int64
 	Portions  float64
+
+	// Guests is how many non-household people are eating that day. Each adds
+	// one standard portion to the day's total.
+	Guests int
+	// GuestSlots is which slots the guests eat ("breakfast"|"lunch"|"dinner").
+	// Empty means every slot.
+	GuestSlots []string
 }

@@ -187,6 +187,7 @@ type Store interface {
 	SetPlanDayStatus(ctx context.Context, planID int64, date, status string) error
 	ListLeftoversSourcedFrom(ctx context.Context, planID int64, date string) ([]*Meal, error)
 	ScaleMealsForDay(ctx context.Context, planID int64, date string, portions float64) (ScaleDayResult, error)
+	ScaleMealsForDayBySlot(ctx context.Context, planID int64, date string, base float64, slotPortions map[string]float64) (ScaleDayResult, error)
 
 	// ── Pantry items (§5.4) ───────────────────────────────────────────────────
 

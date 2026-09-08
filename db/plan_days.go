@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // memberIDsJSON round-trips PlanDay.MemberIDs through the plan_days.member_ids
@@ -41,7 +42,7 @@ func parseMemberIDs(raw string) []int64 {
 
 func (s *store) ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, plan_id, date, headcount, note, member_ids, portions, status
+		SELECT id, plan_id, date, headcount, note, member_ids, portions, status, guests, guest_slots
 		FROM plan_days WHERE plan_id = ?
 		ORDER BY date`, planID)
 	if err != nil {
@@ -52,14 +53,57 @@ func (s *store) ListPlanDays(ctx context.Context, planID int64) ([]*PlanDay, err
 	var out []*PlanDay
 	for rows.Next() {
 		var d PlanDay
-		var memberIDs string
-		if err := rows.Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions, &d.Status); err != nil {
+		var memberIDs, guestSlots string
+		if err := rows.Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions, &d.Status, &d.Guests, &guestSlots); err != nil {
 			return nil, err
 		}
 		d.MemberIDs = parseMemberIDs(memberIDs)
+		d.GuestSlots = parseGuestSlots(guestSlots)
 		out = append(out, &d)
 	}
 	return out, rows.Err()
+}
+
+// guestSlotOrder is the canonical slot order, used to keep guest_slots stored
+// deterministically rather than in whatever order the form submitted.
+var guestSlotOrder = []string{"breakfast", "lunch", "dinner"}
+
+// guestSlotsJoin normalises a slot set to a comma-separated string in canonical
+// order, dropping anything that is not a real slot and de-duplicating. A set
+// that ends up covering every slot is stored as "" - the "all slots" default -
+// so "guests eat every meal" has one representation, not two.
+func guestSlotsJoin(slots []string) string {
+	seen := map[string]bool{}
+	for _, s := range slots {
+		seen[strings.ToLower(strings.TrimSpace(s))] = true
+	}
+	var kept []string
+	for _, s := range guestSlotOrder {
+		if seen[s] {
+			kept = append(kept, s)
+		}
+	}
+	if len(kept) == 0 || len(kept) == len(guestSlotOrder) {
+		return ""
+	}
+	return strings.Join(kept, ",")
+}
+
+// parseGuestSlots is guestSlotsJoin's inverse. "" (every slot) yields nil, and
+// callers read nil as "no per-slot restriction".
+func parseGuestSlots(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, s := range strings.Split(raw, ",") {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func (s *store) UpsertPlanDay(ctx context.Context, p UpsertPlanDayParams) error {
@@ -71,25 +115,27 @@ func (s *store) UpsertPlanDay(ctx context.Context, p UpsertPlanDayParams) error 
 		portions = float64(p.Headcount)
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO plan_days (plan_id, date, headcount, note, member_ids, portions)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO plan_days (plan_id, date, headcount, note, member_ids, portions, guests, guest_slots)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(plan_id, date) DO UPDATE SET
-		  headcount  = excluded.headcount,
-		  note       = excluded.note,
-		  member_ids = excluded.member_ids,
-		  portions   = excluded.portions`,
-		p.PlanID, p.Date, p.Headcount, p.Note, memberIDsJSON(p.MemberIDs), portions,
+		  headcount   = excluded.headcount,
+		  note        = excluded.note,
+		  member_ids  = excluded.member_ids,
+		  portions    = excluded.portions,
+		  guests      = excluded.guests,
+		  guest_slots = excluded.guest_slots`,
+		p.PlanID, p.Date, p.Headcount, p.Note, memberIDsJSON(p.MemberIDs), portions, p.Guests, guestSlotsJoin(p.GuestSlots),
 	)
 	return err
 }
 
 func (s *store) GetPlanDay(ctx context.Context, planID int64, date string) (*PlanDay, error) {
 	var d PlanDay
-	var memberIDs string
+	var memberIDs, guestSlots string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, plan_id, date, headcount, note, member_ids, portions, status
+		SELECT id, plan_id, date, headcount, note, member_ids, portions, status, guests, guest_slots
 		FROM plan_days WHERE plan_id = ? AND date = ?`, planID, date).
-		Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions, &d.Status)
+		Scan(&d.ID, &d.PlanID, &d.Date, &d.Headcount, &d.Note, &memberIDs, &d.Portions, &d.Status, &d.Guests, &guestSlots)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -97,6 +143,7 @@ func (s *store) GetPlanDay(ctx context.Context, planID int64, date string) (*Pla
 		return nil, err
 	}
 	d.MemberIDs = parseMemberIDs(memberIDs)
+	d.GuestSlots = parseGuestSlots(guestSlots)
 	return &d, nil
 }
 
@@ -120,19 +167,26 @@ func (s *store) GetPlanDay(ctx context.Context, planID int64, date string) (*Pla
 // The whole day moves in one transaction, so a failure part-way cannot leave a
 // day with half-scaled recipes.
 func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string, portions float64) (ScaleDayResult, error) {
-	var res ScaleDayResult
 	if portions < 1 {
-		return res, errors.New("portions must be at least 1")
+		return ScaleDayResult{}, errors.New("portions must be at least 1")
 	}
+	return s.scaleDay(ctx, planID, date, portions, nil)
+}
 
-	// Ingredient quantities scale by the raw portion total, so two adults and
-	// two toddlers (3.0) really do buy three servings' worth of food. The
-	// integer columns - servings, cooked_portions - take the rounded value,
-	// because "2.6 servings" is not a thing to print on a recipe card.
-	servings := int(math.Round(portions))
-	if servings < 1 {
-		servings = 1
+// ScaleMealsForDayBySlot is ScaleMealsForDay with a per-slot override: every
+// non-leftover meal scales to `base` portions except those in `slotPortions`,
+// which scale to their mapped value. This is what lets guests be counted for
+// only some meals of a day - breakfast and lunch stay at the household's own
+// portions while dinner also carries the guests.
+func (s *store) ScaleMealsForDayBySlot(ctx context.Context, planID int64, date string, base float64, slotPortions map[string]float64) (ScaleDayResult, error) {
+	if base < 1 {
+		return ScaleDayResult{}, errors.New("portions must be at least 1")
 	}
+	return s.scaleDay(ctx, planID, date, base, slotPortions)
+}
+
+func (s *store) scaleDay(ctx context.Context, planID int64, date string, base float64, slotPortions map[string]float64) (ScaleDayResult, error) {
+	var res ScaleDayResult
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -141,7 +195,7 @@ func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string,
 	defer func() { _ = tx.Rollback() }()
 
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id,
+		SELECT id, slot,
 		       CASE WHEN base_servings        > 0 THEN base_servings        ELSE servings        END,
 		       CASE WHEN base_cooked_portions > 0 THEN base_cooked_portions ELSE cooked_portions END
 		FROM meals
@@ -151,13 +205,14 @@ func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string,
 	}
 	type target struct {
 		id                 int64
+		slot               string
 		baseServings       int
 		baseCookedPortions int
 	}
 	var targets []target
 	for rows.Next() {
 		var t target
-		if err := rows.Scan(&t.id, &t.baseServings, &t.baseCookedPortions); err != nil {
+		if err := rows.Scan(&t.id, &t.slot, &t.baseServings, &t.baseCookedPortions); err != nil {
 			rows.Close()
 			return res, err
 		}
@@ -171,6 +226,20 @@ func (s *store) ScaleMealsForDay(ctx context.Context, planID int64, date string,
 	for _, t := range targets {
 		if t.baseServings < 1 {
 			continue // nothing sane to scale from
+		}
+
+		// Ingredient quantities scale by the raw portion total, so two adults
+		// and two toddlers (3.0) really do buy three servings' worth of food.
+		// A slot the guests are counted for scales to a higher number.
+		portions := base
+		if v, ok := slotPortions[t.slot]; ok && v >= 1 {
+			portions = v
+		}
+		// The integer columns - servings, cooked_portions - take the rounded
+		// value, because "2.6 servings" is not a thing to print on a card.
+		servings := int(math.Round(portions))
+		if servings < 1 {
+			servings = 1
 		}
 		factor := portions / float64(t.baseServings)
 
