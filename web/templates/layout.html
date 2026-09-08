@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/static/css/components.css">
     <link rel="stylesheet" href="/static/css/wizard.css">
     <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/popover.css">
     <link rel="stylesheet" href="/static/css/chat.css">
     <link rel="stylesheet" href="/static/css/instore.css">
     <link rel="stylesheet" href="/static/css/choices.min.css">
@@ -24,44 +25,28 @@
         </a>
 
         {{if .User}}
-        <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav">
+        <button class="nav-toggle" id="navToggle" aria-label="Menu"
+                data-popover="navMenu" data-popover-placement="bottom-start"
+                aria-expanded="false" aria-controls="navMenu">
             <span class="nav-toggle__bar"></span>
             <span class="nav-toggle__bar"></span>
             <span class="nav-toggle__bar"></span>
         </button>
         <nav class="site-nav" id="site-nav" aria-label="Main navigation">
-            <a href="/"        class="nav-link{{if eq .Page "index"}}   nav-link--active{{end}}"{{if eq .Page "index"}} aria-current="page"{{end}} aria-label="Dashboard">
-                {{icon "home"}} Dashboard
-            </a>
-            <a href="/plan"    class="nav-link{{if eq .Page "plan"}}    nav-link--active{{end}}"{{if eq .Page "plan"}} aria-current="page"{{end}} aria-label="Plan">
-                {{icon "calendar"}} Plan
-            </a>
-            <a href="/plan/list" class="nav-link{{if eq .Page "list"}} nav-link--active{{end}}"{{if eq .Page "list"}} aria-current="page"{{end}} aria-label="Shopping List">
-                {{icon "cart"}} Shopping List
-            </a>
-            {{$pantrySection := or (eq .Page "pantry") (eq .Page "items") (eq .Page "item_detail")}}
-            <a href="/pantry"  class="nav-link{{if $pantrySection}}  nav-link--active{{end}}"{{if $pantrySection}} aria-current="page"{{end}} aria-label="Pantry">
-                {{icon "archive"}} Pantry
-            </a>
-            <a href="/recipes" class="nav-link{{if eq .Page "recipes"}} nav-link--active{{end}}"{{if eq .Page "recipes"}} aria-current="page"{{end}} aria-label="Recipes">
-                {{icon "fork"}} Recipes
-            </a>
-            <a href="/settings" class="nav-link{{if eq .Page "settings"}} nav-link--active{{end}}"{{if eq .Page "settings"}} aria-current="page"{{end}} aria-label="Settings">
-                {{icon "cog"}} Settings
-            </a>
+            {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav"}}
         </nav>
         {{end}}
 
         <div class="site-header-actions">
             {{if .User}}
-            <form method="GET" action="/search" class="header-search" role="search" aria-label="Site search">
-                <input class="header-search__input" id="header-search" name="q"
-                       type="search" placeholder="Search…" autocomplete="off"
-                       aria-label="Search recipes, pantry, and meals">
-                <button type="submit" class="btn btn-icon" aria-label="Search">
-                    {{icon "search"}}
-                </button>
-            </form>
+            <div class="header-search">
+                {{template "partials/search_field.html" .}}
+            </div>
+            <button class="btn btn-icon header-search-btn" data-popover="searchPop"
+                    data-popover-placement="bottom-end" data-popover-focus="input"
+                    aria-expanded="false" aria-controls="searchPop" aria-label="Search">
+                {{icon "search"}}
+            </button>
             {{end}}
             <button class="btn btn-icon theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode" id="themeToggle">
                 <span class="theme-icon" aria-hidden="true">{{icon "moon"}}</span>
@@ -82,6 +67,17 @@
             {{end}}
         </div>
     </header>
+
+    {{if .User}}
+    <div class="popover" id="navMenu" data-popover-panel hidden>
+        <nav class="popover__list" aria-label="Site menu">
+            {{template "partials/nav_items.html" dict "Page" .Page "Style" "popover"}}
+        </nav>
+    </div>
+    <div class="popover popover--search" id="searchPop" data-popover-panel hidden>
+        {{template "partials/search_field.html" .}}
+    </div>
+    {{end}}
 
     {{if .User}}
     {{/* The raw CSRF token, for fetch() calls that cannot post a form field:
@@ -110,6 +106,7 @@
 
     <script src="/static/js/choices.min.js" defer></script>
     <script src="/static/js/modal.js" defer></script>
+    <script src="/static/js/popover.js" defer></script>
     <script src="/static/js/tooltip.js" defer></script>
     <script src="/static/js/hovercard.js" defer></script>
     <script src="/static/js/main.js" defer></script>

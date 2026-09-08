@@ -1,0 +1,13 @@
+{{/* The site search field. Rendered twice: inline in the desktop header, and
+     inside the #searchPop popover on mobile. data-autosearch wires the
+     debounced auto-submit in main.js (initHeaderSearch) - there is no submit
+     button. */}}
+{{define "partials/search_field.html"}}
+<form method="GET" action="/search" class="header-search-form" role="search"
+      aria-label="Site search" data-autosearch>
+    <span class="header-search-form__icon" aria-hidden="true">{{icon "search"}}</span>
+    <input class="header-search-form__input" name="q" type="search"
+           placeholder="Search recipes, pantry, meals…" autocomplete="off"
+           aria-label="Search recipes, pantry, and meals">
+</form>
+{{end}}

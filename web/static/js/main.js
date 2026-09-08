@@ -49,32 +49,36 @@ const ICONS = {
     }
 })();
 
-// ── Hamburger nav toggle ──────────────────────────────────────────────────
+// ── Header search: debounced auto-submit ─────────────────────────────────
+// Every form.header-search-form (the inline desktop field and the one inside
+// the mobile #searchPop popover) submits itself a short beat after typing
+// stops - there is no search button. Enter still submits immediately.
 
-(function initNav() {
-    const toggle = document.getElementById('navToggle');
-    if (!toggle) return;
+(function initHeaderSearch() {
+    const DEBOUNCE_MS = 400;
+    const MIN_CHARS = 2;
 
-    toggle.addEventListener('click', function () {
-        const open = document.body.classList.toggle('nav-open');
-        toggle.setAttribute('aria-expanded', String(open));
-    });
+    document.querySelectorAll('form[data-autosearch]').forEach(function (form) {
+        const input = form.querySelector('input[name="q"]');
+        if (!input) return;
+        let timer;
+        let lastSubmitted = null;
 
-    const nav = document.getElementById('site-nav');
-    if (nav) {
-        nav.addEventListener('click', function (e) {
-            if (e.target.closest('a')) {
-                document.body.classList.remove('nav-open');
-                toggle.setAttribute('aria-expanded', 'false');
-            }
-        });
-    }
-
-    document.addEventListener('click', function (e) {
-        if (!toggle.contains(e.target) && !(nav && nav.contains(e.target))) {
-            document.body.classList.remove('nav-open');
-            toggle.setAttribute('aria-expanded', 'false');
+        function go() {
+            const q = input.value.trim();
+            if (q.length < MIN_CHARS || q === lastSubmitted) return;
+            lastSubmitted = q;
+            form.submit();
         }
+
+        input.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(go, DEBOUNCE_MS);
+        });
+        form.addEventListener('submit', function () {
+            clearTimeout(timer);
+            lastSubmitted = input.value.trim();
+        });
     });
 })();
 

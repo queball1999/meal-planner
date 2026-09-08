@@ -1,0 +1,100 @@
+/* ---------------------------------------------------------------------------
+ * Popover panel - the shared floating menu/sheet primitive.
+ *
+ * Behaviour is in web/static/js/popover.js; this file is only the look. The
+ * mobile nav menu and the mobile search both use it, so styling lives here
+ * once rather than in each feature's stylesheet.
+ *
+ * The panel is placed with inline position/top/left by the script; this file
+ * must not fight that with its own positioning.
+ * ------------------------------------------------------------------------ */
+
+.popover {
+    z-index: 1200; /* above the sticky header (100) and its dropdowns */
+    min-width: 12rem;
+    max-width: min(92vw, 22rem);
+    max-height: min(70vh, 32rem);
+    overflow-y: auto;
+    padding: var(--sp-2);
+    background: var(--surface-raised, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    -webkit-overflow-scrolling: touch;
+}
+
+/* popover.js toggles [hidden] and .popover--open. Keep the open state a real
+ * class so a fade can be added later without touching the script. */
+.popover:not(.popover--open) {
+    display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .popover.popover--open {
+        animation: popover-in 120ms var(--ease, ease-out);
+    }
+}
+
+@keyframes popover-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* A vertical list of links/buttons - the default content shape. */
+.popover__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.popover__item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-3) var(--sp-3);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text);
+    font-size: var(--text-base);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.popover__item:hover,
+.popover__item:focus-visible {
+    background: var(--surface-2, var(--surface));
+}
+
+.popover__item--active {
+    color: var(--accent);
+    font-weight: var(--weight-medium, 600);
+}
+
+.popover__item svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.popover__divider {
+    height: 1px;
+    margin: var(--sp-2) 0;
+    background: var(--border);
+}
+
+.popover__section-label {
+    padding: var(--sp-2) var(--sp-3) 4px;
+    font-size: var(--text-xs, 0.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+}
+
+/* A popover used as a search sheet gets a little more room for the field. */
+.popover--search {
+    width: min(92vw, 28rem);
+    padding: var(--sp-3);
+}

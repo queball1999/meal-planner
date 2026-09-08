@@ -1,0 +1,33 @@
+{{/* Shared list of primary navigation links, rendered in two places with two
+     class sets: the desktop header bar (Style "nav") and the mobile popover
+     menu (Style "popover"). Call with:
+
+       {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav"}}
+
+     so the active-page highlight stays in one place instead of being kept in
+     sync across two copies of six links. */}}
+{{define "partials/nav_items.html"}}
+{{- $page := .Page -}}
+{{- $link := "nav-link" -}}
+{{- $active := "nav-link--active" -}}
+{{- if eq .Style "popover" -}}{{- $link = "popover__item" -}}{{- $active = "popover__item--active" -}}{{- end -}}
+{{- $pantrySection := or (eq $page "pantry") (eq $page "items") (eq $page "item_detail") -}}
+<a href="/" class="{{$link}}{{if eq $page "index"}} {{$active}}{{end}}"{{if eq $page "index"}} aria-current="page"{{end}}>
+    {{icon "home"}} <span>Dashboard</span>
+</a>
+<a href="/plan" class="{{$link}}{{if eq $page "plan"}} {{$active}}{{end}}"{{if eq $page "plan"}} aria-current="page"{{end}}>
+    {{icon "calendar"}} <span>Plan</span>
+</a>
+<a href="/plan/list" class="{{$link}}{{if eq $page "list"}} {{$active}}{{end}}"{{if eq $page "list"}} aria-current="page"{{end}}>
+    {{icon "cart"}} <span>Shopping List</span>
+</a>
+<a href="/pantry" class="{{$link}}{{if $pantrySection}} {{$active}}{{end}}"{{if $pantrySection}} aria-current="page"{{end}}>
+    {{icon "archive"}} <span>Pantry</span>
+</a>
+<a href="/recipes" class="{{$link}}{{if eq $page "recipes"}} {{$active}}{{end}}"{{if eq $page "recipes"}} aria-current="page"{{end}}>
+    {{icon "fork"}} <span>Recipes</span>
+</a>
+<a href="/settings" class="{{$link}}{{if eq $page "settings"}} {{$active}}{{end}}"{{if eq $page "settings"}} aria-current="page"{{end}}>
+    {{icon "cog"}} <span>Settings</span>
+</a>
+{{end}}

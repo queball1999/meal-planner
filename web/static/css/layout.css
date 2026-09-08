@@ -181,29 +181,71 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* ── Header search bar ──────────────────────────────────────────────────── */
+/* ── Header search ─────────────────────────────────────────────────────────
+ * Two entry points: an inline field on desktop (.header-search) and an icon
+ * that opens the field in a popover on mobile (.header-search-btn). Both use
+ * the same .header-search-form partial and the same debounced auto-submit;
+ * there is no submit button on either. */
 
 .header-search {
     display: flex;
     align-items: center;
-    gap: var(--sp-1);
 }
 
-.header-search__input {
-    width: 180px;
+/* The icon-only mobile entry point - hidden until the breakpoint swaps them. */
+.header-search-btn {
+    display: none;
+}
+
+.header-search-form {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
     padding: var(--sp-1) var(--sp-3);
     border: 1px solid var(--border);
     border-radius: var(--radius-full);
     background: var(--bg);
-    color: var(--text);
-    font-size: var(--text-sm);
-    transition: width var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    transition: border-color var(--dur) var(--ease), width var(--dur) var(--ease);
 }
 
-.header-search__input:focus {
-    outline: none;
+.header-search-form:focus-within {
     border-color: var(--accent);
-    width: 240px;
+}
+
+.header-search-form__icon {
+    display: inline-flex;
+    color: var(--text-muted);
+}
+
+.header-search-form__icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.header-search-form__input {
+    width: 170px;
+    border: none;
+    background: none;
+    color: var(--text);
+    font-size: var(--text-sm);
+    transition: width var(--dur) var(--ease);
+}
+
+.header-search-form__input:focus {
+    outline: none;
+}
+
+.header-search .header-search-form__input:focus {
+    width: 230px;
+}
+
+/* In the popover the field should fill the sheet. */
+.popover--search .header-search-form {
+    width: 100%;
+}
+
+.popover--search .header-search-form__input {
+    width: 100%;
 }
 
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
@@ -331,66 +373,46 @@
     transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
 
-body.nav-open .nav-toggle__bar:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-body.nav-open .nav-toggle__bar:nth-child(2) { opacity: 0; }
-body.nav-open .nav-toggle__bar:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+#navToggle[aria-expanded="true"] .nav-toggle__bar:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+#navToggle[aria-expanded="true"] .nav-toggle__bar:nth-child(2) { opacity: 0; }
+#navToggle[aria-expanded="true"] .nav-toggle__bar:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
 @media (max-width: 768px) {
     .site-header {
         padding: 0 var(--sp-4);
         gap: var(--sp-2);
-        flex-wrap: wrap;
-        height: auto;
-        min-height: var(--nav-h);
+        height: var(--nav-h);
     }
 
+    /* The hamburger replaces the inline nav; the nav links live in the
+       #navMenu popover (popover.js), which floats over content instead of
+       pushing the header taller. */
     .nav-toggle {
         display: flex;
-        order: 2;
+        order: 1;
     }
 
-    .site-brand { order: 1; }
+    .site-brand {
+        order: 2;
+        font-size: var(--text-lg);
+    }
+
+    .site-nav {
+        display: none;
+    }
 
     .site-header-actions {
         order: 3;
         margin-left: auto;
     }
 
-    /* Nav drops below the header row */
-    .site-nav {
-        order: 4;
-        width: 100%;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0;
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height var(--dur-slow) var(--ease);
-        padding-bottom: 0;
+    /* Swap the inline search field for the icon that opens the search popover. */
+    .header-search {
+        display: none;
     }
 
-    body.nav-open .site-nav {
-        max-height: 400px;
-        padding-bottom: var(--sp-3);
-        border-bottom: 1px solid var(--border);
-    }
-
-    .nav-link {
-        padding: var(--sp-3) var(--sp-4);
-        border-radius: 0;
-        font-size: var(--text-base);
-    }
-
-    .nav-link span:not(.sr-only) {
-        display: inline; /* show text again in mobile drawer */
-    }
-
-    .header-search__input {
-        width: 120px;
-    }
-
-    .header-search__input:focus {
-        width: 150px;
+    .header-search-btn {
+        display: inline-flex;
     }
 
     .site-main {

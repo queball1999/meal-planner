@@ -57,6 +57,15 @@ window.goeat = window.goeat || {};
         const overlay = document.getElementById(id);
         if (!overlay) return;
         if (opts && opts.onOpen) opts.onOpen(overlay);
+        // The overlay markup is emitted inside <main> (partials/modal_open.html
+        // in the page's content block). Since we mark <main> inert while a
+        // modal is open, a modal left in that subtree goes inert too - every
+        // button dead, Escape included, with no way out. Hoisting it to <body>
+        // (where the confirm/alert dialog already lives) keeps it interactive.
+        // Node move preserves child form state and listeners.
+        if (overlay.parentElement !== document.body) {
+            document.body.appendChild(overlay);
+        }
         overlay.classList.add('active');
         const main = document.querySelector('main');
         if (main) main.setAttribute('inert', '');
