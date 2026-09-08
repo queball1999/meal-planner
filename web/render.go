@@ -68,6 +68,9 @@ func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"icon":     iconFunc,
 		"stepText": stripStepNumber,
+		// qtyLabel renders "4 each" as "4", "2 slice" as "2 slices", and
+		// leaves "1.5 kg" alone. See web/format.go.
+		"qtyLabel": qtyLabel,
 		// dict builds an inline map so a shared partial can be called with
 		// named arguments - html/template's {{template}} takes a single
 		// pipeline, and partials/modal_open.html needs ID/Title/width.

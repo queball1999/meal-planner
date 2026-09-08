@@ -15,6 +15,42 @@ type CostResult struct {
 	ConfidenceSummary string // e.g. "78% from live/cached prices, 22% estimated"
 }
 
+// loadConversions returns the conversion graph a caller needs to reconcile a
+// pack's unit against an item's stock unit: the item's own edges plus every
+// global edge when it is catalogued, otherwise just the global edges. Errors
+// are swallowed - a missing edge only means a conversion fails to resolve,
+// which the caller already handles.
+func loadConversions(ctx context.Context, store db.Store, itemID *int64) []*db.UnitConversion {
+	if itemID != nil {
+		conv, _ := store.ListConversionsForItem(ctx, *itemID)
+		return conv
+	}
+	conv, _ := store.ListGlobalConversions(ctx)
+	return conv
+}
+
+// reconcilePack expresses one pack (packAmount of packUnit) in stockUnit and
+// works out how many whole packs cover need, where need is already in
+// stockUnit. reconciled is false when packUnit cannot be converted to stockUnit
+// - the caller must then NOT trust packs/buyQty (they are just need passed
+// through) and should treat the line as an estimate, because multiplying across
+// two unrelated units is what produced "681 lb of chicken breast" and "9
+// cartons of eggs".
+func reconcilePack(need, packAmount float64, packUnit, stockUnit string, conv []*db.UnitConversion) (packs int, buyQty, packSize float64, reconciled bool) {
+	if packAmount <= 0 {
+		packAmount = 1
+	}
+	if need < 0 {
+		need = 0
+	}
+	ps, ok := Convert(packAmount, packUnit, stockUnit, conv)
+	if !ok || ps <= 0 {
+		return 1, need, need, false
+	}
+	n := PacksNeeded(need, ps)
+	return n, float64(n) * ps, ps, true
+}
+
 // CostPlan prices all ingredients in a plan against the given stores using the
 // resolution chain, writes shopping_list_items, updates plan.total_cents and
 // plan.confidence_summary, then returns a CostResult (§6.4, §7.3).
@@ -60,15 +96,25 @@ func CostPlan(
 
 	for idx, item := range items {
 		var priceCents int64
-		var packSize float64 = 1
-		var purchaseUnit, priceSource, confidence string
+		var priceSource, confidence string
 		var resolvedStoreID *int64
 		priced := false
+
+		// A pack is `packAmount` of `packUnit` for `priceCents`. Every pricing
+		// path below fills these in its own unit (a store's "lb", "bag", the
+		// LLM's "each"); the pack maths afterwards is what reconciles that unit
+		// against the item's stock unit - see reconcilePack. Filling packSize
+		// directly here without that step is how a 1.5 lb chicken breast turned
+		// into "681 lb": TotalQuantity is grams, r.PackSize was pounds, and
+		// PacksNeeded happily divided the two.
+		var packAmount float64 = 1
+		var packUnit string
+
+		conv := loadConversions(ctx, store, item.ItemID)
 
 		// 1. Prefer a per-store package for a catalogued item: it carries the
 		//    real "amount per package" in a known unit, so pack maths is exact.
 		if item.ItemID != nil {
-			conv, _ := store.ListConversionsForItem(ctx, *item.ItemID)
 			for _, gs := range stores {
 				pkg, perr := store.GetItemStorePackage(ctx, *item.ItemID, gs.ID)
 				if perr != nil {
@@ -78,12 +124,8 @@ func CostPlan(
 				if pkg == nil {
 					continue
 				}
-				packStock, okc := Convert(pkg.AmountPerPackage, pkg.PurchaseUnit, item.Unit, conv)
-				if !okc || packStock <= 0 {
-					packStock = pkg.AmountPerPackage // best effort; still better than nothing
-				}
-				packSize = packStock
-				purchaseUnit = pkg.PurchaseUnit
+				packAmount = pkg.AmountPerPackage
+				packUnit = pkg.PurchaseUnit
 				priceCents = pkg.PriceCents
 				priceSource = "manual"
 				confidence = ConfidenceManual
@@ -103,8 +145,8 @@ func CostPlan(
 					continue
 				}
 				if r != nil {
-					packSize = r.PackSize
-					purchaseUnit = r.PurchaseUnit
+					packAmount = r.PackSize
+					packUnit = r.PurchaseUnit
 					priceCents = r.PriceCents
 					priceSource = r.Source
 					confidence = r.Confidence
@@ -120,29 +162,47 @@ func CostPlan(
 		// ingredient at generation time (plan.systemPrompt requires it). Used
 		// only when nothing above - including a fresh AI estimate in the chain
 		// above - could price the item, e.g. no stores configured, every
-		// provider errored, or the LLM provider was since removed.
+		// provider errored, or the LLM provider was since removed. Its guess is
+		// for exactly TotalQuantity of the recipe's own unit, so the pack is
+		// that whole amount and reconciliation is a no-op.
 		if !priced && item.EstPriceCents > 0 {
-			packSize = item.TotalQuantity
-			purchaseUnit = item.Unit
+			packAmount = item.TotalQuantity
+			packUnit = item.Unit
 			priceCents = item.EstPriceCents
 			priceSource = "estimate"
 			confidence = ConfidenceEstimate
 			priced = true
 		}
 
-		var buyQuantity float64
+		var buyQuantity, packSize float64
 		var lineTotal int64
+		purchaseUnit := item.Unit
 		if priced {
-			packs := PacksNeeded(item.TotalQuantity, packSize)
-			buyQuantity = float64(packs) * packSize
-			lineTotal = priceCents * int64(packs)
+			packs, bq, ps, reconciled := reconcilePack(item.TotalQuantity, packAmount, packUnit, item.Unit, conv)
+			buyQuantity, packSize = bq, ps
+			if reconciled {
+				lineTotal = priceCents * int64(packs)
+				purchaseUnit = packUnit
+			} else {
+				// packUnit and the stock unit don't connect on the conversion
+				// graph, so how many packs cover the need is unknowable - and
+				// guessing it is exactly the "9 cartons of eggs" bug. Buy the
+				// recipe amount as-is, price it from the LLM's own per-quantity
+				// guess where there is one, and let the estimate badge show.
+				priceSource = "estimate"
+				confidence = ConfidenceEstimate
+				if item.EstPriceCents > 0 {
+					lineTotal = item.EstPriceCents
+				} else {
+					lineTotal = priceCents
+				}
+			}
 		} else {
 			// Truly nothing to go on: no live price, no chain estimate, and no
 			// initial LLM guess either. Show the recipe's own quantity/unit
 			// instead of rounding up to whole units in a blank purchase unit.
 			priceSource = "estimate"
 			confidence = ConfidenceEstimate
-			purchaseUnit = item.Unit
 			packSize = item.TotalQuantity
 			buyQuantity = item.TotalQuantity
 		}

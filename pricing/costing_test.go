@@ -111,3 +111,118 @@ func TestCostPlan_ZeroWhenNoEstimateAvailable(t *testing.T) {
 			items[0].UnitPriceCents, items[0].LineTotalCents)
 	}
 }
+
+type fakeProvider struct{ r *PriceResult }
+
+func (f fakeProvider) Name() string { return "fake" }
+func (f fakeProvider) Lookup(_ context.Context, _ string, _ int64, _ string) (*PriceResult, error) {
+	return f.r, nil
+}
+
+func oneLine(t *testing.T, store db.Store, planID int64) *db.ShoppingListItem {
+	t.Helper()
+	items, err := store.ListShoppingListItems(context.Background(), planID)
+	if err != nil {
+		t.Fatalf("list items: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("got %d shopping list items, want 1", len(items))
+	}
+	return items[0]
+}
+
+// TestCostPlan_ReconcilesPackUnitToStockUnit is the "681 lb of chicken breast"
+// regression. The chain prices chicken by the pound, the catalog item stocks it
+// in grams, and PacksNeeded used to divide 680 (grams) by a 1 (pound) pack size
+// and buy 680 "lb". The pack has to be converted into the stock unit first.
+func TestCostPlan_ReconcilesPackUnitToStockUnit(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newCostingStore(t)
+	gs, err := store.CreateStore(ctx, db.UpsertStoreParams{HouseholdID: hh.ID, Name: "S", Kind: "grocery"})
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	it, err := store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID: hh.ID, Name: "chicken breast", NormalizedTerm: Normalize("chicken breast"),
+		StockUnit: "g", DefaultPurchaseQty: 1, Source: "manual",
+	})
+	if err != nil {
+		t.Fatalf("item: %v", err)
+	}
+
+	p, _ := store.CreatePlan(ctx, db.CreatePlanParams{HouseholdID: hh.ID, WeekStart: "2026-01-05", WeekEnd: "2026-01-11", BudgetCents: 100000})
+	meal, _ := store.CreateMeal(ctx, db.CreateMealParams{PlanID: p.ID, Day: "2026-01-05", Slot: "dinner", Title: "X", Effort: "quick", Servings: 2, CookedPortions: 2})
+	id := it.ID
+	if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
+		MealID: meal.ID, Name: "chicken breast", Quantity: 680, Unit: "g",
+		NormalizedTerm: it.NormalizedTerm, ItemID: &id,
+	}); err != nil {
+		t.Fatalf("ingredient: %v", err)
+	}
+
+	chain := NewChain([]PriceProvider{fakeProvider{&PriceResult{
+		PriceCents: 400, PurchaseUnit: "lb", PackSize: 1, Source: "live", Confidence: ConfidenceLive,
+	}}})
+	if _, err := CostPlan(ctx, store, chain, p.ID, hh, []*db.GroceryStore{gs}); err != nil {
+		t.Fatalf("cost plan: %v", err)
+	}
+
+	line := oneLine(t, store, p.ID)
+	// 680 g need, 1 lb ≈ 453.59 g/pack -> 2 packs -> ~907 g, 2 x $4 = $8.
+	if line.BuyQuantity < 900 || line.BuyQuantity > 910 {
+		t.Errorf("buy quantity = %v, want ~907 g (2 one-pound packs), not a pounds/grams mixup", line.BuyQuantity)
+	}
+	if line.LineTotalCents != 800 {
+		t.Errorf("line total = %d, want 800", line.LineTotalCents)
+	}
+}
+
+// TestCostPlan_UnreconcilablePackDegradesToEstimate is the "9 cartons of eggs"
+// regression. Eggs stock "each", the price comes back per "carton", and nothing
+// on the conversion graph connects the two. Rather than buy 9 cartons, the line
+// falls back to the recipe amount and is flagged an estimate.
+func TestCostPlan_UnreconcilablePackDegradesToEstimate(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newCostingStore(t)
+	gs, err := store.CreateStore(ctx, db.UpsertStoreParams{HouseholdID: hh.ID, Name: "S", Kind: "grocery"})
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	it, err := store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID: hh.ID, Name: "eggs", NormalizedTerm: Normalize("eggs"),
+		StockUnit: "each", DefaultPurchaseQty: 12, Source: "manual",
+	})
+	if err != nil {
+		t.Fatalf("item: %v", err)
+	}
+
+	p, _ := store.CreatePlan(ctx, db.CreatePlanParams{HouseholdID: hh.ID, WeekStart: "2026-01-05", WeekEnd: "2026-01-11", BudgetCents: 100000})
+	meal, _ := store.CreateMeal(ctx, db.CreateMealParams{PlanID: p.ID, Day: "2026-01-05", Slot: "breakfast", Title: "X", Effort: "quick", Servings: 2, CookedPortions: 2})
+	id := it.ID
+	if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
+		MealID: meal.ID, Name: "eggs", Quantity: 9, Unit: "each",
+		NormalizedTerm: it.NormalizedTerm, ItemID: &id, EstPriceCents: 300,
+	}); err != nil {
+		t.Fatalf("ingredient: %v", err)
+	}
+
+	chain := NewChain([]PriceProvider{fakeProvider{&PriceResult{
+		PriceCents: 600, PurchaseUnit: "carton", PackSize: 1, Source: "live", Confidence: ConfidenceLive,
+	}}})
+	if _, err := CostPlan(ctx, store, chain, p.ID, hh, []*db.GroceryStore{gs}); err != nil {
+		t.Fatalf("cost plan: %v", err)
+	}
+
+	line := oneLine(t, store, p.ID)
+	if line.BuyQuantity != 9 {
+		t.Errorf("buy quantity = %v, want 9 (the recipe amount, not 9 cartons)", line.BuyQuantity)
+	}
+	if line.Confidence != ConfidenceEstimate {
+		t.Errorf("confidence = %q, want %q (pack unit could not be reconciled)", line.Confidence, ConfidenceEstimate)
+	}
+	if line.LineTotalCents != 300 {
+		t.Errorf("line total = %d, want 300 (the LLM per-quantity estimate, not 9 x $6)", line.LineTotalCents)
+	}
+}

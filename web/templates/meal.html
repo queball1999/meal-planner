@@ -2,13 +2,13 @@
 {{define "content"}}
 <div class="page-header">
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-        <a href="/plan" class="btn btn--ghost btn--sm">{{icon "arrow-left"}} Plan</a>
+        <a href="/plan" class="btn btn-ghost btn-sm">{{icon "arrow-left"}} Plan</a>
         <h1 class="page-title" style="margin:0">{{.Data.Meal.Title}}</h1>
         {{if .Data.Meal.IsLeftover}}
-        <span class="badge badge--dim">{{icon "recycle"}} Leftovers</span>
+        <span class="badge badge-muted">{{icon "recycle"}} Leftovers</span>
         {{end}}
         {{if .Data.Meal.Locked}}
-        <span class="badge badge--live">{{icon "lock"}} Locked</span>
+        <span class="badge badge-accent">{{icon "lock"}} Locked</span>
         {{end}}
     </div>
     <p class="page-subtitle">
@@ -50,7 +50,7 @@
         {{range .Data.Ingredients}}
         <li class="ingredient-item">
             <span class="ingredient-name">{{.Name}}</span>
-            <span class="ingredient-qty">{{.Quantity}} {{.Unit}}</span>
+            <span class="ingredient-qty">{{qtyLabel .Quantity .Unit}}</span>
         </li>
         {{end}}
     </ul>
@@ -70,12 +70,12 @@
             <form method="POST" action="/meals/{{.Data.Meal.ID}}/feedback">
                 {{.CSRFField}}
                 <input type="hidden" name="rating" value="1">
-                <button type="submit" class="btn btn--secondary">{{icon "thumb-up"}} Like</button>
+                <button type="submit" class="btn btn-secondary">{{icon "thumb-up"}} Like</button>
             </form>
             <form method="POST" action="/meals/{{.Data.Meal.ID}}/feedback">
                 {{.CSRFField}}
                 <input type="hidden" name="rating" value="-1">
-                <button type="submit" class="btn btn--secondary">{{icon "thumb-down"}} Dislike</button>
+                <button type="submit" class="btn btn-secondary">{{icon "thumb-down"}} Dislike</button>
             </form>
         </div>
 
@@ -86,13 +86,13 @@
         <form method="POST" action="/meals/{{.Data.Meal.ID}}/lock">
             {{.CSRFField}}
             <input type="hidden" name="locked" value="0">
-            <button type="submit" class="btn btn--secondary">{{icon "lock-open"}} Unlock</button>
+            <button type="submit" class="btn btn-secondary">{{icon "lock-open"}} Unlock</button>
         </form>
         {{else}}
         <form method="POST" action="/meals/{{.Data.Meal.ID}}/lock">
             {{.CSRFField}}
             <input type="hidden" name="locked" value="1">
-            <button type="submit" class="btn btn--secondary">{{icon "lock"}} Lock meal</button>
+            <button type="submit" class="btn btn-secondary">{{icon "lock"}} Lock meal</button>
         </form>
         {{end}}
     </div>

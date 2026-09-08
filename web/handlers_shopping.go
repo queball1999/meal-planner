@@ -196,7 +196,20 @@ func summarizeLines(items []*db.ShoppingListItem) (total int64, byStore map[int6
 }
 
 func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string, itemsByID map[int64]*db.Item, verdicts map[int64]priceFlag) shoppingLineItem {
-	buyLabel := fmt.Sprintf("%.4g %s", item.BuyQuantity, item.PurchaseUnit)
+	var linked *db.Item
+	if item.ItemID != nil {
+		linked = itemsByID[*item.ItemID]
+	}
+
+	// BuyQuantity is stored in the item's stock unit (costing.go reconciles
+	// every pack into it), so the label has to read in that unit too - not
+	// PurchaseUnit, which is only the store's word for a pack ("bag", "lb")
+	// and was what made a 907 g buy render as "907 lb".
+	qtyUnit := item.PurchaseUnit
+	if linked != nil && linked.StockUnit != "" {
+		qtyUnit = linked.StockUnit
+	}
+	buyLabel := qtyLabel(item.BuyQuantity, qtyUnit)
 	priceLabel := ""
 	if item.UnitPriceCents > 0 {
 		priceLabel = fmt.Sprintf("$%.2f / %s", float64(item.UnitPriceCents)/100, item.PurchaseUnit)
@@ -205,10 +218,6 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 
 	badgeClass, badgeText := confidenceBadge(item.Confidence)
 
-	var linked *db.Item
-	if item.ItemID != nil {
-		linked = itemsByID[*item.ItemID]
-	}
 	state := lineLinkState(linked)
 	label := "Not matched to a known item yet - click to pick one"
 	if state == "linked" {

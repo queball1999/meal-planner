@@ -87,7 +87,7 @@ func (s *Server) handleMealCard(w http.ResponseWriter, r *http.Request) {
 		}
 		amount := ""
 		if ing.Quantity > 0 {
-			amount = fmt.Sprintf("%.4g %s", ing.Quantity, ing.Unit)
+			amount = qtyLabel(ing.Quantity, ing.Unit)
 		}
 		card.Ingredients = append(card.Ingredients, mealCardIngredient{Name: ing.Name, Amount: amount})
 	}
