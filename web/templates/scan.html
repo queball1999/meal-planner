@@ -13,8 +13,8 @@
     <form method="POST" action="/pantry/scan">
         {{.CSRFField}}
         <input type="hidden" name="barcode" value="{{.Data.Code}}">
-        <button type="submit" class="btn btn--primary">{{icon "plus"}} Add to pantry</button>
-        <a href="/pantry" class="btn btn--ghost" style="margin-left:0.5rem">Cancel</a>
+        <button type="submit" class="btn btn-primary">{{icon "plus"}} Add to pantry</button>
+        <a href="/pantry" class="btn btn-ghost" style="margin-left:0.5rem">Cancel</a>
     </form>
 </div>
 {{end}}
@@ -45,8 +45,8 @@
     </div>
 
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
-        <button id="scan-start" class="btn btn--primary" type="button">{{icon "camera"}} Start camera</button>
-        <button id="scan-torch" class="btn btn--ghost" type="button" hidden>{{icon "flashlight"}} Torch</button>
+        <button id="scan-start" class="btn btn-primary" type="button">{{icon "camera"}} Start camera</button>
+        <button id="scan-torch" class="btn btn-ghost" type="button" hidden>{{icon "flashlight"}} Torch</button>
     </div>
 </div>
 
@@ -59,14 +59,14 @@
                    data-hid-target="true">
         </div>
         <div class="field field--action">
-            <button type="submit" class="btn btn--primary">Look up</button>
+            <button type="submit" class="btn btn-primary">Look up</button>
         </div>
     </form>
     <p class="field-hint">A USB/Bluetooth barcode scanner will auto-fill this field.</p>
 </div>
 
 <div style="margin-top:1rem">
-    <a href="/pantry" class="btn btn--ghost">{{icon "arrow-left"}} Back to pantry</a>
+    <a href="/pantry" class="btn btn-ghost">{{icon "arrow-left"}} Back to pantry</a>
 </div>
 
 <script src="/static/js/barcode-camera.js" defer></script>

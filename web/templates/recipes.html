@@ -3,7 +3,7 @@
 <div class="page-header">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
         <h1 class="page-title">{{icon "fork"}} Recipes</h1>
-        <a href="/recipes/import" class="btn btn--primary">{{icon "plus"}} Add recipe</a>
+        <a href="/recipes/import" class="btn btn-primary">{{icon "plus"}} Add recipe</a>
     </div>
     <p class="page-subtitle">Your saved recipe catalog.</p>
 </div>
@@ -25,7 +25,7 @@
         </div>
         {{if .Data.Filtered}}
         <div class="field field--action">
-            <a href="/recipes" class="btn btn--ghost">Clear</a>
+            <a href="/recipes" class="btn btn-ghost">Clear</a>
         </div>
         {{end}}
     </div>
@@ -81,10 +81,10 @@
                 </td>
                 <td data-label="Added">{{.CreatedAt.Format "Jan 2"}}</td>
                 <td data-label="">
-                    <a href="/recipes/{{.ID}}" class="btn btn--ghost btn--sm" aria-label="View {{.Title}}">
+                    <a href="/recipes/{{.ID}}" class="btn btn-ghost btn-sm" aria-label="View {{.Title}}">
                         {{icon "eye"}}
                     </a>
-                    <a href="/recipes/{{.ID}}#edit" class="btn btn--ghost btn--sm" aria-label="Edit {{.Title}}">
+                    <a href="/recipes/{{.ID}}#edit" class="btn btn-ghost btn-sm" aria-label="Edit {{.Title}}">
                         {{icon "pencil"}}
                     </a>
                 </td>
@@ -107,7 +107,7 @@
     <p class="skeleton-card__body">
         Import a recipe from the web or enter one by hand.
     </p>
-    <a href="/recipes/import" class="btn btn--primary" style="margin-top:1rem">{{icon "plus"}} Add recipe</a>
+    <a href="/recipes/import" class="btn btn-primary" style="margin-top:1rem">{{icon "plus"}} Add recipe</a>
 </div>
 {{end}}
 {{end}}

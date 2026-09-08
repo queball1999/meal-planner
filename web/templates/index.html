@@ -17,7 +17,7 @@
                 <strong>Generating your plan…</strong>
                 <p class="plan-status__sub">This usually takes under a minute.</p>
             </div>
-            <a href="/plan/generate" class="btn btn--outline btn--sm">View progress</a>
+            <a href="/plan/generate" class="btn btn-secondary btn-sm">View progress</a>
         </div>
         {{else}}
         <div class="plan-status">
@@ -37,12 +37,12 @@
                 {{end}}
             </div>
             <div class="plan-status__actions">
-                <a href="/plan" class="btn btn--primary btn--sm">{{icon "calendar-week"}} View plan</a>
+                <a href="/plan" class="btn btn-primary btn-sm">{{icon "calendar-week"}} View plan</a>
                 {{if $d.HasLLM}}
                 <form method="POST" action="/plan/generate" style="display:inline"
                       data-confirm="This replaces your current plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference." data-confirm-title="Regenerate plan" data-confirm-label="Regenerate">
                     {{$.CSRFField}}
-                    <button type="submit" class="btn btn--outline btn--sm">
+                    <button type="submit" class="btn btn-secondary btn-sm">
                         {{icon "autorenew"}} Regenerate
                     </button>
                 </form>
@@ -61,7 +61,7 @@
         {{if $d.HasLLM}}
         <form method="POST" action="/plan/generate">
             {{$.CSRFField}}
-            <button type="submit" class="btn btn--primary">
+            <button type="submit" class="btn btn-primary">
                 {{icon "chef-hat"}} Plan my week
             </button>
         </form>
@@ -100,13 +100,13 @@
     <div class="cal-toolbar">
         <div class="cal-toolbar__nav">
             <a href="{{$cal.PrevURL}}" class="btn-icon" title="Previous {{$cal.Mode}}" aria-label="Previous {{$cal.Mode}}">{{icon "arrow-left"}}</a>
-            <a href="{{$cal.TodayURL}}" class="btn btn--ghost btn--sm" title="Jump to current {{$cal.Mode}}">Today</a>
+            <a href="{{$cal.TodayURL}}" class="btn btn-ghost btn-sm" title="Jump to current {{$cal.Mode}}">Today</a>
             <a href="{{$cal.NextURL}}" class="btn-icon" title="Next {{$cal.Mode}}" aria-label="Next {{$cal.Mode}}"><span style="display:inline-flex;transform:rotate(180deg)">{{icon "arrow-left"}}</span></a>
             <h2 class="cal-toolbar__title">{{$cal.Title}}</h2>
         </div>
         <div class="cal-toolbar__modes" role="group" aria-label="Calendar range">
-            <a href="{{$cal.WeekURL}}"  class="btn btn--sm {{if eq $cal.Mode "week"}}btn--primary{{else}}btn--ghost{{end}}">Week</a>
-            <a href="{{$cal.MonthURL}}" class="btn btn--sm {{if eq $cal.Mode "month"}}btn--primary{{else}}btn--ghost{{end}}">Month</a>
+            <a href="{{$cal.WeekURL}}"  class="btn btn-sm {{if eq $cal.Mode "week"}}btn-primary{{else}}btn-ghost{{end}}">Week</a>
+            <a href="{{$cal.MonthURL}}" class="btn btn-sm {{if eq $cal.Mode "month"}}btn-primary{{else}}btn-ghost{{end}}">Month</a>
         </div>
     </div>
 
@@ -150,7 +150,7 @@
 <div class="card">
     <div class="card__header" style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem .5rem">
         <h2 class="card__title" style="margin:0;font-size:1rem">{{icon "history"}} Plan history</h2>
-        <a href="/plan/history" class="btn btn--ghost btn--sm">View all</a>
+        <a href="/plan/history" class="btn btn-ghost btn-sm">View all</a>
     </div>
 
     {{if $d.RecentPlans}}
@@ -170,8 +170,8 @@
                 <td>{{fmtWeekRange .WeekStart .WeekEnd}}</td>
                 <td>
                     {{if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
-                    {{else if eq .Status "generating"}}<span class="badge badge--muted">Generating</span>
-                    {{else}}<span class="badge badge--muted">{{.Status}}</span>{{end}}
+                    {{else if eq .Status "generating"}}<span class="badge badge-muted">Generating</span>
+                    {{else}}<span class="badge badge-muted">{{.Status}}</span>{{end}}
                 </td>
                 <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}} - {{end}}</td>
                 <td>${{printf "%.0f" (divf .BudgetCents 100.0)}}</td>

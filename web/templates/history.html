@@ -21,7 +21,7 @@
             </div>
             {{if or .Data.From .Data.To}}
             <div class="field field--action">
-                <a href="/plan/history" class="btn btn--ghost">Clear</a>
+                <a href="/plan/history" class="btn btn-ghost">Clear</a>
             </div>
             {{end}}
         </div>
@@ -46,10 +46,10 @@
             <tr>
                 <td>{{fmtWeekRange .WeekStart .WeekEnd}}</td>
                 <td>
-                    {{if .Canceled}}<span class="badge badge--muted" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled</span>
+                    {{if .Canceled}}<span class="badge badge-muted" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled</span>
                     {{else if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
-                    {{else if eq .Status "generating"}}<span class="badge badge--muted">Generating</span>
-                    {{else}}<span class="badge badge--muted">{{.Status}}</span>{{end}}
+                    {{else if eq .Status "generating"}}<span class="badge badge-muted">Generating</span>
+                    {{else}}<span class="badge badge-muted">{{.Status}}</span>{{end}}
                 </td>
                 <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}} - {{end}}</td>
                 <td>${{printf "%.0f" (divf .BudgetCents 100.0)}}</td>

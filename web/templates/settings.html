@@ -106,7 +106,7 @@
                     {{end}}
                     <option value="__custom__"{{if not $mv}} selected{{end}}>Custom&hellip;</option>
                 </select>
-                <button type="button" class="btn btn--ghost btn--sm"
+                <button type="button" class="btn btn-ghost btn-sm"
                         data-model-refresh="{{$mf.Key}}" data-provider="{{.ID}}">{{icon "refresh"}} Refresh list</button>
             </div>
             {{/* Source of truth: the dropdown and the custom box both write here. */}}
@@ -149,7 +149,7 @@
     {{if .Data.HasLLM}}
     <div style="margin-top:var(--sp-5);border-top:1px solid var(--border);padding-top:var(--sp-5)">
         <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
-            <button id="testAIBtn" class="btn btn--ghost btn--sm" type="button">
+            <button id="testAIBtn" class="btn btn-ghost btn-sm" type="button">
                 {{icon "refresh"}} Test connection
             </button>
             <span id="testAIStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
@@ -180,7 +180,7 @@
 <div class="card form-section" style="margin-bottom:1.5rem">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-2)">
         <h2 class="form-section__title" style="margin:0">{{icon "code"}} LLM Call Log</h2>
-        <button id="llmLogRefresh" class="btn btn--ghost btn--sm" type="button">{{icon "refresh"}} Refresh</button>
+        <button id="llmLogRefresh" class="btn btn-ghost btn-sm" type="button">{{icon "refresh"}} Refresh</button>
     </div>
     <p class="field-hint" style="margin-bottom:var(--sp-4)">Last {{`30`}} calls - newest first. Captured in memory; cleared on restart.</p>
     <div id="llmLogContainer">
@@ -213,7 +213,7 @@
     </p>
 
     <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;margin-top:var(--sp-4)">
-        <button id="testRenderBtn" class="btn btn--ghost btn--sm" type="button">
+        <button id="testRenderBtn" class="btn btn-ghost btn-sm" type="button">
             {{icon "refresh"}} Test headless browser
         </button>
         <span id="testRenderStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>

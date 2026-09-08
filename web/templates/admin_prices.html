@@ -60,7 +60,7 @@
                        type="text" placeholder="lb" value="each">
             </div>
             <div class="field field--action">
-                <button type="submit" class="btn btn--primary">{{icon "plus"}} Add</button>
+                <button type="submit" class="btn btn-primary">{{icon "plus"}} Add</button>
             </div>
         </div>
     </form>
@@ -88,7 +88,7 @@
                 <td data-label="">
                     <form method="POST" action="/admin/prices/{{.ID}}/delete" style="display:inline">
                         {{$.CSRFField}}
-                        <button type="submit" class="btn btn--ghost btn--danger btn--sm"
+                        <button type="submit" class="btn btn-danger btn-sm"
                                 aria-label="Delete price for {{.DisplayName}}" title="Delete">
                             {{icon "delete"}}
                         </button>

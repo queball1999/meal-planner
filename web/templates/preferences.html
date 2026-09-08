@@ -99,7 +99,7 @@
                           rows="3"
                           placeholder="e.g. cereal, yogurt, eggs on weekends…">{{.RawText}}</textarea>
             </div>
-            <div class="field field--inline">
+            <div class="field">
                 <label class="field-label" for="effort_{{.Slot}}">Cooking effort</label>
                 <select class="field-input" id="effort_{{.Slot}}" name="effort_{{.Slot}}">
                     <option value="quick"    {{if eq .Effort "quick"}}selected{{end}}>Quick (&lt;15 min)</option>
