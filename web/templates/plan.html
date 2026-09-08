@@ -76,12 +76,14 @@
                       class="plan-col__headcount" data-autosubmit>
                     {{$.CSRFField}}
                     {{if $.Data.Members}}
-                    <details class="people-picker">
-                        <summary class="people-picker__summary"
-                                 aria-label="Who is eating on {{$day.DateLabel}}">
+                    <div class="people-picker">
+                        <button type="button" class="people-picker__summary"
+                                data-popover="people-picker-{{$day.Date}}" data-popover-placement="bottom-start"
+                                aria-expanded="false" aria-controls="people-picker-{{$day.Date}}"
+                                aria-label="Who is eating on {{$day.DateLabel}}">
                             {{icon "account-group"}} <span class="people-picker__count">{{$day.Headcount}}</span>
-                        </summary>
-                        <div class="people-picker__menu">
+                        </button>
+                        <div class="popover people-picker__menu" id="people-picker-{{$day.Date}}" data-popover-panel hidden>
                             {{range $.Data.Members}}
                             <label class="people-picker__option">
                                 <input type="checkbox" name="member" value="{{.ID}}"
@@ -117,7 +119,7 @@
                                 <span class="field-hint">None ticked = every meal</span>
                             </div>
                         </div>
-                    </details>
+                    </div>
                     {{else}}
                     <input type="number" name="headcount" value="{{$day.Headcount}}" min="1" max="20"
                            class="field-input"
@@ -125,19 +127,6 @@
                     {{end}}
                     <button type="button" class="tooltip-btn" aria-label="What does this do?"
                             data-tooltip="Who is eating on this day. Changing it rescales this day's recipes and every ingredient quantity from the amounts they were generated at, then rebuilds the shopping list. Portions come from each person's size, so two adults and two toddlers is about 3 servings, not 4.">?</button>
-                </form>
-
-                <form method="POST" action="/plan/days/{{$day.Date}}/status"
-                      class="plan-col__status" data-day-status data-date="{{$day.Date}}"
-                      data-day-label="{{$day.DateLabel}}">
-                    {{$.CSRFField}}
-                    <input type="hidden" name="resolution" value="">
-                    <select name="status" class="field-input field-input--sm"
-                            aria-label="What is happening on {{$day.DateLabel}}">
-                        <option value="cooking"{{if eq $day.Status "cooking"}} selected{{end}}>Cooking</option>
-                        <option value="eating_out"{{if eq $day.Status "eating_out"}} selected{{end}}>Eating out</option>
-                        <option value="skipped"{{if eq $day.Status "skipped"}} selected{{end}}>Skip this day</option>
-                    </select>
                 </form>
             </div>
             {{else}}
@@ -150,7 +139,7 @@
 
         {{range $slot := slots}}
         {{$cell := index $day.Slots $slot}}
-        <article class="meal-card meal-card--{{$slot}}{{if $cell.IsEmpty}} meal-card--empty{{end}}{{if $cell.Locked}} meal-card--locked{{end}}">
+        <article class="meal-card meal-card--{{$slot}}{{if $cell.IsEmpty}} meal-card--empty{{end}}{{if $cell.Locked}} meal-card--locked{{end}}{{if and (not $cell.IsEmpty) $cell.Status (ne $cell.Status "cooking")}} meal-card--off{{end}}">
             <span class="meal-card__slot">{{titleCase $slot}}</span>
             {{if $cell.IsEmpty}}
             <span class="meal-card__empty">No meal</span>
@@ -170,6 +159,9 @@
                 <span>&middot; {{$cell.Servings}} srv</span>
                 {{if $cell.IsLeftover}}<span class="badge badge-muted" title="Leftovers">{{icon "recycle"}}</span>{{end}}
                 {{if $cell.Locked}}<span title="Locked">{{icon "lock"}}</span>{{end}}
+                {{if and $cell.Status (ne $cell.Status "cooking")}}
+                <span class="badge badge-muted">{{if eq $cell.Status "eating_out"}}Eating out{{else}}Skipped{{end}}</span>
+                {{end}}
             </div>
             {{if not $.Data.ReadOnly}}
             <div class="meal-card__actions">
@@ -187,6 +179,20 @@
                         {{if $cell.Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
                     </button>
                 </form>
+                <button type="button" class="btn-icon meal-status-btn{{if eq $cell.Status "eating_out"}} meal-status-btn--active{{end}}"
+                        data-meal-status-btn data-meal-id="{{$cell.MealID}}" data-status="eating_out"
+                        aria-pressed="{{if eq $cell.Status "eating_out"}}true{{else}}false{{end}}"
+                        title="{{if eq $cell.Status "eating_out"}}Eating out - click to undo{{else}}Mark as eating out{{end}}"
+                        aria-label="{{if eq $cell.Status "eating_out"}}Undo eating out for {{$cell.Title}}{{else}}Mark {{$cell.Title}} as eating out{{end}}">
+                    {{icon "store"}}
+                </button>
+                <button type="button" class="btn-icon meal-status-btn{{if eq $cell.Status "skipped"}} meal-status-btn--active{{end}}"
+                        data-meal-status-btn data-meal-id="{{$cell.MealID}}" data-status="skipped"
+                        aria-pressed="{{if eq $cell.Status "skipped"}}true{{else}}false{{end}}"
+                        title="{{if eq $cell.Status "skipped"}}Skipped - click to undo{{else}}Skip this meal{{end}}"
+                        aria-label="{{if eq $cell.Status "skipped"}}Undo skip for {{$cell.Title}}{{else}}Skip {{$cell.Title}}{{end}}">
+                    {{icon "close"}}
+                </button>
             </div>
             {{end}}
             {{end}}
@@ -216,14 +222,14 @@
   </form>
 {{template "partials/modal_close.html" .}}
 
-{{template "partials/modal_open.html" dict "ID" "day-status" "Title" "This day feeds another one"}}
+{{template "partials/modal_open.html" dict "ID" "day-status" "Title" "This meal feeds another one"}}
   <p id="day-status-intro"></p>
   <ul id="day-status-meals"></ul>
   <p>What should happen to those?</p>
   <div class="field">
     <label class="people-picker__option">
       <input type="radio" name="day-status-resolution" value="cascade" checked>
-      <span>Mark those days the same way</span>
+      <span>Mark those meals the same way</span>
     </label>
     <label class="people-picker__option">
       <input type="radio" name="day-status-resolution" value="clear">
@@ -238,10 +244,46 @@
       <span>Leave them - I'll sort it out myself</span>
     </label>
   </div>
+  <div class="modal-ask-ai">
+    <span class="modal-ask-ai__label">Or, for something these options don't cover:</span>
+    <button type="button" class="btn btn-secondary btn-sm" id="day-status-ask-ai">
+        {{icon "chef-hat"}} Ask AI
+    </button>
+  </div>
+  <div class="modal-dialog__footer">
+    <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+    <button type="button" class="btn btn-primary" id="day-status-confirm">{{icon "check"}} Continue</button>
+  </div>
 {{template "partials/modal_close.html" .}}
+
+<form method="POST" id="meal-status-form" action="" hidden>
+  {{.CSRFField}}
+  <input type="hidden" name="status" id="meal-status-value">
+  <input type="hidden" name="resolution" id="meal-status-resolution">
+</form>
 
 <script>
 (function () {
+    // A hovercard's "show on week plan" action navigates here with ?flash=ID
+    // when the meal wasn't already visible on the page it was opened from.
+    // Flash it once the board has rendered, then drop the param so a reload
+    // or bookmark doesn't re-flash it.
+    (function flashFromQuery() {
+        var params = new URLSearchParams(window.location.search);
+        var id = params.get('flash');
+        if (!id) return;
+        var esc = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+        var target = document.querySelector('.plan-board [data-meal-id="' + esc + '"]');
+        params.delete('flash');
+        var qs = params.toString();
+        history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
+        if (!target) return;
+        var cell = target.closest('.meal-card') || target;
+        cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        cell.classList.add('is-flash');
+        setTimeout(function () { cell.classList.remove('is-flash'); }, 1600);
+    })();
+
     // Marking a day "eating out" can silently empty a later day that was
     // living off its leftovers, so the change is held until the user has seen
     // what it costs and said what to do about it. The server is asked what
@@ -334,63 +376,98 @@
         openPicker(parts[0], parts[1], parts[0]);
     }
 
-    var pending = null;
-    var intro = document.getElementById('day-status-intro');
-    var mealList = document.getElementById('day-status-meals');
+    // ── Per-meal status (skip / eating out) ──────────────────────────────
+    // Icons on the meal card itself, not a day-level dropdown: a click can
+    // still orphan a leftover meal the same way marking a whole day used to,
+    // so the same impact-check-then-confirm flow applies, just scoped to one
+    // meal instead of a whole day.
+    var mealStatusPending = null; // { mealId, status } awaiting a resolution choice
+    var statusIntro = document.getElementById('day-status-intro');
+    var statusMealList = document.getElementById('day-status-meals');
+    var statusForm = document.getElementById('meal-status-form');
+    var statusValueInput = document.getElementById('meal-status-value');
+    var statusResolutionInput = document.getElementById('meal-status-resolution');
 
-    function submitWith(form, resolution) {
-        form.querySelector('input[name="resolution"]').value = resolution || '';
-        form.dataset.confirmed = '1';
-        form.submit();
+    function submitMealStatus(mealId, status, resolution) {
+        if (!statusForm) return;
+        statusForm.action = '/meals/' + mealId + '/status';
+        statusValueInput.value = status;
+        statusResolutionInput.value = resolution || '';
+        statusForm.submit();
     }
 
-    document.querySelectorAll('form[data-day-status]').forEach(function (form) {
-        var select = form.querySelector('select[name="status"]');
-        if (!select) return;
+    document.querySelectorAll('[data-meal-status-btn]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var mealId = btn.dataset.mealId;
+            // A second click on the already-active button reverts to cooking.
+            var target = btn.classList.contains('meal-status-btn--active') ? 'cooking' : btn.dataset.status;
 
-        select.addEventListener('change', function () {
-            if (select.value === 'cooking') { submitWith(form, ''); return; }
+            if (target === 'cooking') { submitMealStatus(mealId, target, ''); return; }
 
-            fetch('/plan/days/' + form.dataset.date + '/status-impact', {
+            fetch('/meals/' + mealId + '/status-impact', {
                 headers: { 'Accept': 'application/json' },
             })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (!d || !d.ok || !d.orphaned || !d.orphaned.length) {
-                        submitWith(form, '');
+                        submitMealStatus(mealId, target, '');
                         return;
                     }
-                    pending = form;
-                    intro.textContent = form.dataset.dayLabel +
+                    var mealLabel = d.meal_label || 'this meal';
+                    var orphanNames = d.orphaned.map(function (m) { return m.date_label + ' ' + m.slot + ' (' + m.title + ')'; });
+                    mealStatusPending = {
+                        mealId: mealId,
+                        status: target,
+                        askAIText: (target === 'eating_out' ? 'We are eating out for ' : 'Skip ') + mealLabel +
+                            '. It was feeding ' + orphanNames.join(', ') + ' as leftovers - figure out what those should eat instead.',
+                    };
+                    statusIntro.textContent = mealLabel +
                         " is feeding " + d.orphaned.length +
                         (d.orphaned.length === 1 ? " later meal" : " later meals") +
                         " as leftovers. Marking it will leave " +
                         (d.orphaned.length === 1 ? "that meal" : "those meals") + " with nothing to eat.";
-                    mealList.innerHTML = '';
+                    statusMealList.innerHTML = '';
                     d.orphaned.forEach(function (m) {
                         var li = document.createElement('li');
                         // textContent, not innerHTML: meal titles come from the
                         // LLM and from user edits.
                         li.textContent = m.date_label + ' ' + m.slot + ' - ' + m.title;
-                        mealList.appendChild(li);
+                        statusMealList.appendChild(li);
                     });
                     window.goeat.openModal('day-status');
                 })
-                // A failed impact check must not strand the user on a select
-                // they cannot act on: fall through to a plain status change.
-                .catch(function () { submitWith(form, ''); });
+                // A failed impact check must not strand the user with nothing
+                // to click: fall through to a plain status change.
+                .catch(function () { submitMealStatus(mealId, target, ''); });
         });
     });
 
-    document.querySelectorAll('input[name="day-status-resolution"]').forEach(function (radio) {
-        radio.addEventListener('change', function () {
-            if (!pending) return;
-            var form = pending;
-            pending = null;
+    var statusConfirmBtn = document.getElementById('day-status-confirm');
+    if (statusConfirmBtn) {
+        statusConfirmBtn.addEventListener('click', function () {
+            if (!mealStatusPending) return;
+            var pending = mealStatusPending;
+            mealStatusPending = null;
+            var checked = document.querySelector('input[name="day-status-resolution"]:checked');
             window.goeat.closeModal('day-status');
-            submitWith(form, radio.value);
+            submitMealStatus(pending.mealId, pending.status, checked ? checked.value : '');
         });
-    });
+    }
+
+    // "Ask AI": for a situation the four canned resolutions don't fit (only
+    // shown once one of them has orphaned a leftover meal - see above). Hands
+    // the assistant the same context the dialog just showed and leaves the
+    // meal's own status change unsubmitted; the assistant has its own plan
+    // tools and can change the status itself as part of sorting this out.
+    var askAIBtn = document.getElementById('day-status-ask-ai');
+    if (askAIBtn) {
+        askAIBtn.addEventListener('click', function () {
+            var pending = mealStatusPending;
+            mealStatusPending = null;
+            window.goeat.closeModal('day-status');
+            if (pending && window.goeat.askAI) window.goeat.askAI(pending.askAIText);
+        });
+    }
 })();
 </script>
 {{end}}

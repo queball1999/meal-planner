@@ -25,7 +25,18 @@ func DownloadImage(ctx context.Context, imageURL, imageDir string) (string, erro
 	if imageDir == "" {
 		return "", fmt.Errorf("items: ITEM_IMAGE_DIR is not configured")
 	}
-	res, err := safefetch.Fetch(ctx, imageURL, &safefetch.Options{MaxBytes: maxImageBytes})
+	// A same-origin Referer, and an Accept that actually asks for an image:
+	// safefetch's own defaults are written for fetching HTML pages, and a
+	// bare image request with no Referer is exactly what a site's hotlink
+	// protection (freefoodphotos.com's seed photos included) is there to
+	// block.
+	headers := map[string]string{
+		"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+	}
+	if u, perr := url.Parse(imageURL); perr == nil && u.Scheme != "" && u.Host != "" {
+		headers["Referer"] = u.Scheme + "://" + u.Host + "/"
+	}
+	res, err := safefetch.Fetch(ctx, imageURL, &safefetch.Options{MaxBytes: maxImageBytes, Headers: headers})
 	if err != nil {
 		return "", fmt.Errorf("items: fetch %s: %w", imageURL, err)
 	}

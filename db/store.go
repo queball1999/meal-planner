@@ -171,6 +171,8 @@ type Store interface {
 	UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error
 	UpdateMealTitle(ctx context.Context, mealID int64, title, effort string, servings, cookedPortions int) error
 	DeleteMealIngredients(ctx context.Context, mealID int64) error
+	SetMealStatus(ctx context.Context, mealID int64, status string) error
+	ListLeftoversSourcedFromMeal(ctx context.Context, mealID int64) ([]*Meal, error)
 
 	// ── Plan days (§5.6) ──────────────────────────────────────────────────────
 
@@ -256,6 +258,7 @@ type Store interface {
 	ListPackagesForStore(ctx context.Context, storeID int64) ([]*ItemStorePackage, error)
 	GetItemStorePackage(ctx context.Context, itemID, storeID int64) (*ItemStorePackage, error)
 	DeleteItemStorePackage(ctx context.Context, id int64) error
+	SetItemStorePreferred(ctx context.Context, itemID, storeID int64, preferred bool) error
 	ListPriceHistory(ctx context.Context, itemID, storeID int64) ([]*PriceHistoryEntry, error)
 	ListPriceHistoryForItem(ctx context.Context, itemID int64) ([]*PriceHistoryEntry, error)
 
@@ -295,4 +298,8 @@ type Store interface {
 	SetHASyncPushed(ctx context.Context, id int64, haUID, haStatus, summary string, localChecked bool) error
 	SetHASyncPulled(ctx context.Context, id int64, haStatus string, localChecked bool) error
 	DeleteHASyncRow(ctx context.Context, id int64) error
+
+	// ── Audit log reader (app_events, written by LogEvent above) ───────────
+
+	ListEvents(ctx context.Context, limit int) ([]*AppEventRow, error)
 }

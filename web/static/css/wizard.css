@@ -152,6 +152,17 @@
 }
 .wizard-step-label { text-align: center; white-space: nowrap; }
 
+/* The step generation failed on - used only on the plan-generation progress
+ * bar (web/templates/plan_generate.html), never during setup. */
+.wizard-progress__step--error .wizard-step-dot {
+    border-color: var(--danger, #ef4444);
+    box-shadow: 0 0 0 3px var(--danger-bg, #ef444422);
+}
+.wizard-progress__step--error .wizard-step-label {
+    color: var(--danger, #ef4444);
+    font-weight: var(--weight-semi);
+}
+
 /* Step transition */
 .wizard-step { animation: fadeSlide .18s ease; }
 

@@ -82,7 +82,7 @@
     </p>
     {{if .Data.Packages}}
     <table class="data-table">
-        <thead><tr><th>Store</th><th>Purchase unit</th><th>Amount / package</th><th>Price</th><th></th></tr></thead>
+        <thead><tr><th>Store</th><th>Purchase unit</th><th>Amount / package</th><th>Price</th><th>We buy here</th><th></th></tr></thead>
         <tbody>
             {{range .Data.Packages}}
             <tr>
@@ -90,6 +90,18 @@
                 <td data-label="Purchase unit"><span class="badge {{pill "unit" .PurchaseUnit}}">{{.PurchaseUnit}}</span></td>
                 <td data-label="Amount / package">{{.AmountPerPackage}}</td>
                 <td data-label="Price">{{.PriceLabel}}</td>
+                <td data-label="We buy here">
+                    <form method="POST" action="/pantry/items/{{$.Data.Item.ID}}/stores/{{.StoreID}}/preferred" style="display:inline">
+                        {{$.CSRFField}}
+                        <input type="hidden" name="preferred" value="{{if .Preferred}}0{{else}}1{{end}}">
+                        <button type="submit" class="btn btn-ghost btn-icon btn-sm{{if .Preferred}} preferred-star--on{{end}}"
+                                aria-pressed="{{if .Preferred}}true{{else}}false{{end}}"
+                                title="{{if .Preferred}}We buy this here - click to unmark{{else}}Mark as where we buy this{{end}}"
+                                aria-label="{{if .Preferred}}Unmark {{.StoreName}} as where you buy {{$.Data.Item.Name}}{{else}}Mark {{.StoreName}} as where you buy {{$.Data.Item.Name}}{{end}}">
+                            {{if .Preferred}}{{icon "star"}}{{else}}{{icon "star-outline"}}{{end}}
+                        </button>
+                    </form>
+                </td>
                 <td data-label="">
                     <form method="POST" action="/pantry/items/{{$.Data.Item.ID}}/packages/{{.ID}}/delete" style="display:inline">
                         {{$.CSRFField}}

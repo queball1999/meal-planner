@@ -123,11 +123,6 @@ func (s *Server) handleItemMatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad id"})
 		return
 	}
-	itemID, err := strconv.ParseInt(r.FormValue("item_id"), 10, 64)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "pick an item"})
-		return
-	}
 	ctx := r.Context()
 
 	line := s.shoppingLineByID(ctx, hh.ID, id)
@@ -135,6 +130,34 @@ func (s *Server) handleItemMatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "line not found"})
 		return
 	}
+
+	// Two ways in: link to an existing catalog item (item_id), or create a new
+	// one on the spot (new_name) - the picker's "add new" row, for a line whose
+	// name is simply not in the catalog yet.
+	var itemID int64
+	if newName := strings.TrimSpace(r.FormValue("new_name")); newName != "" {
+		term := pricing.Normalize(newName)
+		if existing, _ := s.store.GetItemByTerm(ctx, hh.ID, term); existing != nil {
+			itemID = existing.ID
+		} else {
+			created, cerr := s.store.CreateItem(ctx, db.CreateItemParams{
+				HouseholdID:    hh.ID,
+				Name:           newName,
+				NormalizedTerm: term,
+				Source:         "manual",
+			})
+			if cerr != nil || created == nil {
+				log.Printf("item match: create %q: %v", newName, cerr)
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't create that item"})
+				return
+			}
+			itemID = created.ID
+		}
+	} else if itemID, err = strconv.ParseInt(r.FormValue("item_id"), 10, 64); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "pick an item"})
+		return
+	}
+
 	target, err := s.store.GetItem(ctx, itemID)
 	if err != nil || target == nil || target.HouseholdID != hh.ID {
 		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "item not found"})

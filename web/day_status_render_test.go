@@ -29,8 +29,14 @@ func TestPlanDayRendersPeoplePickerAndStatus(t *testing.T) {
 		Headcount:   2,
 		Status:      db.DayCooking,
 		StatusLabel: "cooking",
-		Slots:       map[string]calendarSlot{"breakfast": {IsEmpty: true}, "lunch": {IsEmpty: true}, "dinner": {IsEmpty: true}},
-		EatingIDs:   map[int64]bool{1: true},
+		Slots: map[string]calendarSlot{
+			"breakfast": {IsEmpty: true},
+			"lunch":     {IsEmpty: true},
+			// A real meal, so the per-meal status icons (only rendered for a
+			// filled slot) actually show up on the page.
+			"dinner": {Title: "Chili", MealID: 3, Status: db.DayCooking},
+		},
+		EatingIDs: map[int64]bool{1: true},
 	}}
 
 	out := renderPage(t, "plan", pageData{AppName: "Go Eat", Page: "plan", Data: planPageWithDays(days, members, false)})
@@ -42,9 +48,10 @@ func TestPlanDayRendersPeoplePickerAndStatus(t *testing.T) {
 		// One checkbox per member, with the ticked one reflecting EatingIDs.
 		`name="member" value="1"`,
 		`name="member" value="2"`,
-		`action="/plan/days/2026-01-05/status"`,
-		`value="eating_out"`,
-		`value="skipped"`,
+		// Per-meal status icons on the meal card, not a day-level dropdown.
+		`data-meal-status-btn`,
+		`data-status="eating_out"`,
+		`data-status="skipped"`,
 		// The resolution dialog, on the shared modal chrome.
 		`id="day-status"`,
 		`value="cascade"`,
@@ -55,6 +62,9 @@ func TestPlanDayRendersPeoplePickerAndStatus(t *testing.T) {
 	}
 	if strings.Contains(out, `title="Save headcount"`) {
 		t.Error("the Save headcount button is still rendered")
+	}
+	if strings.Contains(out, `action="/plan/days/2026-01-05/status"`) {
+		t.Error("the day-level status dropdown form is still rendered")
 	}
 
 	// Sam is eating, Robin is not - the picker must reflect that, not tick
@@ -85,29 +95,36 @@ func TestPlanDayFallsBackToHeadcountBox(t *testing.T) {
 	}
 }
 
-// A non-cooking day reads as one at a glance, and a read-only (past or
+// A non-cooking meal reads as one at a glance, and a read-only (past or
 // canceled) plan shows the status without offering to change it.
 func TestPlanDayShowsNonCookingStatus(t *testing.T) {
 	days := []calendarDay{{
 		Date: "2026-01-06", DateLabel: "Tue Jan 6", Headcount: 2,
-		Status: db.DayEatingOut, StatusLabel: "eating out",
-		Slots: map[string]calendarSlot{"breakfast": {IsEmpty: true}, "lunch": {IsEmpty: true}, "dinner": {IsEmpty: true}},
+		Status: db.DayCooking, StatusLabel: "cooking",
+		Slots: map[string]calendarSlot{
+			"breakfast": {IsEmpty: true},
+			"lunch":     {IsEmpty: true},
+			"dinner":    {Title: "Chili", MealID: 3, Status: db.DayEatingOut},
+		},
 	}}
 
 	out := renderPage(t, "plan", pageData{AppName: "Go Eat", Page: "plan", Data: planPageWithDays(days, nil, false)})
-	if !strings.Contains(out, "plan-col--off") {
-		t.Error("an eating-out day is not visually marked")
+	if !strings.Contains(out, "meal-card--off") {
+		t.Error("an eating-out meal is not visually marked")
 	}
-	if !strings.Contains(out, `value="eating_out" selected`) {
-		t.Error("the eating-out option is not selected")
+	if !strings.Contains(out, "meal-status-btn--active") {
+		t.Error("the eating-out button is not marked active")
+	}
+	if !strings.Contains(out, "Eating out</span>") {
+		t.Error("the eating-out badge does not show on the card")
 	}
 
 	ro := renderPage(t, "plan", pageData{AppName: "Go Eat", Page: "plan", Data: planPageWithDays(days, nil, true)})
-	if !strings.Contains(ro, "eating out") {
-		t.Error("read-only plan does not show the day status")
+	if !strings.Contains(ro, "meal-card--off") {
+		t.Error("read-only plan does not show the meal status")
 	}
-	if strings.Contains(ro, `action="/plan/days/2026-01-06/status"`) {
-		t.Error("read-only plan offers a status form")
+	if strings.Contains(ro, `data-meal-status-btn`) {
+		t.Error("read-only plan offers a status control")
 	}
 	if strings.Contains(ro, `id="day-status"`) {
 		t.Error("read-only plan renders the resolution dialog")

@@ -1,0 +1,56 @@
+{{define "title"}}Admin Events - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "shield-check"}} Admin Events</h1>
+    <p class="page-subtitle">Who did what: sign-ins, account changes, store and preference edits.</p>
+</div>
+
+{{template "settingsTabs" .}}
+
+<form method="GET" action="/admin/events" class="llm-log-filters" data-autofilter>
+    <select class="field-input" name="status">
+        <option value=""      {{if eq .Data.Status ""     }}selected{{end}}>All</option>
+        <option value="ok"    {{if eq .Data.Status "ok"   }}selected{{end}}>Success only</option>
+        <option value="error" {{if eq .Data.Status "error"}}selected{{end}}>Errors only</option>
+    </select>
+    {{if .Data.Status}}<a href="/admin/events" class="btn btn-secondary">Clear</a>{{end}}
+</form>
+
+{{if .Data.Events}}
+<table class="data-table" aria-label="Admin events">
+    <thead>
+        <tr>
+            <th>When</th>
+            <th>Who</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Data.Events}}
+        <tr>
+            <td data-label="When">{{.At}}</td>
+            <td data-label="Who">{{if .ActorLabel}}{{.ActorLabel}}{{else}}<span class="text-muted">-</span>{{end}}</td>
+            <td data-label="Action"><code>{{.Action}}</code></td>
+            <td data-label="Target">{{if .Target}}{{.Target}}{{else}}<span class="text-muted">-</span>{{end}}</td>
+            <td data-label="Status">
+                {{if eq .Status "error"}}<span class="badge badge-danger">Error</span>
+                {{else}}<span class="badge badge-success">OK</span>{{end}}
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{template "pagination" .Data.Page}}
+{{else}}
+<div class="skeleton-card">
+    <div class="skeleton-card__icon" aria-hidden="true">{{icon "shield-check"}}</div>
+    <h2 class="skeleton-card__title">No events{{if .Data.Status}} match this filter{{else}} recorded yet{{end}}</h2>
+    <p class="skeleton-card__body">
+        {{if .Data.Status}}<a href="/admin/events">Clear the filter</a> to see everything.
+        {{else}}Signing in, changing preferences, and editing stores all show up here.{{end}}
+    </p>
+</div>
+{{end}}
+{{end}}

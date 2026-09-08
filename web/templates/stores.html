@@ -108,6 +108,14 @@
                 </button>
             </form>
         </div>
+        {{if .PreferredItems}}
+        <div class="store-item__preferred">
+            <span class="store-item__preferred-label">{{icon "star"}} We buy here:</span>
+            {{range .PreferredItems}}
+            <a href="/pantry/items/{{.ItemID}}" class="badge badge-accent">{{.Name}}</a>
+            {{end}}
+        </div>
+        {{end}}
     </li>
     {{end}}
 </ul>

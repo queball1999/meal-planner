@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"goeat/catalog"
 	"goeat/db"
@@ -88,6 +89,33 @@ type shoppingListPageData struct {
 	OverBudget      bool
 	Groups          []shoppingStoreGroup
 	UnassignedItems []shoppingLineItem
+	HALastSync      string // "5m ago" etc, from the ha_sync_map timestamps; "" if never
+	ReadOnly        bool   // viewing a past/other week via ?week= or ?plan_id= - no editing
+}
+
+// haLastSyncLabel returns a short "5m ago"-style phrase for the most recent
+// push or pull to Home Assistant for this household, or "" if it has never
+// synced. Read from ha_sync_map, which is the only record of when a sync ran.
+func (s *Server) haLastSyncLabel(ctx context.Context, householdID int64) string {
+	rows, err := s.store.ListHASyncRows(ctx, householdID)
+	if err != nil || len(rows) == 0 {
+		return ""
+	}
+	var latest time.Time
+	for _, row := range rows {
+		for _, ts := range []string{row.LastPushedAt, row.LastPulledAt} {
+			if ts == "" {
+				continue
+			}
+			if t, perr := time.Parse(time.RFC3339Nano, ts); perr == nil && t.After(latest) {
+				latest = t
+			}
+		}
+	}
+	if latest.IsZero() {
+		return ""
+	}
+	return humaniseSince(time.Since(latest))
 }
 
 // handleShoppingListRedirect keeps the old /list URL working - the shopping
@@ -96,10 +124,12 @@ func (s *Server) handleShoppingListRedirect(w http.ResponseWriter, r *http.Reque
 	http.Redirect(w, r, "/plan/list", http.StatusMovedPermanently)
 }
 
-// buildShoppingListView assembles the shopping-list view model for the current
-// plan. Shared by the /plan "Shopping list" tab.
-func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) shoppingListPageData {
-	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
+// buildShoppingListView assembles the shopping-list view model for the /plan
+// "Shopping list" tab. p is whichever plan handlePlanPage already resolved
+// (the latest one, or a specific past week from ?week=/?plan_id=) so the two
+// tabs always agree on which week they're showing; readOnly disables every
+// control that would mutate it - a past week's list is a record, not a cart.
+func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p *db.Plan, readOnly bool) shoppingListPageData {
 	if p == nil || p.Status == "generating" {
 		return shoppingListPageData{HasPlan: false}
 	}
@@ -168,6 +198,8 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household) sh
 		OverBudget:      total > p.BudgetCents && total > 0,
 		Groups:          groups,
 		UnassignedItems: unassigned,
+		HALastSync:      s.haLastSyncLabel(ctx, hh.ID),
+		ReadOnly:        readOnly,
 	}
 }
 

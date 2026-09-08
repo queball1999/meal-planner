@@ -46,6 +46,17 @@ type dashPageData struct {
 	RecentPlans     []*db.Plan // up to 8 for the history strip
 	HasLLM          bool
 	Calendar        dashCalendar
+
+	// The plan card and the spend stats track whichever week the calendar
+	// widget is showing (?calref, week mode only). IsCurrentWeek is false when
+	// the calendar has been navigated away from the live week; the card then
+	// drops its generate/regenerate buttons - those only ever act on the
+	// current week - and points "View plan" at that specific week instead.
+	IsCurrentWeek bool
+	IsPastWeek    bool   // true when the viewed week has already ended - never generate/regenerate
+	WeekNavLabel  string // "Sep 8 – Sep 14", shown when IsCurrentWeek is false
+	WeekParam     string // "2026-09-08" - the viewed week's start, for the generate form's hidden field
+	PlanWeekParam string // "?week=2026-09-08" when viewing a past/future week, else ""
 }
 
 // dashCalendar is the dashboard's schedule widget: a week (default) or month
@@ -160,13 +171,45 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	now := time.Now().UTC()
-	weekStart, weekEnd := plan.WeekBounds(now, s.cfg.WeekStartDay)
+	curStart, _ := plan.WeekBounds(now, s.cfg.WeekStartDay)
+
+	// The plan card and spend stats follow the calendar widget's week. Only in
+	// week mode: a month view's ?calref is the 1st, and realigning to "the week
+	// containing the 1st" would be an arbitrary slice of the month.
+	ref := now
+	if r.URL.Query().Get("cal") != "month" {
+		if v := r.URL.Query().Get("calref"); v != "" {
+			if t, err := time.Parse("2006-01-02", v); err == nil {
+				ref = t.UTC()
+			}
+		}
+	}
+	weekStart, weekEnd := plan.WeekBounds(ref, s.cfg.WeekStartDay)
 	from := weekStart.Format("2006-01-02")
 	to := weekEnd.Format("2006-01-02")
+	isCurrentWeek := weekStart.Equal(curStart)
 
-	data := dashPageData{HasLLM: s.gen != nil}
+	data := dashPageData{
+		HasLLM:        s.gen != nil,
+		IsCurrentWeek: isCurrentWeek,
+		IsPastWeek:    weekStart.Before(curStart),
+		WeekParam:     from,
+	}
+	if !isCurrentWeek {
+		data.WeekNavLabel = weekStart.Format("Jan 2") + " – " + weekEnd.Format("Jan 2")
+		data.PlanWeekParam = "?week=" + from
+	}
 
-	if p, _ := s.store.GetLatestPlan(ctx, hh.ID); p != nil {
+	// Current week keeps the old behaviour (show the latest plan, which may be
+	// an auto-generated one for next week); a navigated week resolves to that
+	// specific week's plan.
+	var p *db.Plan
+	if isCurrentWeek {
+		p, _ = s.store.GetLatestPlan(ctx, hh.ID)
+	} else {
+		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, from)
+	}
+	if p != nil {
 		data.HasPlan = true
 		data.PlanStatus = s.reconcilePlanStatus(ctx, hh.ID, p)
 		data.WeekLabel = fmt.Sprintf("%s - %s",

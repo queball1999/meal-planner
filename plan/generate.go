@@ -34,12 +34,41 @@ var dayOffset = map[string]int{
 type Pricer func(ctx context.Context, planID int64, hh *db.Household) error
 
 // Generate resolves preferences, calls the LLM, validates the result, persists
-// it to the DB, optionally prices it, and returns the new plan ID. j is an
-// optional progress sink (nil is fine, e.g. in tests) - Generate emits a
-// status update at each real stage so the progress screen reflects what's
-// actually happening instead of sitting on "asking the AI" through pricing
-// and budget repair, which can run long after the LLM has already answered.
+// it to the DB, optionally prices it, and returns the new plan ID for the
+// upcoming week (today's date rolled forward to the next Sunday - today
+// itself, if today is Sunday). This is what the scheduler and the dashboard's
+// "Plan my week" / "Regenerate" buttons call; see GenerateForWeek for a
+// specific past or future week.
 func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, pricer Pricer, j *Job) (int64, error) {
+	hh, err := store.GetHousehold(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("get household: %w", err)
+	}
+	if hh == nil {
+		return 0, fmt.Errorf("household not configured")
+	}
+	weekStart := nextSunday(time.Now().In(mustLocation(hh.Timezone)))
+	return generate(ctx, store, gen, householdID, weekStart, pricer, j)
+}
+
+// GenerateForWeek is Generate for one specific week rather than "whichever
+// week is next" - the dashboard's manual "generate"/"regenerate" action for a
+// past or future week, reached by navigating the calendar widget away from
+// the current one. weekStart need not be a Sunday; it is used exactly as
+// given (the caller - handlePlanGenerate - is expected to pass a real week
+// boundary from plan.WeekBounds, the same helper the calendar itself uses).
+func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, j *Job) (int64, error) {
+	return generate(ctx, store, gen, householdID, weekStart, pricer, j)
+}
+
+// generate is the shared implementation behind Generate and GenerateForWeek:
+// resolves preferences, calls the LLM, validates the result, persists it to
+// the DB, optionally prices it, and returns the new plan ID. j is an optional
+// progress sink (nil is fine, e.g. in tests) - it emits a status update at
+// each real stage so the progress screen reflects what's actually happening
+// instead of sitting on "asking the AI" through pricing and budget repair,
+// which can run long after the LLM has already answered.
+func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, j *Job) (int64, error) {
 	hh, err := store.GetHousehold(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
@@ -58,7 +87,6 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return 0, fmt.Errorf("list stores: %w", err)
 	}
 
-	weekStart := nextSunday(time.Now().In(mustLocation(hh.Timezone)))
 	weekEnd := weekStart.AddDate(0, 0, 6)
 
 	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd)

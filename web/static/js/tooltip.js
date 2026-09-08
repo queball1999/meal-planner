@@ -99,7 +99,11 @@ window.goeat = window.goeat || {};
         popup.appendChild(close);
         popup.appendChild(body);
         popup.addEventListener('click', function (e) { e.stopPropagation(); });
-        wrap.appendChild(popup);
+        // Appended to <body>, not into wrap: wrap sits inside sticky/scrolling
+        // ancestors that trap a position:fixed child in their stacking context,
+        // so the popup would render behind sibling cards. hovercard.js does the
+        // same for the same reason.
+        document.body.appendChild(popup);
         return popup;
     }
 

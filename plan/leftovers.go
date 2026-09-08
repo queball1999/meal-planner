@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"goeat/db"
@@ -16,21 +17,30 @@ var slotOrder = map[string]int{
 }
 
 // leftoverMaxDayGap is how many days a batch-cooked surplus stays edible: a
-// meal is only flagged as living off an earlier one when they are on the same
-// day or consecutive days. Spec §4.3 is "the next day's lunch or dinner", and
-// without this the greedy matcher below would tag, say, Friday's oatmeal as
-// "leftovers from Monday's chili" purely because the portion count lined up -
-// which is where "the recycle icon is on meals that aren't leftovers" came
-// from.
+// meal is only linked to an earlier one when they are on the same day or
+// consecutive days. Spec §4.3 is "the next day's lunch or dinner".
 const leftoverMaxDayGap = 1
 
-// PlanLeftovers marks downstream meal slots as leftovers when an earlier meal
-// produces more cooked portions than it needs (§5.6). No-op when tolerance is
-// false.
-//
-// A slot is only eligible to be a leftover target when it is lunch or dinner
-// (nobody plans last night's stir-fry for breakfast) and within
-// leftoverMaxDayGap days of the meal that cooked the surplus.
+// isLeftoverTitle reports whether the model titled this meal as an
+// intentional leftover night - the prompt (BuildPrompt, §4.6) explicitly
+// asks it to "note in the title when a meal is intentional leftovers", e.g.
+// "Chili (leftovers)". This is the only source of truth for *which* meals
+// are leftovers: the model decides that when it plans the week, not a
+// heuristic re-deriving it after the fact from portion counts. Matching on
+// cooked_portions vs servings alone was marking every next-day lunch as a
+// leftover the moment any earlier meal had a couple of spare portions - which
+// is what a household batch-cooking dinner "just in case" does routinely,
+// whether or not that lunch was ever meant to be dinner's leftovers.
+func isLeftoverTitle(title string) bool {
+	return strings.Contains(strings.ToLower(title), "leftover")
+}
+
+// PlanLeftovers ties each meal the model titled as leftovers back to the
+// nearest earlier meal that actually cooked a surplus (§5.6), so the "this
+// meal feeds another one" UI has a real parent to point at. No-op when
+// tolerance is false. Breakfast is never eligible, matching the prompt (nobody
+// plans last night's stir-fry for breakfast) even if the model's title
+// suggests otherwise.
 func PlanLeftovers(ctx context.Context, store db.Store, planID int64, tolerance bool) error {
 	if !tolerance {
 		return nil
@@ -77,32 +87,41 @@ func PlanLeftovers(ctx context.Context, store db.Store, planID int64, tolerance 
 		}
 		dropStale(day)
 
-		if m.IsLeftover {
-			// Already flagged (a re-run over a plan that was matched before);
-			// consume from the pool so later slots see the right remainder.
+		wantsLeftover := m.Slot != "breakfast" && isLeftoverTitle(m.Title)
+
+		if wantsLeftover {
+			// Tie it to the nearest still-warm surplus, if one exists. The
+			// model's own portion math does not always line up exactly with
+			// its title, so a titled leftover meal is still marked even when
+			// no matching surplus can be found - the title is authoritative;
+			// the source link is best-effort on top of it.
+			var srcID *int64
 			if len(pool) > 0 {
+				id := pool[0].sourceMealID
+				srcID = &id
 				pool[0].portions -= m.Servings
 				if pool[0].portions <= 0 {
 					pool = pool[1:]
 				}
 			}
-			continue
-		}
-
-		// Can this slot be covered by leftover surplus? Breakfast never is.
-		if m.Slot != "breakfast" && len(pool) > 0 && pool[0].portions >= m.Servings {
-			srcID := pool[0].sourceMealID
-			pool[0].portions -= m.Servings
-			if pool[0].portions <= 0 {
-				pool = pool[1:]
-			}
-			if err := store.UpdateMealLeftover(ctx, m.ID, true, &srcID); err != nil {
-				return fmt.Errorf("leftovers: mark meal %d: %w", m.ID, err)
+			if !m.IsLeftover || m.LeftoverSourceMealID == nil || srcID == nil || *m.LeftoverSourceMealID != *srcID {
+				if err := store.UpdateMealLeftover(ctx, m.ID, true, srcID); err != nil {
+					return fmt.Errorf("leftovers: mark meal %d: %w", m.ID, err)
+				}
 			}
 			continue
 		}
 
-		// Accumulate this meal's surplus for downstream slots.
+		// Not titled as leftovers - clear a stale flag a previous, looser
+		// version of this heuristic may have left behind.
+		if m.IsLeftover {
+			if err := store.UpdateMealLeftover(ctx, m.ID, false, nil); err != nil {
+				return fmt.Errorf("leftovers: clear stale flag on meal %d: %w", m.ID, err)
+			}
+		}
+
+		// This meal's own surplus, if any, is available to a later titled
+		// leftover meal.
 		if m.CookedPortions > m.Servings {
 			pool = append(pool, surplusEntry{
 				sourceMealID: m.ID,

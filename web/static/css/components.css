@@ -726,10 +726,33 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
  * vertically centred with the text rather than wrapped underneath it. */
 .store-item {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
 }
+
+/* "We buy this here" - items whose preferred store (set from the item's own
+   page) is this one. Its own full-width row under the store's main line. */
+.store-item__preferred {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
+    padding-top: var(--sp-2);
+    border-top: 1px dashed var(--border);
+    font-size: var(--text-sm);
+}
+.store-item__preferred-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+}
+.store-item__preferred-label svg { width: 14px; height: 14px; color: var(--warning, #f59e0b); }
+.store-item__preferred .badge { text-decoration: none; }
 
 .store-item__icon {
     display: inline-flex;
@@ -1386,15 +1409,15 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     top: 0;
     background: var(--bg, var(--surface));
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-2);
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-1);
     padding: var(--sp-2);
     border-bottom: 2px solid var(--border);
     font-weight: var(--weight-semi);
     z-index: 1;
 }
-.plan-col__day { font-size: var(--text-sm); }
+.plan-col__day { font-size: var(--text-base); font-weight: var(--weight-bold); text-align: center; }
 .plan-col__meta { font-size: var(--text-xs); color: var(--text-muted); font-weight: var(--weight-normal); }
 .plan-col__headcount { display: flex; align-items: center; gap: var(--sp-1); margin: 0; }
 .plan-col__headcount .field-input {
@@ -1575,6 +1598,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     display: flex;
     align-items: center;
     gap: var(--sp-1);
+    padding: 0 var(--sp-1);
 }
 
 .field-input--sm {
@@ -1604,8 +1628,10 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .people-picker__summary {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--sp-1);
-    padding: var(--sp-1) var(--sp-2);
+    width: 100%;
+    padding: var(--sp-1) var(--sp-3);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface);
@@ -1696,23 +1722,17 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     flex-basis: 100%;
 }
 
-/* In flow, not absolutely positioned.
- *
- * `.plan-board` has `overflow-x: auto`, and a box whose overflow is not
- * `visible` on one axis computes the other to `auto` too - so the board is a
- * scroll container in both directions and clips any absolutely positioned
- * descendant, whatever its z-index. That is the same trap tooltip.js and
- * hovercard.js each document and solve with `position: fixed`; here the menu
- * is short and lives at the top of a column, so simply letting it push the
- * day's meal cards down is cheaper than positioning it in script, and it
- * behaves the same on a phone as on a desktop. */
+/* `.people-picker__menu` is also `.popover` (popover.js): `.plan-board` has
+ * `overflow-x: auto`, and a box whose overflow is not `visible` on one axis
+ * computes the other to `auto` too - so the board is a scroll container in
+ * both directions and clips an in-flow or absolutely positioned descendant,
+ * whatever its z-index. That is the same trap tooltip.js and hovercard.js
+ * each document and solve the same way: `position: fixed`, placed by script,
+ * so opening it never pushes the day's meal cards down and it is never
+ * hidden behind the next column's cards. These rules just add the
+ * people-picker's own content styling on top of .popover's shared look. */
 .people-picker__menu {
-    margin-top: var(--sp-1);
     padding: var(--sp-2);
-    background: var(--surface-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-sm);
 }
 
 .people-picker__option {
@@ -1900,8 +1920,12 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .hovercard {
     position: fixed;
-    z-index: 1100;
-    width: 20rem;
+    /* Pinned, it has to clear the popover primitive (1200) and sticky heads. */
+    z-index: 1300;
+    /* Wide enough that the title and the close/recipe/show-on-plan buttons
+       sit on one row for a normal meal title instead of the buttons wrapping
+       below it. */
+    width: 23rem;
     max-width: calc(100vw - 2rem);
     background: var(--surface-raised);
     border: 1px solid var(--border);
@@ -1932,11 +1956,25 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .hovercard__body { padding: var(--sp-3) var(--sp-4); }
 
+/* Title and the close/recipe/show-on-plan buttons on one row, wide enough
+   (see .hovercard's own width) that a normal meal title doesn't force them
+   onto a second line. */
+.hovercard__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-1);
+}
+
 .hovercard__title {
-    margin: 0 0 var(--sp-1);
+    margin: 0;
+    padding-top: 4px; /* optically centers against the action buttons' own height */
     font-size: var(--text-base);
     font-weight: var(--weight-semi);
     line-height: 1.25;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .hovercard__meta {
@@ -1981,9 +2019,54 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     color: var(--text-muted);
 }
 
-/* Hover is not a thing on touch, and the link underneath already works. */
+/* Hover is not a thing on touch, so the preview never opens there - but a tap
+   still pins the card, and that one has to show. */
 @media (hover: none) {
-    .hovercard { display: none; }
+    .hovercard:not(.hovercard--pinned) { display: none; }
+}
+
+/* Show-on-plan, open recipe, close - inline with the title (see
+   .hovercard__head), on a hover preview as much as a pinned card. */
+.hovercard__actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+}
+.hovercard__act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: none;
+}
+.hovercard__act:hover,
+.hovercard__act:focus-visible {
+    background: var(--accent-bg);
+    color: var(--accent-text);
+    outline: none;
+}
+.hovercard__act svg { width: 16px; height: 16px; }
+
+/* A meal jumped to from the pinned card's "show on the week plan" button. */
+.cal-meal.is-flash,
+.meal-card.is-flash {
+    border-radius: var(--radius-sm);
+    animation: meal-flash 1.6s var(--ease, ease-out);
+}
+@keyframes meal-flash {
+    0%, 40%, 80%, 100% { box-shadow: 0 0 0 0 transparent; }
+    20%, 60%           { box-shadow: 0 0 0 3px var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cal-meal.is-flash,
+    .meal-card.is-flash { animation: none; box-shadow: 0 0 0 3px var(--accent); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2244,3 +2327,147 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .price-verdict--good { color: var(--success); }
 .price-verdict--high { color: var(--warning); }
+
+/* ── Dashboard: plan history (full-bleed table) ─────────────────────────── */
+.card--flush { padding: 0; }
+
+.plan-history__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-6) var(--sp-3);
+}
+
+.plan-history__title {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: var(--text-base, 1rem);
+    font-weight: var(--weight-semi);
+}
+.plan-history__title svg { width: 18px; height: 18px; }
+
+.plan-history__scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.plan-history .data-table { width: 100%; }
+.plan-history .data-table th:first-child,
+.plan-history .data-table td:first-child { padding-left: var(--sp-6); }
+.plan-history .data-table th:last-child,
+.plan-history .data-table td:last-child { padding-right: var(--sp-6); }
+
+/* On a phone this table scrolls sideways instead of collapsing into cards
+   (the global .data-table rule stacks every table below 600px). */
+@media (max-width: 600px) {
+    .plan-history .data-table { display: table; }
+    .plan-history .data-table thead { display: table-header-group; }
+    .plan-history .data-table tbody { display: table-row-group; }
+    .plan-history .data-table tr { display: table-row; border: 0; margin: 0; padding: 0; }
+    .plan-history .data-table th,
+    .plan-history .data-table td { display: table-cell; width: auto; white-space: nowrap; }
+    .plan-history .data-table tr:hover td { background: var(--accent-bg); }
+    .plan-history .data-table td::before { content: none; }
+}
+
+/* ── Shopping list: link chip sits on the name's line ──────────────────── */
+.shopping-item__name-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+/* ── Shopping list toolbar: usable button sizes on a phone ─────────────── */
+@media (max-width: 600px) {
+    .list-toolbar .btn { flex: 1 1 calc(50% - .5rem); }
+    .list-toolbar #ai-cost-btn { flex-basis: 100%; margin-left: 0 !important; }
+}
+
+/* ── Preferences: one even gap between every card on the page ───────────── */
+.pref-members { margin-bottom: var(--sp-4); }
+.pref-form > .form-actions { margin-top: 0; }
+
+/* ── Dashboard: "you are viewing another week" note ────────────────────── */
+.dash-week-note {
+    margin: 0 0 var(--sp-3);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* ── Match picker: eye icon to preview, "add new item" row ──────────────── */
+.match-list__row { display: flex; align-items: center; }
+.match-list__row .match-list__btn { flex: 1; min-width: 0; }
+.match-list__view {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.25rem;
+    height: 2.25rem;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+.match-list__view:hover,
+.match-list__view:focus-visible {
+    color: var(--accent-text);
+    background: var(--accent-bg);
+    outline: none;
+}
+.match-list__view svg { width: 16px; height: 16px; }
+.match-list__btn--new { color: var(--accent-text); font-weight: var(--weight-medium); }
+
+/* ── Pantry list: item thumbnail beside the name ─────────────────────────── */
+.pantry-row__name {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.pantry-thumb {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    background: var(--surface-raised);
+}
+
+/* ── Meal detail: matching recipe photo, when the catalog has one ───────── */
+.meal-detail__image {
+    display: block;
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: var(--radius-lg);
+    margin-bottom: 1.5rem;
+}
+
+/* ── "We buy this here" star toggle (item detail + stores page) ─────────── */
+.preferred-star--on { color: var(--warning, #f59e0b); }
+.preferred-star--on:hover { color: var(--warning, #f59e0b); }
+
+/* ── Per-meal status icons (eating out / skip) on the meal card ─────────── */
+/* A single non-cooking meal dims like a whole non-cooking day used to. */
+.meal-card--off { opacity: 0.55; }
+
+.meal-status-btn--active {
+    color: var(--accent-text);
+    background: var(--accent-bg);
+}
+
+/* ── "Ask AI" escape hatch inside an action modal ────────────────────────── */
+.modal-ask-ai {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    margin-top: var(--sp-4);
+    padding-top: var(--sp-4);
+    border-top: 1px dashed var(--border);
+}
+.modal-ask-ai__label {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}

@@ -19,6 +19,10 @@
     </p>
 </div>
 
+{{if .Data.ImageURL}}
+<img src="{{.Data.ImageURL}}" alt="" class="meal-detail__image" loading="lazy">
+{{end}}
+
 {{if .Data.Meal.IsLeftover}}
 <div class="card" style="margin-bottom:1.5rem;background:var(--surface-2)">
     {{icon "information"}}

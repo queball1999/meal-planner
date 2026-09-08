@@ -175,20 +175,6 @@
     {{end}}
 </div>
 
-{{/* ── LLM Debug Log ────────────────────────────────────────────────────── */}}
-{{if .Data.HasLLM}}
-<div class="card form-section" style="margin-bottom:1.5rem">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-2)">
-        <h2 class="form-section__title" style="margin:0">{{icon "code"}} LLM Call Log</h2>
-        <button id="llmLogRefresh" class="btn btn-ghost btn-sm" type="button">{{icon "refresh"}} Refresh</button>
-    </div>
-    <p class="field-hint" style="margin-bottom:var(--sp-4)">Last {{`30`}} calls - newest first. Captured in memory; cleared on restart.</p>
-    <div id="llmLogContainer">
-        <p style="color:var(--text-muted);font-size:var(--text-sm)">Loading…</p>
-    </div>
-</div>
-{{end}}
-
 {{/* ── Headless browser (scraping) ─────────────────────────────────── */}}
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">{{icon "code"}} Headless browser</h2>
@@ -575,62 +561,9 @@
         });
     }
 
-    /* ── LLM Debug Log ───────────────────────────────────────────────── */
-    var logContainer = document.getElementById('llmLogContainer');
-    var logRefresh   = document.getElementById('llmLogRefresh');
-
-    function truncate(s, n) {
-        return s && s.length > n ? s.slice(0, n) + '…' : (s || '');
-    }
-
-    function esc(s) {
-        return String(s)
-            .replace(/&/g,'&amp;')
-            .replace(/</g,'&lt;')
-            .replace(/>/g,'&gt;')
-            .replace(/"/g,'&quot;');
-    }
-
-    function renderLog() {
-        if (!logContainer) return;
-        fetch('/admin/llm-debug')
-        .then(function(r){ return r.json(); })
-        .then(function(entries){
-            if (!entries || entries.length === 0) {
-                logContainer.innerHTML = '<p style="color:var(--text-muted);font-size:var(--text-sm)">No calls yet.</p>';
-                return;
-            }
-            var html = entries.map(function(e, i){
-                var isErr = !!e.error;
-                var time  = new Date(e.at).toLocaleTimeString();
-                var border = isErr ? 'var(--color-danger,#ef4444)' : 'var(--accent)';
-                var collapsed = i !== 0; // only first entry expanded by default
-                var detailsAttr = collapsed ? '' : ' open';
-                return '<details class="llm-debug-entry"' + detailsAttr + ' style="border-left-color:' + border + '">' +
-                    '<summary class="llm-debug-summary">' +
-                        '<span class="llm-debug-time">' + time + '</span>' +
-                        (isErr ? '<span class="badge badge-danger">error</span>' : '') +
-                        (e.provider ? '<span class="llm-debug-model">' + esc(e.provider) + '</span>' : '') +
-                        (e.model ? '<span class="llm-debug-model">' + esc(e.model) + '</span>' : '') +
-                        '<span class="llm-debug-dur">' + e.duration_ms + ' ms</span>' +
-                        (e.input_tokens ? '<span class="llm-debug-toks">' + e.input_tokens + '↑ ' + e.output_tokens + '↓</span>' : '') +
-                        '<span class="llm-debug-snippet">' + truncate(e.prompt, 80) + '</span>' +
-                    '</summary>' +
-                    (e.system ? '<div class="llm-debug-row"><span class="llm-debug-label">System</span><pre class="llm-debug-pre">' + esc(e.system) + '</pre></div>' : '') +
-                    '<div class="llm-debug-row"><span class="llm-debug-label">Prompt</span><pre class="llm-debug-pre">' + esc(e.prompt) + '</pre></div>' +
-                    (e.response ? '<div class="llm-debug-row"><span class="llm-debug-label">Response</span><pre class="llm-debug-pre">' + esc(e.response) + '</pre></div>' : '') +
-                    (e.error ? '<div class="llm-debug-row"><span class="llm-debug-label">Error</span><pre class="llm-debug-pre llm-debug-pre--error">' + esc(e.error) + '</pre></div>' : '') +
-                    '</details>';
-            }).join('');
-            logContainer.innerHTML = html;
-        })
-        .catch(function(err){
-            logContainer.innerHTML = '<p style="color:var(--color-danger)">Failed to load log: ' + esc(String(err)) + '</p>';
-        });
-    }
-
-    if (logRefresh) logRefresh.addEventListener('click', renderLog);
-    renderLog(); // load on page open
+    // The in-page LLM call preview used to live here; it's now the "Audit
+    // log" sub-tab (/admin/llm-log), which has the full searchable history
+    // rather than the last 30 calls held in memory.
 }());
 </script>
 {{end}}

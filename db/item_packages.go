@@ -6,7 +6,7 @@ import (
 )
 
 const itemPackageColumns = `id, item_id, store_id, purchase_unit, amount_per_package,
-	price_cents, updated_by, updated_at`
+	price_cents, updated_by, updated_at, preferred`
 
 // UpsertItemStorePackage inserts or replaces how one item is sold at one store.
 // Every write is also appended to price_history, so callers never need to
@@ -112,6 +112,29 @@ func (s *store) DeleteItemStorePackage(ctx context.Context, id int64) error {
 	return err
 }
 
+// SetItemStorePreferred marks (or unmarks) a store as the one the household
+// buys an item from - "we buy this here". Only ever one store per item: a
+// second preference for the same item replaces the first, rather than
+// leaving two stores both marked, which would make the reverse "what do we
+// buy at this store" view on the Stores page unable to tell which one meant it.
+func (s *store) SetItemStorePreferred(ctx context.Context, itemID, storeID int64, preferred bool) error {
+	if preferred {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE item_store_packages SET preferred = 0 WHERE item_id = ? AND store_id != ?`,
+			itemID, storeID); err != nil {
+			return err
+		}
+	}
+	v := 0
+	if preferred {
+		v = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE item_store_packages SET preferred = ? WHERE item_id = ? AND store_id = ?`,
+		v, itemID, storeID)
+	return err
+}
+
 func scanItemPackageRows(rows interface {
 	Next() bool
 	Scan(...any) error
@@ -121,11 +144,13 @@ func scanItemPackageRows(rows interface {
 	for rows.Next() {
 		var p ItemStorePackage
 		var updatedAt string
+		var preferred int
 		if err := rows.Scan(&p.ID, &p.ItemID, &p.StoreID, &p.PurchaseUnit,
-			&p.AmountPerPackage, &p.PriceCents, &p.UpdatedBy, &updatedAt); err != nil {
+			&p.AmountPerPackage, &p.PriceCents, &p.UpdatedBy, &updatedAt, &preferred); err != nil {
 			return nil, err
 		}
 		p.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		p.Preferred = preferred != 0
 		out = append(out, &p)
 	}
 	return out, rows.Err()

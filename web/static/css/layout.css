@@ -193,7 +193,7 @@
 }
 
 /* The icon-only mobile entry point - hidden until the breakpoint swaps them. */
-.header-search-btn {
+.site-header-actions .header-search-btn {
     display: none;
 }
 
@@ -411,7 +411,7 @@
         display: none;
     }
 
-    .header-search-btn {
+    .site-header-actions .header-search-btn {
         display: inline-flex;
     }
 

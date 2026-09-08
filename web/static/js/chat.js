@@ -212,6 +212,20 @@
         if (dirty) window.location.reload();
     }
 
+    // Exposed so other UI can hand the assistant a specific job instead of
+    // making the person retype context it can already see (a modal's "Ask AI"
+    // button, say). Opens the panel and fills the box; it does not send on its
+    // own, since a delegated action can change real data and deserves a look
+    // before it goes.
+    window.goeat = window.goeat || {};
+    window.goeat.askAI = function (text) {
+        open();
+        if (!text) return;
+        input.value = text;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+    };
+
     launcher.addEventListener('click', function () {
         if (panel.hidden) open(); else close();
     });

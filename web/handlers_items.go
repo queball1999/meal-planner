@@ -274,6 +274,13 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	s.lazyFetchItemImage(it)
 
+	// Backfill derived conversions on view, not just on save: an item created
+	// before this feature existed (or seeded straight into the DB) can reach
+	// this page having never had RecalcItemConversions run for it, which is
+	// exactly the "only the one hand-entered bridge shows, nothing else" gap.
+	// Idempotent and cheap (one item), so recomputing on every view is safe.
+	_ = catalog.RecalcItemConversions(ctx, s.store, id)
+
 	stores, _ := s.store.ListStores(ctx, hh.ID)
 	storeName := map[int64]string{}
 	for _, gs := range stores {
@@ -600,6 +607,49 @@ func (s *Server) handleItemPackageUpsert(w http.ResponseWriter, r *http.Request)
 		s.setNotify(w, NotifyDanger, "Could not save the store package.")
 	} else {
 		s.setNotify(w, NotifySuccess, "Store package saved.")
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
+}
+
+// handleItemStorePreferred toggles "we buy this here" for one (item, store)
+// pair - Item detail's Store packages table, and the reverse view on the
+// Stores page. Setting it un-prefers any other store already preferred for
+// this item (see db.SetItemStorePreferred): one item, at most one preferred
+// store, so the Stores page's "we buy this here" list can't show the same
+// item twice.
+//
+//	POST /pantry/items/{id}/stores/{storeID}/preferred  {preferred: "1"|"0"}
+func (s *Server) handleItemStorePreferred(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	storeID, err := strconv.ParseInt(r.PathValue("storeID"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad store id", http.StatusBadRequest)
+		return
+	}
+	dest := fmt.Sprintf("/pantry/items/%d", id)
+
+	it, _ := s.store.GetItem(r.Context(), id)
+	if it == nil || it.HouseholdID != hh.ID {
+		http.NotFound(w, r)
+		return
+	}
+
+	preferred := r.FormValue("preferred") == "1"
+	if err := s.store.SetItemStorePreferred(r.Context(), id, storeID, preferred); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not save that.")
+	} else if preferred {
+		s.setNotify(w, NotifySuccess, "Marked as where you buy this.")
+	} else {
+		s.setNotify(w, NotifySuccess, "No longer marked as where you buy this.")
 	}
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }

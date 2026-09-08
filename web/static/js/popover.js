@@ -51,12 +51,19 @@ window.goeat = window.goeat || {};
         const r = trigger.getBoundingClientRect();
         const gap = 8;
 
-        // Measure, then clamp into the viewport so a panel near an edge never
-        // hangs off-screen (a right-aligned menu on a narrow phone).
-        panel.style.visibility = 'hidden';
+        // Measure with the panel actually rendered: `.popover:not(.popover--open)`
+        // is display:none, and that class is only added after place() returns,
+        // so offsetWidth/offsetHeight would read as 0 without this override -
+        // every placement branch below would then be computed against a
+        // zero-size panel. visibility:hidden keeps it invisible during the
+        // measurement without collapsing it.
         panel.hidden = false;
+        panel.style.visibility = 'hidden';
+        panel.style.display = 'block';
         const pw = panel.offsetWidth;
+        const ph = panel.offsetHeight;
         const vw = document.documentElement.clientWidth;
+        const vh = document.documentElement.clientHeight;
 
         let left;
         if (placement === 'bottom-start') left = r.left;
@@ -65,10 +72,14 @@ window.goeat = window.goeat || {};
 
         left = Math.max(gap, Math.min(left, vw - pw - gap));
 
+        let top = r.bottom + gap;
+        top = Math.max(gap, Math.min(top, vh - ph - gap));
+
         panel.style.position = 'fixed';
-        panel.style.top = Math.round(r.bottom + gap) + 'px';
+        panel.style.top = Math.round(top) + 'px';
         panel.style.left = Math.round(left) + 'px';
         panel.style.visibility = '';
+        panel.style.display = '';
     }
 
     function openPopover(id) {

@@ -162,4 +162,18 @@ var mdiPaths = map[string]string{
 
 	// mdi-flashlight-off (barcode scanner torch, on state)
 	"flashlight-off": "M2,5.27L3.28,4L20,20.72L18.73,22L15,18.27V22H9V12.27L2,5.27M18,5L15,10H11.82L6.82,5H18M18,4H6V2H18V4M15,11V13.18L12.82,11H15Z",
+
+	// mdi-history (dashboard plan-history heading; was referenced with no
+	// matching entry, so it rendered as an invisible comment - added on the
+	// same pass that added the admin-events shield icon below)
+	"history": "M13,3A9,9 0 0,0 4,12H1L4.89,15.89L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3M12,8V13L16.28,15.54L17,14.33L13.5,12.25V8H12Z",
+
+	// mdi-shield-check-outline (settings: admin events audit trail)
+	"shield-check": "M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z",
+
+	// mdi-star (item detail / stores: "we buy this here", marked)
+	"star": "M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27Z",
+
+	// mdi-star-outline (item detail / stores: "we buy this here", unmarked)
+	"star-outline": "M12,15.4L8.24,17.67L9.24,13.39L5.92,10.51L10.3,10.13L12,6.09L13.7,10.13L18.08,10.51L14.76,13.39L15.76,17.67M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z",
 }

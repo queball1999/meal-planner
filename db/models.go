@@ -214,6 +214,10 @@ type Meal struct {
 	LeftoverSourceMealID *int64
 	Locked               bool
 	AIRunID              *int64
+	// Status is "cooking" | "eating_out" | "skipped" (00026_meal_status.sql) -
+	// the meal-card icons on the Plan page. A non-cooking meal's ingredients
+	// are excluded from the shopping list (ListIngredientsByPlan).
+	Status string
 }
 
 // MealRecipe holds steps for one meal (§5.2, §10.1).
@@ -503,6 +507,11 @@ type ItemStorePackage struct {
 	PriceCents       int64
 	UpdatedBy        string
 	UpdatedAt        time.Time
+	// Preferred marks this as the store the household chooses to buy this item
+	// from, when it has package rows at more than one (00025_item_store_preferred.sql).
+	// Untouched by UpsertItemStorePackage - only SetItemStorePreferred changes it,
+	// so re-saving a price never silently un-prefers a store.
+	Preferred bool
 }
 
 // PriceHistoryEntry is one recorded price for an (item, store) pair over time

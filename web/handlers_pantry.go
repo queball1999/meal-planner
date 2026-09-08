@@ -12,8 +12,16 @@ import (
 	"goeat/pricing"
 )
 
+// pantryRow adds the catalog item's photo to a pantry row for display - a
+// pantry list of dozens of ingredients reads a lot faster with a thumbnail per
+// row than with names alone, matching the catalog and recipe lists.
+type pantryRow struct {
+	*db.PantryItem
+	ImageURL string
+}
+
 type pantryPageData struct {
-	Items    []*db.PantryItem
+	Items    []pantryRow
 	FilterQ  string
 	Filtered bool
 	Page     Pagination
@@ -25,10 +33,27 @@ func (s *Server) handlePantryPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
+	ctx := r.Context()
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	items, _ := s.store.FilterPantryItems(r.Context(), hh.ID, q)
+	items, _ := s.store.FilterPantryItems(ctx, hh.ID, q)
 	items, page := paginate(r, items)
-	s.render(w, r, "pantry", pantryPageData{Items: items, FilterQ: q, Filtered: q != "", Page: page})
+
+	// One catalog read for the whole page rather than a lookup per row.
+	catalogItems, _ := s.store.ListItems(ctx, hh.ID)
+	itemsByID := make(map[int64]*db.Item, len(catalogItems))
+	for _, it := range catalogItems {
+		itemsByID[it.ID] = it
+	}
+	rows := make([]pantryRow, len(items))
+	for i, pi := range items {
+		var linked *db.Item
+		if pi.ItemID != nil {
+			linked = itemsByID[*pi.ItemID]
+		}
+		rows[i] = pantryRow{PantryItem: pi, ImageURL: itemImageURL(linked)}
+	}
+
+	s.render(w, r, "pantry", pantryPageData{Items: rows, FilterQ: q, Filtered: q != "", Page: page})
 }
 
 func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {

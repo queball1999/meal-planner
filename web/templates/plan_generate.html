@@ -5,6 +5,30 @@
     <p class="page-subtitle">The AI is building your weekly meal plan. This takes 15-30 seconds.</p>
 </div>
 
+<div class="wizard-progress" id="gen-progress" role="progressbar" aria-label="Generation progress">
+    <div class="wizard-progress__step" data-step-indicator="0">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Preferences</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="1">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Ask AI</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="2">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Review</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="3">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Save</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="4">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Price</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="5">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Shopping list</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="6">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Finish</span>
+    </div>
+</div>
+
 <div class="skeleton-card" id="gen-card">
     <div class="skeleton-card__icon icon-spin" aria-hidden="true" id="gen-icon">{{icon "autorenew"}}</div>
     <h2 class="skeleton-card__title" id="gen-title">Working…</h2>
@@ -26,6 +50,59 @@
     var title  = document.getElementById('gen-title');
     var status = document.getElementById('gen-status');
     var icon   = document.getElementById('gen-icon');
+
+    /* ── Step progress bar ──────────────────────────────────────────────
+     * The backend emits free-text status lines (plan/generate.go,
+     * plan/repair.go), not step numbers, so each known phase is matched by
+     * a keyword in that text. Matching only forward from the current step
+     * means a phase the server skips (no pricer configured, so no
+     * "Pricing your shopping list" line ever arrives) is silently passed
+     * over the moment the next phase's line matches, instead of stranding
+     * the bar on a step that was never going to complete. Anything that
+     * matches nothing (a repair-loop swap message) leaves the bar exactly
+     * where it was and only updates the text underneath. */
+    var progress = document.getElementById('gen-progress');
+    var stepEls = progress ? Array.from(progress.querySelectorAll('[data-step-indicator]')) : [];
+    var STEP_KEYWORDS = [
+        'resolving preferences',
+        'asking the ai',
+        'checking it over',
+        'saving your meals',
+        'pricing your shopping list',
+        'building your shopping list',
+        'finishing up',
+    ];
+    var currentStep = -1;
+
+    function setStep(n) {
+        if (n <= currentStep) return;
+        currentStep = n;
+        stepEls.forEach(function (el) {
+            var i = parseInt(el.dataset.stepIndicator, 10);
+            el.classList.toggle('wizard-progress__step--complete', i < currentStep);
+            el.classList.toggle('wizard-progress__step--active', i === currentStep);
+            el.classList.remove('wizard-progress__step--error');
+        });
+    }
+
+    function advanceStep(message) {
+        var text = String(message || '').toLowerCase();
+        for (var i = currentStep + 1; i < STEP_KEYWORDS.length; i++) {
+            if (text.indexOf(STEP_KEYWORDS[i]) !== -1) { setStep(i); return; }
+        }
+    }
+
+    function finishSteps() {
+        stepEls.forEach(function (el) {
+            el.classList.add('wizard-progress__step--complete');
+            el.classList.remove('wizard-progress__step--active', 'wizard-progress__step--error');
+        });
+    }
+
+    function markStepError() {
+        var active = progress && progress.querySelector('.wizard-progress__step--active');
+        if (active) active.classList.add('wizard-progress__step--error');
+    }
     // Once the job reports done/error and we close the connection ourselves,
     // the browser still notices the stream ended and fires its own native
     // 'error' Event right behind our custom one - that event carries no
@@ -37,6 +114,7 @@
     es.addEventListener('status', function (e) {
         if (settled) return;
         status.textContent = e.data;
+        advanceStep(e.data);
     });
 
     es.addEventListener('done', function (e) {
@@ -44,6 +122,7 @@
         es.close();
         stopDebugPoll();
         refreshDebugLog();
+        finishSteps();
         icon.classList.remove('icon-spin');
         icon.innerHTML     = document.getElementById('gen-icon-check').innerHTML;
         title.textContent  = 'Plan ready!';
@@ -63,6 +142,7 @@
         es.close();
         stopDebugPoll();
         refreshDebugLog();
+        markStepError();
         icon.classList.remove('icon-spin');
         icon.innerHTML     = document.getElementById('gen-icon-close').innerHTML;
         title.textContent  = 'Generation failed';

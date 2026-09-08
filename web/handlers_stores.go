@@ -27,6 +27,17 @@ type storeRow struct {
 	Store  *db.GroceryStore
 	Config *db.ScrapeConfig
 	Known  *KnownStore // nil for hand-typed stores not in the catalog
+
+	// PreferredItems is "we buy this here": catalog items whose preferred
+	// store (item_detail's star toggle) is this one. Read-only here - set
+	// from the item's own page, not this one.
+	PreferredItems []preferredItemLink
+}
+
+// preferredItemLink is one chip in a store's "we buy this here" list.
+type preferredItemLink struct {
+	ItemID int64
+	Name   string
 }
 
 // catalogEntry is one chip in the "where do you shop" picker - the same list
@@ -47,12 +58,36 @@ func (s *Server) handleStoresPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stores, _ := s.store.ListStores(ctx, hh.ID)
 
+	// One catalog read for the whole page, so "we buy this here" can resolve
+	// each preferred package's item name without a query per store.
+	catalogItems, _ := s.store.ListItems(ctx, hh.ID)
+	itemName := make(map[int64]string, len(catalogItems))
+	for _, it := range catalogItems {
+		itemName[it.ID] = it.Name
+	}
+
 	rows := make([]storeRow, 0, len(stores))
 	have := make(map[string]bool, len(stores))
 	for _, gs := range stores {
 		have[gs.Name] = true
 		cfg, _ := s.store.GetScrapeConfigByStore(ctx, gs.ID)
-		rows = append(rows, storeRow{Store: gs, Config: cfg, Known: KnownStoreByName(gs.Name)})
+
+		var preferred []preferredItemLink
+		if pkgs, _ := s.store.ListPackagesForStore(ctx, gs.ID); pkgs != nil {
+			for _, p := range pkgs {
+				if !p.Preferred {
+					continue
+				}
+				if name := itemName[p.ItemID]; name != "" {
+					preferred = append(preferred, preferredItemLink{ItemID: p.ItemID, Name: name})
+				}
+			}
+		}
+
+		rows = append(rows, storeRow{
+			Store: gs, Config: cfg, Known: KnownStoreByName(gs.Name),
+			PreferredItems: preferred,
+		})
 	}
 
 	// Chains only operate in some states, so a Phoenix household should not be

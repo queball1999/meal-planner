@@ -41,9 +41,17 @@ func (s *Server) handleDangerWipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var actorID *int64
+	if u := middleware.UserFromCtx(r); u != nil {
+		id := u.ID
+		actorID = &id
+	}
+
 	if err != nil {
+		s.logEvent(r, actorID, "danger.wipe.failed", "household", fmt.Sprintf("%d", hh.ID), target)
 		s.setNotify(w, NotifyDanger, fmt.Sprintf("Wipe failed: %v", err))
 	} else {
+		s.logEvent(r, actorID, "danger.wipe", "household", fmt.Sprintf("%d", hh.ID), target)
 		s.setNotify(w, NotifySuccess, successMsg)
 	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)

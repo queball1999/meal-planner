@@ -25,6 +25,9 @@ type calendarSlot struct {
 	Locked     bool
 	IsLeftover bool
 	IsEmpty    bool
+	// Status is "cooking" | "eating_out" | "skipped" (db.Meal.Status) - the
+	// meal-card icons. Meaningless when IsEmpty.
+	Status string
 }
 
 // calendarDay holds one column in the calendar grid.
@@ -149,16 +152,13 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tab := planTab(r)
 
-	var listView *shoppingListPageData
-	if tab == "list" {
-		v := s.buildShoppingListView(ctx, hh)
-		listView = &v
-	}
-
 	// ?plan_id=123 loads one specific plan (e.g. a canceled one from
 	// /plan/history - its own week now resolves to whatever superseded it, so
 	// it can only be reached by id). ?week=YYYY-MM-DD loads that week's
-	// current plan. Either way the view is read-only.
+	// current plan. Either way the view is read-only. Resolved once, up front,
+	// so the calendar tab and the shopping-list tab always agree on which
+	// week they're showing - switching tabs used to silently drop back to the
+	// latest week's shopping list even while viewing a past plan.
 	readOnly := false
 	var p *db.Plan
 	if idStr := r.URL.Query().Get("plan_id"); idStr != "" {
@@ -173,6 +173,12 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		readOnly = true
 	} else {
 		p, _ = s.store.GetLatestPlan(ctx, hh.ID)
+	}
+
+	var listView *shoppingListPageData
+	if tab == "list" {
+		v := s.buildShoppingListView(ctx, hh, p, readOnly)
+		listView = &v
 	}
 
 	status := s.reconcilePlanStatus(ctx, hh.ID, p)
@@ -206,6 +212,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 			Servings:   m.Servings,
 			Locked:     m.Locked,
 			IsLeftover: m.IsLeftover,
+			Status:     m.Status,
 		}
 	}
 
@@ -350,15 +357,12 @@ func (s *Server) handlePlanDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/plan/history", http.StatusSeeOther)
 }
 
-// startPlanGeneration launches a background generation job for a household
-// unless one is already running (single-flight, see plan.JobManager). Shared
-// by the manual "Regenerate"/"Plan my week" button and the auto-plan
-// scheduler (§ RunAutoPlanScheduler) so both paths report progress the same
-// way and can never run two generations for the same household at once.
-func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
-	store := s.store
-	gen := s.gen
-	chain := s.chain
+// runPlanGenerationJob wraps one call to plan.Generate/plan.GenerateForWeek in
+// the job bookkeeping (status emission, hard timeout, success/error events)
+// both entry points below share, so neither can drift from the other on how
+// progress is reported.
+func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Context, pricer plan.Pricer, j *plan.Job) (int64, error)) (job *plan.Job, started bool) {
+	pricer := buildPricer(s.store, s.chain)
 
 	return s.jobs.Start(context.Background(), hhID, func(j *plan.Job) {
 		j.EmitStatus("Resolving preferences…")
@@ -373,8 +377,7 @@ func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 
 		j.EmitStatus("Asking the AI to build your week… (15-30s)")
 
-		pricer := buildPricer(store, chain)
-		planID, err := plan.Generate(ctx, store, gen, hhID, pricer, j)
+		planID, err := generate(ctx, pricer, j)
 		if err != nil {
 			log.Printf("plan generation error household=%d: %v", hhID, err)
 			j.Status = plan.JobFailed
@@ -388,8 +391,42 @@ func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 	})
 }
 
+// startPlanGeneration launches a background generation job for the upcoming
+// week, unless one is already running (single-flight, see plan.JobManager).
+// Shared by the "Regenerate"/"Plan my week" button (when viewing the current
+// week) and the auto-plan scheduler (§ RunAutoPlanScheduler).
+func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
+	store, gen := s.store, s.gen
+	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, j *plan.Job) (int64, error) {
+		return plan.Generate(ctx, store, gen, hhID, pricer, j)
+	})
+}
+
+// startPlanGenerationForWeek is startPlanGeneration for one specific week -
+// the dashboard's manual generate/regenerate action after navigating the
+// calendar widget to a future week. See handlePlanGenerate for why past weeks
+// never reach this.
+func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart time.Time) (job *plan.Job, started bool) {
+	store, gen := s.store, s.gen
+	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, j *plan.Job) (int64, error) {
+		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, pricer, j)
+	})
+}
+
 // handlePlanGenerate starts a background generation job, then redirects to
 // the progress screen.
+//
+// An optional "week" form field (YYYY-MM-DD, any day within the target week)
+// asks for that specific week instead of the upcoming one - the dashboard's
+// generate/regenerate action once the calendar widget has been navigated away
+// from the current week. Only the current week and future weeks are allowed:
+// plan.Generate's callers throughout the app (the dashboard, the shopping
+// list, day-status, meal-fill, ...) all resolve "the current plan" as
+// whichever plan row was created most recently, on the assumption that plans
+// are only ever created for now or later. Regenerating a week that has
+// already ended would make that stale plan "the latest" everywhere else in
+// the app - wrong shopping list, wrong headcount target, wrong everything -
+// so it is refused here rather than silently corrupting those.
 func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	if s.gen == nil {
 		http.Error(w, "No LLM configured", http.StatusServiceUnavailable)
@@ -398,6 +435,25 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+
+	if raw := strings.TrimSpace(r.FormValue("week")); raw != "" {
+		asked, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			s.setNotify(w, NotifyDanger, "That isn't a valid week.")
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		weekStart, _ := plan.WeekBounds(asked, s.cfg.WeekStartDay)
+		curStart, _ := plan.WeekBounds(time.Now(), s.cfg.WeekStartDay)
+		if weekStart.Before(curStart) {
+			s.setNotify(w, NotifyDanger, "Past weeks can't be regenerated - they're kept in Plan History for reference.")
+			http.Redirect(w, r, "/?cal=week&calref="+weekStart.Format("2006-01-02"), http.StatusSeeOther)
+			return
+		}
+		s.startPlanGenerationForWeek(hh.ID, weekStart)
+		http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 		return
 	}
 

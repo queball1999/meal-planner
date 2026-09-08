@@ -18,7 +18,8 @@ type mealPageData struct {
 	SourceMeal  *db.Meal // non-nil when IsLeftover
 	PlanID      int64
 	WeekStart   string
-	Feedback    int // -1, 0, or 1 for current user's rating
+	Feedback    int    // -1, 0, or 1 for current user's rating
+	ImageURL    string // "" when no matching recipe photo - see handleMealCard's own note
 }
 
 func (s *Server) handleMealDetail(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +55,16 @@ func (s *Server) handleMealDetail(w http.ResponseWriter, r *http.Request) {
 		weekStart = plan.WeekStart
 	}
 
+	// A meal has no image of its own, but every generated meal is saved to the
+	// recipe catalog under the same title, and that row can have a photo. Same
+	// loose title match handleMealCard uses for the hover preview.
+	imageURL := ""
+	if hh := middleware.HouseholdFromCtx(r); hh != nil {
+		if rc, _ := s.store.GetCatalogRecipeByTitle(ctx, hh.ID, meal.Title); rc != nil && rc.ImagePath != "" {
+			imageURL = "/recipe-images/" + rc.ImagePath
+		}
+	}
+
 	s.render(w, r, "meal", mealPageData{
 		Meal:        meal,
 		Recipe:      recipe,
@@ -62,6 +73,7 @@ func (s *Server) handleMealDetail(w http.ResponseWriter, r *http.Request) {
 		SourceMeal:  sourceMeal,
 		PlanID:      meal.PlanID,
 		WeekStart:   weekStart,
+		ImageURL:    imageURL,
 	})
 }
 

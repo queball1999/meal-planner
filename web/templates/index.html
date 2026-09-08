@@ -22,7 +22,7 @@
         {{else}}
         <div class="plan-status">
             <div class="plan-status__info">
-                <strong>This week: {{$d.WeekLabel}}</strong>
+                <strong>{{if $d.IsCurrentWeek}}This week{{else}}Week of{{end}}: {{$d.WeekLabel}}</strong>
                 {{if $d.TotalLabel}}
                 <div class="plan-budget-meter{{if $d.OverBudget}} plan-budget-meter--over{{end}}"
                      style="margin-top:.5rem">
@@ -37,13 +37,22 @@
                 {{end}}
             </div>
             <div class="plan-status__actions">
-                <a href="/plan" class="btn btn-primary btn-sm">{{icon "calendar-week"}} View plan</a>
-                {{if $d.HasLLM}}
+                <a href="/plan{{$d.PlanWeekParam}}" class="btn btn-primary btn-sm">{{icon "calendar-week"}} View plan</a>
+                {{if and $d.HasLLM $d.IsCurrentWeek}}
                 <form method="POST" action="/plan/generate" style="display:inline"
                       data-confirm="This replaces your current plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference." data-confirm-title="Regenerate plan" data-confirm-label="Regenerate">
                     {{$.CSRFField}}
                     <button type="submit" class="btn btn-secondary btn-sm">
                         {{icon "autorenew"}} Regenerate
+                    </button>
+                </form>
+                {{else if and $d.HasLLM (not $d.IsPastWeek)}}
+                <form method="POST" action="/plan/generate" style="display:inline"
+                      data-confirm="This replaces the plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference." data-confirm-title="Regenerate plan" data-confirm-label="Regenerate">
+                    {{$.CSRFField}}
+                    <input type="hidden" name="week" value="{{$d.WeekParam}}">
+                    <button type="submit" class="btn btn-secondary btn-sm">
+                        {{icon "autorenew"}} Regenerate this week
                     </button>
                 </form>
                 {{end}}
@@ -53,6 +62,7 @@
     {{else}}
     <div class="skeleton-card">
         <div class="skeleton-card__icon" aria-hidden="true">{{icon "chef-hat"}}</div>
+        {{if $d.IsCurrentWeek}}
         <h2 class="skeleton-card__title">No plan yet this week</h2>
         <p class="skeleton-card__body">
             Set your <a href="/preferences">dietary preferences</a> and
@@ -68,14 +78,37 @@
         {{else}}
         <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
         {{end}}
+        {{else if $d.IsPastWeek}}
+        <h2 class="skeleton-card__title">No plan for {{$d.WeekNavLabel}}</h2>
+        <p class="skeleton-card__body">
+            Nothing was planned for this week. <a href="/">Back to this week</a>.
+        </p>
+        {{else}}
+        <h2 class="skeleton-card__title">No plan yet for {{$d.WeekNavLabel}}</h2>
+        <p class="skeleton-card__body">Generate one now, or wait for it to be planned automatically.</p>
+        {{if $d.HasLLM}}
+        <form method="POST" action="/plan/generate">
+            {{$.CSRFField}}
+            <input type="hidden" name="week" value="{{$d.WeekParam}}">
+            <button type="submit" class="btn btn-primary">
+                {{icon "chef-hat"}} Plan this week
+            </button>
+        </form>
+        {{else}}
+        <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
+        {{end}}
+        {{end}}
     </div>
     {{end}}
 </div>
 
 {{/* ── This-week stats strip ────────────────────────────────────────────── */}}
+{{if not $d.IsCurrentWeek}}
+<p class="dash-week-note">Showing {{$d.WeekNavLabel}} &middot; <a href="/">back to this week</a></p>
+{{end}}
 <div class="stats-strip" style="margin-bottom:1.5rem">
     <div class="stats-chip">
-        <span class="stats-chip__label">This week spent</span>
+        <span class="stats-chip__label">{{if $d.IsCurrentWeek}}This week spent{{else}}Spent{{end}}</span>
         {{if $d.StatsSpent}}
         <span class="stats-chip__value {{if $d.StatsOverBudget}}stats-chip__value--over{{else}}stats-chip__value--under{{end}}">
             {{$d.StatsSpent}}
@@ -132,7 +165,7 @@
                 <li class="cal-meal cal-meal--{{.Slot}}">
                     <span class="cal-meal__slot" title="{{.Slot}}" aria-hidden="true">{{icon "fork"}}</span>
                     <a href="/meals/{{.MealID}}" class="cal-meal__title"
-                       data-meal-id="{{.MealID}}" title="{{.Slot}}: {{.Title}}">{{.Title}}</a>
+                       data-meal-id="{{.MealID}}">{{.Title}}</a>
                 </li>
                 {{end}}
             </ul>
@@ -147,13 +180,14 @@
 </div>
 
 {{/* ── Plan history table ───────────────────────────────────────────────── */}}
-<div class="card">
-    <div class="card__header" style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem .5rem">
-        <h2 class="card__title" style="margin:0;font-size:1rem">{{icon "history"}} Plan history</h2>
+<div class="card card--flush plan-history">
+    <div class="plan-history__header">
+        <h2 class="plan-history__title">{{icon "history"}} Plan history</h2>
         <a href="/plan/history" class="btn btn-ghost btn-sm">View all</a>
     </div>
 
     {{if $d.RecentPlans}}
+    <div class="plan-history__scroll">
     <table class="data-table" aria-label="Recent meal plans">
         <thead>
             <tr>
@@ -193,6 +227,7 @@
             {{end}}
         </tbody>
     </table>
+    </div>
     {{else}}
     <p class="form-section__desc" style="padding:1rem">
         No past plans yet - generate your first plan above.

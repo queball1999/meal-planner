@@ -134,6 +134,13 @@ func (s *Server) handleHASave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var actorID *int64
+	if u := middleware.UserFromCtx(r); u != nil {
+		id := u.ID
+		actorID = &id
+	}
+	s.logEvent(r, actorID, "ha.saved", "setting", "HA_BASE_URL", f.BaseURL)
+
 	res, err := homeassistant.SyncOnce(ctx, s.store, s.cfg, s.box)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "saved": true, "synced": false, "error": err.Error()})

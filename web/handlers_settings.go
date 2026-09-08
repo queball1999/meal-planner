@@ -9,6 +9,7 @@ import (
 
 	"goeat/db"
 	"goeat/llm"
+	"goeat/middleware"
 	"goeat/scrape"
 	"goeat/settings"
 )
@@ -302,6 +303,8 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "save failed"})
 			return
 		}
+		// Never the value itself for a secret - just that it changed.
+		s.logSettingsEvent(r, "setting.changed", def.Key, "secret updated")
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
 		return
 	}
@@ -311,7 +314,20 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logSettingsEvent(r, "setting.changed", def.Key, "set to "+body.Value)
 	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+// logSettingsEvent records a Settings-page change to the audit log. Settings
+// are process-wide, not per-household, so there is no household to scope this
+// to - just who made the change and what it was.
+func (s *Server) logSettingsEvent(r *http.Request, action, targetID, detail string) {
+	var uid *int64
+	if u := middleware.UserFromCtx(r); u != nil {
+		id := u.ID
+		uid = &id
+	}
+	s.logEvent(r, uid, action, "setting", targetID, detail)
 }
 
 // handleSettingsTestAI sends a trivial prompt to the configured LLM and returns

@@ -21,19 +21,26 @@
     <span class="shopping-summary__budget">of {{.BudgetLabel}} budget</span>
 </div>
 
-<div class="list-toolbar no-print" style="display:flex;gap:.5rem;margin:.75rem 0 1rem">
+<div class="list-toolbar no-print" style="display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0 1rem">
+    {{if not $root.Data.ReadOnly}}
     <a class="btn btn-primary btn-sm" href="/list/shop"
        title="Shopping mode" aria-label="Open shopping mode">{{icon "cart"}} Shop</a>
+    {{end}}
     <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()"
             title="Print" aria-label="Print shopping list">{{icon "printer"}} Print</button>
     <a class="btn btn-ghost btn-sm" href="/list/export?format=csv"
        title="Export CSV" aria-label="Export shopping list as CSV">{{icon "download"}} Export</a>
+    {{if not $root.Data.ReadOnly}}
     <button type="button" class="btn btn-ghost btn-sm" id="ha-sync-btn"
-            title="Sync to Home Assistant" aria-label="Sync to Home Assistant">{{icon "sync"}} Sync</button>
+            title="Sync to Home Assistant{{if .HALastSync}} &middot; last synced {{.HALastSync}}{{end}}"
+            aria-label="Sync to Home Assistant">{{icon "sync"}} Sync</button>
     {{if $root.Data.HasLLM}}
     <button type="button" class="btn btn-outline btn-sm" id="ai-cost-btn" style="margin-left:auto"
             title="Ask the AI to price every item that has no cost yet"
             aria-label="Run AI cost analysis on unpriced items">{{icon "chef-hat"}} AI cost analysis</button>
+    {{end}}
+    {{else}}
+    <span class="badge badge-muted" style="margin-left:auto">{{icon "archive"}} Read only</span>
     {{end}}
 </div>
 
@@ -90,14 +97,19 @@
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
                        {{if .Checked}}checked{{end}}
+                       {{if $root.Data.ReadOnly}}disabled{{end}}
                        onchange="toggleCheck(this)">
                 <span class="shopping-item__name-wrap">
-                    <span class="shopping-item__name">{{.DisplayName}}</span>
-                    <button type="button" class="link-chip link-chip--{{.LinkState}} no-print"
-                            data-match-line data-id="{{.ID}}" data-name="{{.DisplayName}}"
-                            title="{{.LinkLabel}}" aria-label="{{.LinkLabel}}">
-                        {{icon "tag"}}
-                    </button>
+                    <span class="shopping-item__name-row">
+                        <span class="shopping-item__name">{{.DisplayName}}</span>
+                        {{if not $root.Data.ReadOnly}}
+                        <button type="button" class="link-chip link-chip--{{.LinkState}} no-print"
+                                data-match-line data-id="{{.ID}}" data-name="{{.DisplayName}}"
+                                title="{{.LinkLabel}}" aria-label="{{.LinkLabel}}">
+                            {{icon "tag"}}
+                        </button>
+                        {{end}}
+                    </span>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
                         {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
@@ -110,6 +122,7 @@
                 {{if .PantryNote}}<span class="shopping-item__pantry-note">{{.PantryNote}}</span>{{end}}
             </span>
             {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
+            {{if not $root.Data.ReadOnly}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm price-edit-btn no-print"
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
                 {{icon "pencil"}}
@@ -121,8 +134,9 @@
                     title="{{if .InPantry}}Already in the pantry - not being bought{{else}}I already have this{{end}}"
                     aria-pressed="{{if .InPantry}}true{{else}}false{{end}}"
                     aria-label="Mark {{.DisplayName}} as already in the pantry">
-                {{icon "fridge-outline"}}
+                {{icon "check"}}
             </button>
+            {{end}}
             <span class="shopping-item__total">{{.TotalLabel}}</span>
             {{if .PriceVerdict}}<span class="price-verdict {{.PriceVerdictClass}}">{{.PriceVerdict}}</span>{{end}}
             <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
@@ -144,14 +158,19 @@
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
                        {{if .Checked}}checked{{end}}
+                       {{if $root.Data.ReadOnly}}disabled{{end}}
                        onchange="toggleCheck(this)">
                 <span class="shopping-item__name-wrap">
-                    <span class="shopping-item__name">{{.DisplayName}}</span>
-                    <button type="button" class="link-chip link-chip--{{.LinkState}} no-print"
-                            data-match-line data-id="{{.ID}}" data-name="{{.DisplayName}}"
-                            title="{{.LinkLabel}}" aria-label="{{.LinkLabel}}">
-                        {{icon "tag"}}
-                    </button>
+                    <span class="shopping-item__name-row">
+                        <span class="shopping-item__name">{{.DisplayName}}</span>
+                        {{if not $root.Data.ReadOnly}}
+                        <button type="button" class="link-chip link-chip--{{.LinkState}} no-print"
+                                data-match-line data-id="{{.ID}}" data-name="{{.DisplayName}}"
+                                title="{{.LinkLabel}}" aria-label="{{.LinkLabel}}">
+                            {{icon "tag"}}
+                        </button>
+                        {{end}}
+                    </span>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
                         {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
@@ -164,6 +183,7 @@
                 {{if .PantryNote}}<span class="shopping-item__pantry-note">{{.PantryNote}}</span>{{end}}
             </span>
             {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
+            {{if not $root.Data.ReadOnly}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm price-edit-btn no-print"
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
                 {{icon "pencil"}}
@@ -175,8 +195,9 @@
                     title="{{if .InPantry}}Already in the pantry - not being bought{{else}}I already have this{{end}}"
                     aria-pressed="{{if .InPantry}}true{{else}}false{{end}}"
                     aria-label="Mark {{.DisplayName}} as already in the pantry">
-                {{icon "fridge-outline"}}
+                {{icon "check"}}
             </button>
+            {{end}}
             <span class="shopping-item__total">{{.TotalLabel}}</span>
             {{if .PriceVerdict}}<span class="price-verdict {{.PriceVerdictClass}}">{{.PriceVerdict}}</span>{{end}}
             <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
@@ -249,17 +270,23 @@
     var matchIntro = document.getElementById('match-item-intro');
     var matchTimer;
 
-    function renderMatches(rows) {
+    var ICON_EYE_SM = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9M12,4.5C17,4.5 21.27,7.61 23,12C21.27,16.39 17,19.5 12,19.5C7,19.5 2.73,16.39 1,12C2.73,7.61 7,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 12,17.5C15.76,17.5 19.17,15.36 20.82,12C19.17,8.64 15.76,6.5 12,6.5C8.24,6.5 4.83,8.64 3.18,12Z"/></svg>';
+
+    // rows is the fuzzy-match candidates; query is what the row list was
+    // fetched for (the search box, or the line's own name when it's empty) -
+    // used to decide whether an "add new item" row belongs at the bottom.
+    function renderMatches(rows, query) {
         matchList.innerHTML = '';
-        if (!rows.length) {
-            var empty = document.createElement('li');
-            empty.className = 'match-list__empty text-muted';
-            empty.textContent = 'Nothing found. Try a shorter search.';
-            matchList.appendChild(empty);
-            return;
-        }
+        var typed = (query || '').trim();
+        var exact = typed && rows.some(function (m) {
+            return m.name && m.name.toLowerCase() === typed.toLowerCase();
+        });
+
         rows.forEach(function (m) {
             var li = document.createElement('li');
+            var row = document.createElement('div');
+            row.className = 'match-list__row';
+
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'match-list__btn';
@@ -279,19 +306,61 @@
             btn.appendChild(meta);
 
             btn.addEventListener('click', function () { confirmMatch(m.item_id); });
-            li.appendChild(btn);
+            row.appendChild(btn);
+
+            // A quick way to see what a suggestion actually is before
+            // committing to it, without leaving the dialog.
+            var view = document.createElement('a');
+            view.className = 'match-list__view';
+            view.href = '/pantry/items/' + m.item_id;
+            view.target = '_blank';
+            view.rel = 'noopener';
+            view.title = 'Open this item';
+            view.setAttribute('aria-label', 'Open ' + m.name);
+            view.innerHTML = ICON_EYE_SM;
+            view.addEventListener('click', function (e) { e.stopPropagation(); });
+            row.appendChild(view);
+
+            li.appendChild(row);
             matchList.appendChild(li);
         });
+
+        // Offered whenever nothing on the list is a 100% name match - a close
+        // fuzzy hit is still worth reviewing above, not skipping past.
+        if (typed && !exact) {
+            var addLi = document.createElement('li');
+            var addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'match-list__btn match-list__btn--new';
+            var addName = document.createElement('span');
+            addName.textContent = 'Add "' + typed + '" as a new item';
+            addBtn.appendChild(addName);
+            var addMeta = document.createElement('span');
+            addMeta.className = 'match-list__meta text-muted';
+            addMeta.textContent = 'no 100% match — add new';
+            addBtn.appendChild(addMeta);
+            addBtn.addEventListener('click', function () { createNewItem(typed); });
+            addLi.appendChild(addBtn);
+            matchList.appendChild(addLi);
+        }
+
+        if (!rows.length && !(typed && !exact)) {
+            var empty = document.createElement('li');
+            empty.className = 'match-list__empty text-muted';
+            empty.textContent = 'Nothing found. Try a shorter search.';
+            matchList.appendChild(empty);
+        }
     }
 
     function loadMatches(q) {
         if (!matchLine) return;
+        var query = q || matchLine.dataset.name || '';
         fetch('/list/' + matchLine.dataset.id + '/match' + (q ? '?q=' + encodeURIComponent(q) : ''), {
             headers: { 'Accept': 'application/json' },
         })
             .then(function (r) { return r.json(); })
-            .then(function (d) { renderMatches((d && d.suggestions) || []); })
-            .catch(function () { renderMatches([]); });
+            .then(function (d) { renderMatches((d && d.suggestions) || [], query); })
+            .catch(function () { renderMatches([], query); });
     }
 
     function confirmMatch(itemID) {
@@ -313,6 +382,27 @@
                 toast(d.message, 'success');
             })
             .catch(function () { toast('Could not save that match', 'error'); });
+    }
+
+    function createNewItem(name) {
+        if (!matchLine) return;
+        var chip = matchLine;
+        matchLine = null;
+        window.goeat.closeModal('match-item');
+        fetch('/list/' + chip.dataset.id + '/match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
+            body: 'new_name=' + encodeURIComponent(name),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || !d.ok) { toast((d && d.error) || 'Could not create that item', 'error'); return; }
+                chip.classList.remove('link-chip--unmatched');
+                chip.classList.add('link-chip--linked');
+                chip.title = 'Linked to ' + d.name;
+                toast(d.message, 'success');
+            })
+            .catch(function () { toast('Could not create that item', 'error'); });
     }
 
     document.querySelectorAll('[data-match-line]').forEach(function (chip) {
@@ -427,6 +517,7 @@
                 if (!d.ok) { toast(d.error || 'Sync failed', 'error'); return; }
                 applyCheckedState(d.checked_ids, true);
                 applyCheckedState(d.unchecked_ids, false);
+                if (syncBtn) syncBtn.title = 'Sync to Home Assistant · last synced just now';
                 toast('Synced: ' + d.pushed + ' added, ' + d.checked + ' checked off', 'success');
             })
             .catch(function () { toast('Sync failed', 'error'); })

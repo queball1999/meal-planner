@@ -49,15 +49,18 @@ func (s *store) ListIngredientsByMeal(ctx context.Context, mealID int64) ([]*Mea
 // ListIngredientsByPlan returns every ingredient the plan actually needs
 // bought - the input to costing and to the shopping list.
 //
-// Days marked "eating out" or "skipped" are excluded (00019_day_status.sql).
-// This is the one place that filter has to live: every path that builds a
-// shopping list - CostPlan, EnsureShoppingList, a reprice after a rescale -
-// reads its ingredients through here, so a day taken off the plan disappears
-// from the list whichever of them runs next.
+// Days marked "eating out" or "skipped" are excluded (00019_day_status.sql),
+// and - independently - a meal marked that way on its own is excluded too
+// (00026_meal_status.sql), so "cooking every meal except Tuesday dinner" works
+// the same as "the whole day is off". This is the one place that filter has
+// to live: every path that builds a shopping list - CostPlan,
+// EnsureShoppingList, a reprice after a rescale - reads its ingredients
+// through here, so a day or meal taken off the plan disappears from the list
+// whichever of them runs next.
 //
-// LEFT JOIN, not JOIN: a plan generated before day rows existed (or one whose
-// seed failed) has meals with no matching plan_days row, and an inner join
-// would silently drop every ingredient in the plan.
+// LEFT JOIN, not JOIN, on plan_days: a plan generated before day rows existed
+// (or one whose seed failed) has meals with no matching plan_days row, and an
+// inner join would silently drop every ingredient in the plan.
 func (s *store) ListIngredientsByPlan(ctx context.Context, planID int64) ([]*MealIngredient, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT mi.id, mi.meal_id, mi.name, mi.quantity, mi.base_quantity, mi.unit, mi.normalized_term, mi.item_id, mi.est_price_cents
@@ -66,6 +69,7 @@ func (s *store) ListIngredientsByPlan(ctx context.Context, planID int64) ([]*Mea
 		LEFT JOIN plan_days pd ON pd.plan_id = m.plan_id AND pd.date = m.day
 		WHERE m.plan_id = ?
 		  AND COALESCE(pd.status, 'cooking') = 'cooking'
+		  AND m.status = 'cooking'
 		ORDER BY mi.meal_id, mi.id`, planID)
 	if err != nil {
 		return nil, err

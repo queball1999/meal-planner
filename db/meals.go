@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 func (s *store) CreateMeal(ctx context.Context, p CreateMealParams) (*Meal, error) {
@@ -30,7 +31,7 @@ func (s *store) ListMealsByPlan(ctx context.Context, planID int64) ([]*Meal, err
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, plan_id, day, slot, title, effort, servings, cooked_portions,
 		       base_servings, base_cooked_portions,
-		       is_leftover, leftover_source_meal_id, locked, ai_run_id
+		       is_leftover, leftover_source_meal_id, locked, ai_run_id, status
 		FROM meals WHERE plan_id = ?
 		ORDER BY day, CASE slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END`,
 		planID)
@@ -58,7 +59,7 @@ func (s *store) ListMealsByHouseholdRange(ctx context.Context, householdID int64
 		SELECT m.id, m.plan_id, m.day, m.slot, m.title, m.effort, m.servings,
 		       m.cooked_portions, m.base_servings, m.base_cooked_portions,
 		       m.is_leftover, m.leftover_source_meal_id,
-		       m.locked, m.ai_run_id
+		       m.locked, m.ai_run_id, m.status
 		FROM meals m
 		JOIN plans p ON p.id = m.plan_id
 		WHERE p.household_id = ? AND m.day >= ? AND m.day <= ?
@@ -122,9 +123,21 @@ func (s *store) getMealByID(ctx context.Context, mealID int64) (*Meal, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, plan_id, day, slot, title, effort, servings, cooked_portions,
 		       base_servings, base_cooked_portions,
-		       is_leftover, leftover_source_meal_id, locked, ai_run_id
+		       is_leftover, leftover_source_meal_id, locked, ai_run_id, status
 		FROM meals WHERE id = ?`, mealID)
 	return scanMealRow(row)
+}
+
+// SetMealStatus sets one meal's own cooking status - "skip this meal" /
+// "eating out" from the meal-card icons, independent of any other meal that
+// day. Validated against the same vocabulary as the day-level status
+// (ValidDayStatus, db/models.go) since the two share it.
+func (s *store) SetMealStatus(ctx context.Context, mealID int64, status string) error {
+	if !ValidDayStatus(status) {
+		return fmt.Errorf("unknown meal status %q", status)
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE meals SET status = ? WHERE id = ?`, status, mealID)
+	return err
 }
 
 // scanner is satisfied by *sql.Row and *sql.Rows.
@@ -141,7 +154,7 @@ func scanMeal(sc scanner) (*Meal, error) {
 		&m.Servings, &m.CookedPortions,
 		&m.BaseServings, &m.BaseCookedPortions,
 		&isLeftover, &m.LeftoverSourceMealID,
-		&locked, &m.AIRunID,
+		&locked, &m.AIRunID, &m.Status,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -162,7 +175,7 @@ func scanMealRow(row *sql.Row) (*Meal, error) {
 		&m.Servings, &m.CookedPortions,
 		&m.BaseServings, &m.BaseCookedPortions,
 		&isLeftover, &m.LeftoverSourceMealID,
-		&locked, &m.AIRunID,
+		&locked, &m.AIRunID, &m.Status,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

@@ -338,3 +338,35 @@ func (s *store) ListLeftoversSourcedFrom(ctx context.Context, planID int64, date
 	}
 	return out, rows.Err()
 }
+
+// ListLeftoversSourcedFromMeal is ListLeftoversSourcedFrom narrowed to one
+// specific meal rather than its whole day - the per-meal status icons' own
+// impact check ("skip this one dinner" should only warn about meals that eat
+// *this* dinner's leftovers, not every leftover on the same day).
+func (s *store) ListLeftoversSourcedFromMeal(ctx context.Context, mealID int64) ([]*Meal, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.plan_id, m.day, m.slot, m.title, m.effort, m.servings,
+		       m.cooked_portions, m.is_leftover, m.leftover_source_meal_id,
+		       m.locked, m.ai_run_id
+		FROM meals m
+		WHERE m.is_leftover = 1 AND m.leftover_source_meal_id = ?
+		ORDER BY m.day, m.slot`, mealID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Meal
+	for rows.Next() {
+		var m Meal
+		var isLeftover int
+		if err := rows.Scan(&m.ID, &m.PlanID, &m.Day, &m.Slot, &m.Title, &m.Effort,
+			&m.Servings, &m.CookedPortions, &isLeftover, &m.LeftoverSourceMealID,
+			&m.Locked, &m.AIRunID); err != nil {
+			return nil, err
+		}
+		m.IsLeftover = isLeftover != 0
+		out = append(out, &m)
+	}
+	return out, rows.Err()
+}

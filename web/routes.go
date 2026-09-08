@@ -99,6 +99,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /pantry/items/{id}/image", requireAuth(http.HandlerFunc(s.handleItemImageReplace)))
 	mux.Handle("POST /pantry/items/{id}/packages", requireAuth(http.HandlerFunc(s.handleItemPackageUpsert)))
 	mux.Handle("POST /pantry/items/{id}/packages/{pkgID}/delete", requireAuth(http.HandlerFunc(s.handleItemPackageDelete)))
+	mux.Handle("POST /pantry/items/{id}/stores/{storeID}/preferred", requireAuth(http.HandlerFunc(s.handleItemStorePreferred)))
 	mux.Handle("POST /pantry/items/{id}/conversions", requireAuth(http.HandlerFunc(s.handleItemConversionUpsert)))
 	mux.Handle("POST /pantry/items/{id}/conversions/{cid}/delete", requireAuth(http.HandlerFunc(s.handleItemConversionDelete)))
 
@@ -109,6 +110,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /meals/{id}/card", requireAuth(http.HandlerFunc(s.handleMealCard)))
 	mux.Handle("POST /meals/{id}/feedback", requireAuth(http.HandlerFunc(s.handleMealFeedback)))
 	mux.Handle("POST /meals/{id}/lock", requireAuth(http.HandlerFunc(s.handleMealLock)))
+	mux.Handle("GET /meals/{id}/status-impact", requireAuth(http.HandlerFunc(s.handleMealStatusImpact)))
+	mux.Handle("POST /meals/{id}/status", requireAuth(http.HandlerFunc(s.handleMealStatus)))
 
 	// Recipe catalog - literal routes before /recipes/{id} wildcard (§8.2)
 	mux.Handle("GET /recipes/import", requireAuth(http.HandlerFunc(s.handleRecipeImportPage)))
@@ -147,6 +150,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// commented out so the build isn't broken; wire it up when that handler lands.
 	mux.Handle("GET /admin/llm-debug", requireAuth(http.HandlerFunc(s.handleLLMDebugLog)))
 	mux.Handle("GET /admin/llm-log", requireAuth(http.HandlerFunc(s.handleLLMLogPage)))
+	mux.Handle("GET /admin/events", requireAuth(http.HandlerFunc(s.handleAdminEventsPage)))
 	mux.Handle("GET /search", requireAuth(http.HandlerFunc(s.handleSearch)))
 	mux.Handle("GET /attributions", requireAuth(http.HandlerFunc(s.handleAttributionsPage)))
 

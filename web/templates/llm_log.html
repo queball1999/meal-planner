@@ -1,9 +1,11 @@
-{{define "title"}}AI Call Log - {{.AppName}}{{end}}
+{{define "title"}}Audit Log - {{.AppName}}{{end}}
 {{define "content"}}
 <div class="page-header">
-    <h1 class="page-title">{{icon "cpu"}} AI Call Log</h1>
-    <p class="page-subtitle">{{.Data.Total}} entries in memory &middot; newest first</p>
+    <h1 class="page-title">{{icon "cpu"}} Audit Log</h1>
+    <p class="page-subtitle">Every AI call this household has made &middot; {{.Data.Page.Total}} entries &middot; newest first</p>
 </div>
+
+{{template "settingsTabs" .}}
 
 <!-- ── Filters ───────────────────────────────────────────────────────────── -->
 <form method="GET" action="/admin/llm-log" class="llm-log-filters"
