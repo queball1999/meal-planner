@@ -515,6 +515,17 @@
     margin-bottom: var(--sp-4);
 }
 
+/* A card that holds an irreversible action - the account page's reset/delete
+   panels. Just a left rule and a tinted title so the weight is visible before
+   the button is. */
+.form-section--danger {
+    border-left: 3px solid var(--danger, #c0392b);
+}
+
+.form-section--danger .form-section__title {
+    color: var(--danger, #c0392b);
+}
+
 .form-section .field + .field {
     margin-top: var(--sp-4);
 }
@@ -533,22 +544,41 @@
     gap: var(--sp-2);
 }
 
+/* The username is a link to the account page (sign out, password, data). */
 .user-menu__name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--radius);
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     color: var(--text-muted);
+    text-decoration: none;
     white-space: nowrap;
-    max-width: 120px;
+    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
-.user-menu__logout {
-    display: contents; /* form wrapper is invisible */
+.user-menu__name:hover,
+.user-menu__name--active {
+    background: var(--accent-bg);
+    color: var(--accent-text);
+    text-decoration: none;
+}
+
+.user-menu__name svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
-    .user-menu__name { display: none; }
+    /* Keep the account icon; drop just the username text to save width. */
+    .user-menu__name span { display: none; }
+    .user-menu__name { max-width: none; padding: var(--sp-1); }
     .auth-wrap { padding: var(--sp-6) var(--sp-4); align-items: flex-start; }
 }
 
@@ -1431,6 +1461,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     .site-footer,
     .site-nav,
     .nav-toggle,
+    .popover,
     .subtabs,
     .no-print,
     .list-toolbar,
@@ -2016,9 +2047,56 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
  * right-aligned, which is also where a thumb is.
  */
 @media (max-width: 640px) {
-    .shopping-item {
+    .shopping-item,
+    .ingredient-item {
         flex-wrap: wrap;
         row-gap: var(--sp-1);
+        column-gap: var(--sp-2);
+        padding: var(--sp-3) 0;
+    }
+
+    /* Row 1: the checkbox + name (+ link chip + meal pills) take the full
+       width so the name is never crushed into a sliver. */
+    .shopping-item__check {
+        flex: 1 1 100%;
+    }
+
+    .shopping-item__name {
+        font-size: var(--text-base);
+    }
+
+    /* A bigger tap target for the tick on a phone. */
+    .shopping-item__checkbox {
+        width: 20px;
+        height: 20px;
+    }
+
+    /* Row 2: quantity and unit price sit at the start; the total, verdict and
+       confidence badge are pushed to the right where the thumb is; the pencil
+       and have-it buttons sit between them. */
+    .shopping-item__qty {
+        margin-left: 0;
+    }
+
+    .shopping-item__total {
+        margin-left: auto;
+    }
+
+    .shopping-item .price-edit-btn,
+    .shopping-item .have-btn {
+        width: 34px;
+        height: 34px;
+    }
+
+    .shopping-item__meals {
+        flex-basis: 100%;
+    }
+
+    /* The store subtotal header wraps its label and amount rather than
+       overflowing on a narrow screen. */
+    .shopping-group__header {
+        flex-wrap: wrap;
+        row-gap: 2px;
     }
 }
 

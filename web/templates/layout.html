@@ -54,15 +54,10 @@
 
             {{if .User}}
             <div class="user-menu">
-                <span class="user-menu__name" title="Signed in as {{.User.Username}}">
-                    {{.User.Username}}
-                </span>
-                <form method="POST" action="/auth/logout" class="user-menu__logout">
-                    {{.CSRFField}}
-                    <button type="submit" class="btn btn-ghost btn-sm" aria-label="Sign out">
-                        {{icon "logout"}} Sign out
-                    </button>
-                </form>
+                <a href="/account" class="user-menu__name{{if eq .Page "account"}} user-menu__name--active{{end}}"
+                   title="Account &amp; data - signed in as {{.User.Username}}">
+                    {{icon "account"}} <span>{{.User.Username}}</span>
+                </a>
             </div>
             {{end}}
         </div>
@@ -72,6 +67,10 @@
     <div class="popover" id="navMenu" data-popover-panel hidden>
         <nav class="popover__list" aria-label="Site menu">
             {{template "partials/nav_items.html" dict "Page" .Page "Style" "popover"}}
+            <span class="popover__divider"></span>
+            <a href="/account" class="popover__item{{if eq .Page "account"}} popover__item--active{{end}}">
+                {{icon "account"}} <span>Account &amp; data</span>
+            </a>
         </nav>
     </div>
     <div class="popover popover--search" id="searchPop" data-popover-panel hidden>

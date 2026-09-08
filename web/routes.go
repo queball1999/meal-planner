@@ -32,6 +32,14 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.Handle("POST /auth/logout", requireAuth(http.HandlerFunc(s.handleLogout)))
 
+	// Self-service account page: password, data export, and the destructive
+	// resets. Literal routes only.
+	mux.Handle("GET /account", requireAuth(http.HandlerFunc(s.handleAccountPage)))
+	mux.Handle("POST /account/password", requireAuth(http.HandlerFunc(s.handleAccountPassword)))
+	mux.Handle("GET /account/export", requireAuth(http.HandlerFunc(s.handleAccountExport)))
+	mux.Handle("POST /account/reset", requireAuth(http.HandlerFunc(s.handleAccountReset)))
+	mux.Handle("POST /account/wipe", requireAuth(http.HandlerFunc(s.handleAccountWipe)))
+
 	mux.Handle("GET /preferences", requireAuth(http.HandlerFunc(s.handlePreferencesPage)))
 	mux.Handle("POST /preferences", requireAuth(http.HandlerFunc(s.handlePreferences)))
 	mux.Handle("POST /preferences/members", requireAuth(http.HandlerFunc(s.handleMemberCreate)))

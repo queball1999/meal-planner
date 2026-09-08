@@ -23,6 +23,7 @@ type Store interface {
 	CreateUser(ctx context.Context, username, passwordHash, role string) (*User, error)
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
 	GetUserByID(ctx context.Context, id int64) (*User, error)
+	UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error
 
 	// ── Sessions (§9.3, §10.1) ────────────────────────────────────────────
 

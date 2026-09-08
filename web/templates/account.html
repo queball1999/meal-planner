@@ -1,0 +1,97 @@
+{{define "title"}}Account &amp; data - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "account"}} Account &amp; data</h1>
+    <p class="page-subtitle">Signed in as <strong>{{.Data.Username}}</strong></p>
+</div>
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "logout"}} Session</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">End this session on this device.</p>
+    <form method="POST" action="/auth/logout">
+        {{.CSRFField}}
+        <button type="submit" class="btn btn-secondary">{{icon "logout"}} Sign out</button>
+    </form>
+</div>
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "key"}} Change password</h2>
+    <form method="POST" action="/account/password" class="pref-form"
+          data-confirm="Changing your password signs you out of every device, including this one."
+          data-confirm-title="Change password" data-confirm-label="Change &amp; sign out">
+        {{.CSRFField}}
+        <div class="field">
+            <label class="field-label" for="cur-pw">Current password</label>
+            <input class="field-input" id="cur-pw" name="current_password" type="password"
+                   autocomplete="current-password" required>
+        </div>
+        <div class="field-row">
+            <div class="field" style="flex:1">
+                <label class="field-label" for="new-pw">New password</label>
+                <input class="field-input" id="new-pw" name="new_password" type="password"
+                       autocomplete="new-password" minlength="8" required>
+            </div>
+            <div class="field" style="flex:1">
+                <label class="field-label" for="cf-pw">Confirm new password</label>
+                <input class="field-input" id="cf-pw" name="confirm_password" type="password"
+                       autocomplete="new-password" minlength="8" required>
+            </div>
+        </div>
+        <p class="field-hint">At least 8 characters. You will be signed out and must sign in again.</p>
+        <div><button type="submit" class="btn btn-primary">{{icon "key"}} Change password</button></div>
+    </form>
+</div>
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "database"}} Your data</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        {{.Data.PlanCount}} plan{{if ne .Data.PlanCount 1}}s{{end}} &middot;
+        {{.Data.RecipeCount}} saved recipe{{if ne .Data.RecipeCount 1}}s{{end}} &middot;
+        {{.Data.PantryCount}} pantry item{{if ne .Data.PantryCount 1}}s{{end}}
+    </p>
+    <a class="btn btn-secondary" href="/account/export" download>{{icon "download"}} Export everything (JSON)</a>
+    <p class="field-hint" style="margin-top:.5rem">
+        A single JSON file: preferences, members, stores, every plan and its shopping list,
+        saved recipes, the pantry and the item catalog.
+    </p>
+</div>
+
+<div class="card form-section form-section--danger" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "broom"}} Reset meal planning</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        Deletes every meal plan and shopping list. <strong>Recipes, pantry, preferences
+        and members are kept.</strong> This cannot be undone.
+    </p>
+    <form method="POST" action="/account/reset" class="pref-form"
+          data-confirm="This permanently deletes all meal plans and shopping lists. Recipes and pantry are kept."
+          data-confirm-title="Reset meal planning" data-confirm-label="Reset" data-confirm-danger>
+        {{.CSRFField}}
+        <div class="field field--sm">
+            <label class="field-label" for="reset-cf">Type <code>RESET</code> to confirm</label>
+            <input class="field-input" id="reset-cf" name="confirm" type="text"
+                   autocomplete="off" placeholder="RESET" required>
+        </div>
+        <div><button type="submit" class="btn btn-danger">{{icon "broom"}} Reset meal planning</button></div>
+    </form>
+</div>
+
+<div class="card form-section form-section--danger">
+    <h2 class="form-section__title">{{icon "delete"}} Delete all data</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        Deletes <strong>every meal plan, shopping list, saved recipe and pantry item</strong>.
+        Your account, preferences, members, stores and the grocery item catalog stay, so you
+        can start over. This cannot be undone. Export first if you might want any of it back.
+    </p>
+    <form method="POST" action="/account/wipe" class="pref-form"
+          data-confirm="This permanently deletes all plans, recipes, shopping lists, pantry and catalog data. There is no undo."
+          data-confirm-title="Delete all data" data-confirm-label="Delete everything" data-confirm-danger>
+        {{.CSRFField}}
+        <div class="field field--sm">
+            <label class="field-label" for="wipe-cf">Type <code>DELETE</code> to confirm</label>
+            <input class="field-input" id="wipe-cf" name="confirm" type="text"
+                   autocomplete="off" placeholder="DELETE" required>
+        </div>
+        <div><button type="submit" class="btn btn-danger">{{icon "delete"}} Delete all data</button></div>
+    </form>
+</div>
+{{end}}

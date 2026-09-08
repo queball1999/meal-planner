@@ -38,6 +38,20 @@ func (s *store) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	return scanUser(row)
 }
 
+// UpdateUserPassword replaces one user's bcrypt hash. The caller is
+// responsible for verifying the current password first (see the account page).
+func (s *store) UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+	if err != nil {
+		return fmt.Errorf("update user password: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("update user password: no user with id %d", userID)
+	}
+	return nil
+}
+
 func scanUser(row *sql.Row) (*User, error) {
 	var u User
 	var createdAt string
