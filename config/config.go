@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -65,6 +66,19 @@ type Config struct {
 	KrogerClientID     string
 	KrogerClientSecret string
 	KrogerLocationID   string
+	// KrogerCredentials is the parsed, position-aligned list of
+	// {clientID, clientSecret} pairs from the comma-separated KROGER_CLIENT_ID
+	// and KROGER_CLIENT_SECRET values. More than one pair enables automatic
+	// credential rotation when one key is rate-limited or spends its daily
+	// quota. Rebuilt by DeriveKrogerCredentials (called by Load and by
+	// settings.Apply).
+	KrogerCredentials [][2]string
+	// KrogerMaxRPM caps requests per minute to the Kroger API. Default 60.
+	KrogerMaxRPM int
+	// KrogerDailyCap is the per-credential daily call budget before the client
+	// rotates to the next key. Default 9500, a margin under Kroger's 10k/day
+	// Products limit.
+	KrogerDailyCap int
 
 	// FlareSolverr proxy for scraper (§6.7); empty = disabled.
 	// Kept as its own field for backwards compatibility with existing .env
@@ -177,6 +191,8 @@ func Load() (*Config, error) {
 		KrogerClientID:     os.Getenv("KROGER_CLIENT_ID"),
 		KrogerClientSecret: os.Getenv("KROGER_CLIENT_SECRET"),
 		KrogerLocationID:   os.Getenv("KROGER_LOCATION_ID"),
+		KrogerMaxRPM:       intEnv("KROGER_MAX_RPM", 60),
+		KrogerDailyCap:     intEnv("KROGER_DAILY_CAP", 9500),
 		FlareSolverrURL:    os.Getenv("FLARESOLVERR_URL"),
 		RenderBackend:      os.Getenv("RENDER_BACKEND"),
 		RenderURL:          os.Getenv("RENDER_URL"),
@@ -211,6 +227,8 @@ func Load() (*Config, error) {
 			return v
 		}(),
 	}
+
+	cfg.DeriveKrogerCredentials()
 
 	if cfg.SessionSecret == "" {
 		// Dev fallback: ephemeral secret with a loud warning. Set SESSION_SECRET
@@ -255,4 +273,51 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// intEnv parses an int env var, falling back to def when unset or non-positive.
+func intEnv(key string, def int) int {
+	v, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || v <= 0 {
+		return def
+	}
+	return v
+}
+
+// splitList splits a comma-separated value into trimmed parts, preserving
+// position (empty segments are kept so index alignment across two lists holds).
+// A blank input yields nil.
+func splitList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// DeriveKrogerCredentials rebuilds KrogerCredentials by zipping the
+// comma-separated KrogerClientID and KrogerClientSecret lists
+// position-for-position. The common single-credential case (no comma on either
+// side) yields one pair. Call it after either field is assigned.
+func (c *Config) DeriveKrogerCredentials() {
+	ids, secrets := splitList(c.KrogerClientID), splitList(c.KrogerClientSecret)
+	n := len(ids)
+	if len(secrets) < n {
+		n = len(secrets)
+	}
+	if len(ids) != len(secrets) && len(ids) > 0 && len(secrets) > 0 {
+		log.Printf("config: KROGER_CLIENT_ID has %d entries but KROGER_CLIENT_SECRET has %d; using the first %d pair(s)",
+			len(ids), len(secrets), n)
+	}
+	creds := make([][2]string, 0, n)
+	for i := 0; i < n; i++ {
+		if ids[i] == "" || secrets[i] == "" {
+			continue
+		}
+		creds = append(creds, [2]string{ids[i], secrets[i]})
+	}
+	c.KrogerCredentials = creds
 }

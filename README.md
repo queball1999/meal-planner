@@ -41,10 +41,35 @@ All options are set via environment variables (or `.env`). See [`.env.example`](
 | `WEEK_START_DAY` | `sunday` | `sunday` or `monday`. |
 | `PROVIDER` | *(unset)* | `anthropic` \| `openai` \| `openai_compatible`. Enables AI meal generation. |
 | `ANTHROPIC_API_KEY` | *(unset)* | Required when `PROVIDER=anthropic`. |
-| `KROGER_CLIENT_ID` | *(unset)* | Enables live Kroger pricing (covers Fry's too). |
+| `KROGER_CLIENT_ID` | *(unset)* | Enables live Kroger pricing (covers Fry's too). See below for credential rotation. |
+| `KROGER_CLIENT_SECRET` | *(unset)* | Secret paired with `KROGER_CLIENT_ID`. |
+| `KROGER_LOCATION_ID` | *(unset)* | Store location prices are quoted against. |
+| `KROGER_MAX_RPM` | `60` | Cap on Kroger API requests per minute (rolling window). |
+| `KROGER_DAILY_CAP` | `9500` | Per-credential daily call budget before rotating to the next key (margin under Kroger's 10k/day Products limit). |
 | `RENDER_BACKEND` | *(unset)* | `browserless` or `flaresolverr` — headless browser used for scraping. |
 | `RENDER_URL` | *(unset)* | Base URL of that service, e.g. `http://browserless:3000` (same Docker network) or `http://localhost:3900` (host, per the port mapping in `docker-compose.yml`). |
 | `RENDER_TOKEN` | *(unset)* | Auth token for Browserless - same value as that service's `TOKEN`. |
+
+### Kroger pricing and credential rotation
+
+The Kroger tier authenticates with an OAuth2 client-credentials token (cached in memory,
+refreshed ~30s before expiry and again reactively on a rejected token). Every call passes
+through a rolling one-minute rate limiter, and transient `429`/`5xx` responses are retried
+with backoff that honours a `Retry-After` header.
+
+To survive one key being throttled or spending its daily quota, register more than one
+Kroger app and pass **comma-separated, position-aligned** lists:
+
+```
+KROGER_CLIENT_ID=app1id,app2id
+KROGER_CLIENT_SECRET=app1secret,app2secret
+```
+
+Each credential keeps its own token and its own `KROGER_DAILY_CAP` counter. On a `429`,
+auth failure, or daily-cap exhaustion the client parks that key (for the server's
+`Retry-After`, else 60s) and rotates to the next. When every key is unavailable the tier
+simply yields to the next pricing tier — it never blocks the request. A single value on
+each line (no comma) is the normal one-credential setup.
 
 ### Scraping stores that fight back
 

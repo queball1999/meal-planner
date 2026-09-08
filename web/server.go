@@ -101,7 +101,7 @@ func buildChain(cfg *config.Config, store db.Store, gen llm.Generator) *pricing.
 
 	var providers []pricing.PriceProvider
 
-	if k := pricing.NewKrogerProvider(cfg.KrogerClientID, cfg.KrogerClientSecret, cfg.KrogerLocationID); k != nil {
+	if k := pricing.NewKrogerProvider(cfg.KrogerCredentials, cfg.KrogerLocationID, cfg.KrogerMaxRPM, cfg.KrogerDailyCap); k != nil {
 		providers = append(providers, k)
 	}
 	providers = append(providers, pricing.NewCacheProvider(store, cfg.PriceCacheTTLHours))

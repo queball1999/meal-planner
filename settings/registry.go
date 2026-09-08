@@ -161,9 +161,12 @@ var Defs = []Definition{
 		FromConfig: func(c *config.Config) string { return strconv.Itoa(c.AutoPlanHour) }},
 
 	{Key: "KROGER_CLIENT_ID", Label: "Client ID", Category: "Kroger", Kind: KindString,
-		Help:       "Enables live Kroger pricing when set along with Client secret and Location ID.",
+		Help: "Enables live Kroger pricing when set along with Client secret and Location ID. " +
+			"Comma-separate several Client IDs (with a matching comma-separated Client secret list) " +
+			"to rotate credentials automatically when one is rate-limited or hits its daily quota.",
 		FromConfig: func(c *config.Config) string { return c.KrogerClientID }},
 	{Key: "KROGER_CLIENT_SECRET", Label: "Client secret", Category: "Kroger", Kind: KindSecret,
+		Help:       "One secret, or a comma-separated list aligned position-for-position with Client ID.",
 		FromConfig: func(c *config.Config) string { return c.KrogerClientSecret }},
 	{Key: "KROGER_LOCATION_ID", Label: "Location ID", Category: "Kroger", Kind: KindString,
 		Help:       "The Kroger store location to price against.",
@@ -376,6 +379,9 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 	if v, ok := get("KROGER_LOCATION_ID"); ok {
 		cfg.KrogerLocationID = v
 	}
+	// Rebuild the parsed credential pool from whatever the ID/secret fields
+	// now hold (either may have just changed above, or neither).
+	cfg.DeriveKrogerCredentials()
 	if v, ok := get("FLARESOLVERR_URL"); ok {
 		cfg.FlareSolverrURL = v
 	}
