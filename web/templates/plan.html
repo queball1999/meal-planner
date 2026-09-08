@@ -4,10 +4,10 @@
     <h1 class="page-title">{{icon "calendar"}} Weekly Plan</h1>
     {{if .Data.HasPlan}}
     <p class="page-subtitle">
-        {{if .Data.ReadOnly}}<a href="/" class="btn btn--ghost btn--sm" style="margin-right:.5rem">{{icon "arrow-left"}} Dashboard</a>{{end}}
+        {{if .Data.ReadOnly}}<a href="/" class="btn btn-ghost btn-sm" style="margin-right:.5rem">{{icon "arrow-left"}} Dashboard</a>{{end}}
         {{.Data.WeekStart}} - {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}
-        {{if .Data.Canceled}}<span class="badge badge--muted" style="margin-left:.5rem" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled - archived, read only</span>
-        {{else if .Data.ReadOnly}}<span class="badge badge--muted" style="margin-left:.5rem">Past plan - read only</span>{{end}}
+        {{if .Data.Canceled}}<span class="badge badge-muted" style="margin-left:.5rem" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled - archived, read only</span>
+        {{else if .Data.ReadOnly}}<span class="badge badge-muted" style="margin-left:.5rem">Past plan - read only</span>{{end}}
     </p>
     {{else}}
     <p class="page-subtitle">No plan yet for this week.</p>
@@ -54,7 +54,7 @@
     <form method="POST" action="/plan/generate"
           data-confirm="This replaces your current plan for {{.Data.WeekStart}} - {{.Data.WeekEnd}} with a new one. The current plan will be canceled but kept in Plan History for reference." data-confirm-title="Regenerate plan" data-confirm-label="Regenerate">
         {{.CSRFField}}
-        <button type="submit" class="btn btn--outline btn--sm">
+        <button type="submit" class="btn btn-secondary btn-sm">
             {{icon "autorenew"}} Regenerate plan
         </button>
     </form>
@@ -79,7 +79,7 @@
                     <details class="people-picker">
                         <summary class="people-picker__summary"
                                  aria-label="Who is eating on {{$day.DateLabel}}">
-                            {{icon "account-group"}} {{$day.Headcount}}
+                            {{icon "account-group"}} <span class="people-picker__count">{{$day.Headcount}}</span>
                         </summary>
                         <div class="people-picker__menu">
                             {{range $.Data.Members}}
@@ -90,6 +90,32 @@
                                 <span class="text-muted">&times;{{printf "%.2g" .PortionFactor}}</span>
                             </label>
                             {{end}}
+                            <div class="people-picker__guests" data-guest-picker>
+                                <label class="people-picker__option">
+                                    <input type="checkbox" data-guest-toggle
+                                           {{if gt $day.Guests 0}}checked{{end}}>
+                                    <span data-guest-label>Guest{{if gt $day.Guests 0}} &times;{{$day.Guests}}{{end}}</span>
+                                </label>
+                                <span class="people-picker__guest-step">
+                                    <button type="button" class="people-picker__btn"
+                                            aria-label="Fewer guests" data-guest-dec>-</button>
+                                    <span class="people-picker__count" data-guest-n>{{$day.Guests}}</span>
+                                    <button type="button" class="people-picker__btn"
+                                            aria-label="More guests" data-guest-inc>+</button>
+                                </span>
+                                <input type="hidden" name="guests" value="{{$day.Guests}}" data-guest-input>
+                            </div>
+                            <div class="people-picker__guest-slots" data-guest-slots{{if le $day.Guests 0}} hidden{{end}}>
+                                <span class="people-picker__slots-label">Guests eat</span>
+                                {{range $sl := slots}}
+                                <label class="people-picker__slot">
+                                    <input type="checkbox" name="guest_slot" value="{{$sl}}"
+                                           {{if index $day.GuestSlots $sl}}checked{{end}}>
+                                    <span>{{titleCase $sl}}</span>
+                                </label>
+                                {{end}}
+                                <span class="field-hint">None ticked = every meal</span>
+                            </div>
                         </div>
                     </details>
                     {{else}}
@@ -142,7 +168,7 @@
             <div class="meal-card__meta">
                 <span>{{$cell.Effort}}</span>
                 <span>&middot; {{$cell.Servings}} srv</span>
-                {{if $cell.IsLeftover}}<span class="badge badge--dim" title="Leftovers">{{icon "recycle"}}</span>{{end}}
+                {{if $cell.IsLeftover}}<span class="badge badge-muted" title="Leftovers">{{icon "recycle"}}</span>{{end}}
                 {{if $cell.Locked}}<span title="Locked">{{icon "lock"}}</span>{{end}}
             </div>
             {{if not $.Data.ReadOnly}}
@@ -380,7 +406,7 @@
     {{if .Data.HasLLM}}
     <form method="POST" action="/plan/generate">
         {{.CSRFField}}
-        <button type="submit" class="btn btn--primary">
+        <button type="submit" class="btn btn-primary">
             {{icon "chef-hat"}} Generate this week's plan
         </button>
     </form>

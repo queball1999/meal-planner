@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"goeat/catalog"
@@ -28,10 +29,13 @@ type calendarSlot struct {
 
 // calendarDay holds one column in the calendar grid.
 type calendarDay struct {
-	Date      string // YYYY-MM-DD
-	DateLabel string // "Mon Jan 2"
-	Headcount int
-	Slots     map[string]calendarSlot // "breakfast"|"lunch"|"dinner"
+	Date       string // YYYY-MM-DD
+	DateLabel  string // "Mon Jan 2"
+	Headcount  int
+	Guests     int             // non-household people eating that day, part of Headcount
+	GuestSlots map[string]bool // slots the guests eat; empty means every slot
+
+	Slots map[string]calendarSlot // "breakfast"|"lunch"|"dinner"
 
 	// Status is "cooking" | "eating_out" | "skipped"; StatusLabel is how it
 	// reads in the day header. A non-cooking day contributes nothing to the
@@ -229,11 +233,17 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		hc := hh.HouseholdSize
+		guests := 0
+		guestSlots := map[string]bool{}
 		status := db.DayCooking
 		eating := map[int64]bool{}
 		if pd, ok := dayByDate[dateStr]; ok {
 			if pd.Headcount > 0 {
 				hc = pd.Headcount
+			}
+			guests = pd.Guests
+			for _, sl := range pd.GuestSlots {
+				guestSlots[sl] = true
 			}
 			if pd.Status != "" {
 				status = pd.Status
@@ -254,6 +264,8 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 			Date:        dateStr,
 			DateLabel:   date.Format("Mon Jan 2"),
 			Headcount:   hc,
+			Guests:      guests,
+			GuestSlots:  guestSlots,
 			Slots:       slots,
 			Status:      status,
 			StatusLabel: dayStatusLabel[status],
@@ -410,9 +422,39 @@ func (s *Server) handlePlanGeneratePage(w http.ResponseWriter, r *http.Request) 
 // that has never set members up, and means that many standard portions - which
 // is exactly what this endpoint did before members existed.
 //
-// Returns the portion total, the count of people it represents, and a message
-// to show the user when the input was unusable.
-func (s *Server) dayPortions(ctx context.Context, householdID int64, r *http.Request) (float64, int, string) {
+// Guests are people who are not household members - a dinner party, a friend
+// staying over. Each one eats a standard portion, so they add 1.0 to the
+// portion total and 1 to the headcount on top of whoever is ticked.
+//
+// dayPortionInput is the resolved people-picker submission for one day.
+type dayPortionInput struct {
+	Portions       float64  // MemberPortions + Guests: the whole-day total
+	MemberPortions float64  // household members only, before guests
+	Headcount      int      // people count shown to the user (members + guests)
+	Guests         int      // non-household people
+	GuestSlots     []string // slots the guests eat; nil means every slot
+}
+
+// Returns the resolved input, and a message to show the user when it was unusable.
+func (s *Server) dayPortions(ctx context.Context, householdID int64, r *http.Request) (dayPortionInput, string) {
+	guests, _ := strconv.Atoi(r.FormValue("guests"))
+	if guests < 0 {
+		guests = 0
+	}
+	if guests > 50 {
+		guests = 50
+	}
+
+	var guestSlots []string
+	if guests > 0 {
+		for _, sl := range r.Form["guest_slot"] {
+			sl = strings.ToLower(strings.TrimSpace(sl))
+			if sl == "breakfast" || sl == "lunch" || sl == "dinner" {
+				guestSlots = append(guestSlots, sl)
+			}
+		}
+	}
+
 	raw := r.Form["member"]
 	if len(raw) > 0 {
 		ids := make([]int64, 0, len(raw))
@@ -426,19 +468,32 @@ func (s *Server) dayPortions(ctx context.Context, householdID int64, r *http.Req
 		portions, n, err := s.store.SumPortionFactors(ctx, householdID, ids)
 		if err != nil {
 			log.Printf("day portions: sum factors: %v", err)
-			return 0, 0, "Couldn't work out portions for those people. Try again."
+			return dayPortionInput{}, "Couldn't work out portions for those people. Try again."
 		}
-		if n == 0 {
-			return 0, 0, "Pick at least one person eating that day."
+		if n == 0 && guests == 0 {
+			return dayPortionInput{}, "Pick at least one person eating that day."
 		}
-		return portions, n, ""
+		return dayPortionInput{
+			Portions: portions + float64(guests), MemberPortions: portions,
+			Headcount: n + guests, Guests: guests, GuestSlots: guestSlots,
+		}, ""
+	}
+
+	// No members ticked. A day that is only guests eating is still valid.
+	if guests > 0 {
+		return dayPortionInput{
+			Portions: float64(guests), MemberPortions: 0,
+			Headcount: guests, Guests: guests, GuestSlots: guestSlots,
+		}, ""
 	}
 
 	headcount, err := strconv.Atoi(r.FormValue("headcount"))
 	if err != nil || headcount < 1 {
-		return 0, 0, "Headcount must be at least 1."
+		return dayPortionInput{}, "Headcount must be at least 1."
 	}
-	return float64(headcount), headcount, ""
+	return dayPortionInput{
+		Portions: float64(headcount), MemberPortions: float64(headcount), Headcount: headcount,
+	}, ""
 }
 
 // handlePlanHeadcount saves who is eating on one day of the plan (§5.6) and
@@ -463,7 +518,7 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	portions, headcount, msg := s.dayPortions(ctx, hh.ID, r)
+	in, msg := s.dayPortions(ctx, hh.ID, r)
 	if msg != "" {
 		s.setNotify(w, NotifyDanger, msg)
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
@@ -483,11 +538,13 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
-		PlanID:    p.ID,
-		Date:      date,
-		Headcount: headcount,
-		MemberIDs: memberIDs,
-		Portions:  portions,
+		PlanID:     p.ID,
+		Date:       date,
+		Headcount:  in.Headcount,
+		MemberIDs:  memberIDs,
+		Portions:   in.Portions,
+		Guests:     in.Guests,
+		GuestSlots: in.GuestSlots,
 	}); err != nil {
 		log.Printf("headcount: save plan day %s: %v", date, err)
 		s.setNotify(w, NotifyDanger, "Couldn't save that headcount. Try again.")
@@ -495,7 +552,7 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scaled, err := s.store.ScaleMealsForDay(ctx, p.ID, date, portions)
+	scaled, err := s.scaleDayForInput(ctx, p.ID, date, in)
 	if err != nil {
 		// The headcount itself is saved; only the rescale failed. Say so
 		// rather than implying the portions moved.
@@ -506,16 +563,54 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if scaled.MealsScaled == 0 {
-		s.setNotify(w, NotifySuccess, fmt.Sprintf("Headcount for %s set to %d.", date, headcount))
+		s.setNotify(w, NotifySuccess, fmt.Sprintf("Headcount for %s set to %d.", date, in.Headcount))
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
 		return
 	}
 
 	s.repriceInBackground(p.ID, hh)
 	s.setNotify(w, NotifySuccess, fmt.Sprintf(
-		"%s now serves %d - rescaled %d meals. The shopping list is updating.",
-		date, headcount, scaled.MealsScaled))
+		"%s now serves %d%s - rescaled %d meals. The shopping list is updating.",
+		date, in.Headcount, guestNote(in.Guests, in.GuestSlots), scaled.MealsScaled))
 	http.Redirect(w, r, "/plan", http.StatusSeeOther)
+}
+
+// scaleDayForInput rescales a day from a resolved people-picker submission:
+// the whole day moves to the household's own portions, and any slot the guests
+// were restricted to also carries the guests.
+func (s *Server) scaleDayForInput(ctx context.Context, planID int64, date string, in dayPortionInput) (db.ScaleDayResult, error) {
+	if in.Guests == 0 {
+		return s.store.ScaleMealsForDay(ctx, planID, date, in.Portions)
+	}
+
+	slots := in.GuestSlots
+	if len(slots) == 0 {
+		slots = []string{"breakfast", "lunch", "dinner"}
+	}
+	base := in.MemberPortions
+	if base < 1 {
+		base = 1 // a guests-only day still needs a floor for its other slots
+	}
+	slotPortions := make(map[string]float64, len(slots))
+	for _, sl := range slots {
+		slotPortions[sl] = in.MemberPortions + float64(in.Guests)
+	}
+	return s.store.ScaleMealsForDayBySlot(ctx, planID, date, base, slotPortions)
+}
+
+// guestNote is the " (incl. 2 guests at dinner)" clause on the save toast.
+func guestNote(guests int, slots []string) string {
+	if guests == 0 {
+		return ""
+	}
+	who := "1 guest"
+	if guests != 1 {
+		who = fmt.Sprintf("%d guests", guests)
+	}
+	if len(slots) == 0 {
+		return fmt.Sprintf(" (incl. %s)", who)
+	}
+	return fmt.Sprintf(" (incl. %s at %s)", who, strings.Join(slots, " & "))
 }
 
 // repriceInBackground rebuilds a plan's shopping list off the request path.

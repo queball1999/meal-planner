@@ -1590,6 +1590,81 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .people-picker__summary svg { width: 14px; height: 14px; }
 
+.people-picker__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: var(--text-lg);
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.people-picker__btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.people-picker__count {
+    min-width: 1.5em;
+    text-align: center;
+    display: inline-block;
+}
+
+/* The "Guest × N" row: a checkbox that mirrors the count, plus a -/+ stepper.
+ * Sits under the member list, set off by a dashed rule. */
+.people-picker__guests {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
+    padding-top: var(--sp-1);
+    border-top: 1px dashed var(--border);
+}
+
+.people-picker__guest-step {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+/* The "Guests eat: [ ] Breakfast [ ] Lunch [ ] Dinner" row, shown only while
+ * the day has at least one guest (main.js toggles [hidden]). */
+.people-picker__guest-slots {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-2);
+    margin-top: var(--sp-1);
+    padding-left: var(--sp-2);
+}
+
+.people-picker__slots-label {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.people-picker__slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.people-picker__guest-slots .field-hint {
+    flex-basis: 100%;
+}
+
 /* In flow, not absolutely positioned.
  *
  * `.plan-board` has `overflow-x: auto`, and a box whose overflow is not
@@ -1941,23 +2016,9 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
  * right-aligned, which is also where a thumb is.
  */
 @media (max-width: 640px) {
-    .shopping-item,
-    .ingredient-item {
+    .shopping-item {
         flex-wrap: wrap;
         row-gap: var(--sp-1);
-    }
-
-    .shopping-item__check {
-        flex: 1 1 100%;
-    }
-
-    /* Push the numbers and actions to the right of their own line. */
-    .shopping-item__qty {
-        margin-left: auto;
-    }
-
-    .shopping-item__meals {
-        flex-basis: 100%;
     }
 }
 

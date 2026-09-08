@@ -452,6 +452,56 @@ function goeatCSRF() {
     });
 })();
 
+// ── People picker: Guests × N ─────────────────────────────────────────────
+// A guest is one standard portion on top of the ticked household members. The
+// hidden `guests` input is what the form submits; the checkbox and the -/+
+// stepper both drive it. Any change dispatches a bubbling `change` so the
+// form's data-autosubmit handler saves and the day rescales. The per-slot
+// "Guests eat" checkboxes only matter while there is at least one guest, so
+// they are shown and hidden with the count.
+
+(function initGuestPicker() {
+    const MAX_GUESTS = 50;
+
+    document.querySelectorAll('[data-guest-picker]').forEach(function (picker) {
+        const input = picker.querySelector('[data-guest-input]');
+        const nEl = picker.querySelector('[data-guest-n]');
+        const labelEl = picker.querySelector('[data-guest-label]');
+        const toggle = picker.querySelector('[data-guest-toggle]');
+        if (!input || !nEl || !labelEl || !toggle) return;
+
+        // The slot picker is a sibling inside the same .people-picker__menu.
+        const menu = picker.parentElement;
+        const slotBox = menu ? menu.querySelector('[data-guest-slots]') : null;
+
+        function setGuests(n) {
+            n = Math.min(MAX_GUESTS, Math.max(0, n | 0));
+            const changed = String(input.value) !== String(n);
+            input.value = n;
+            nEl.textContent = n;
+            toggle.checked = n > 0;
+            labelEl.textContent = n > 0 ? 'Guest ×' + n : 'Guest';
+            if (slotBox) slotBox.hidden = n <= 0;
+            if (n <= 0 && slotBox) {
+                // Dropping to zero guests clears any slot restriction so it
+                // does not resurface next time guests are added.
+                slotBox.querySelectorAll('input[type="checkbox"]').forEach(function (c) { c.checked = false; });
+            }
+            if (changed) input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function current() { return parseInt(input.value, 10) || 0; }
+
+        toggle.addEventListener('change', function () {
+            setGuests(toggle.checked ? Math.max(1, current()) : 0);
+        });
+        var dec = picker.querySelector('[data-guest-dec]');
+        if (dec) dec.addEventListener('click', function () { setGuests(current() - 1); });
+        var inc = picker.querySelector('[data-guest-inc]');
+        if (inc) inc.addEventListener('click', function () { setGuests(current() + 1); });
+    });
+})();
+
 // ── Item quick-add ────────────────────────────────────────────────────────
 // One dialog for the page, retargeted per row: a catalog can run to hundreds
 // of items, and one overlay each would be hundreds of overlays in the DOM for
