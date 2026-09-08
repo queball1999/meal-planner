@@ -12,6 +12,26 @@ type GeneratedIngredient struct {
 	Quantity      float64 `json:"quantity"`
 	Unit          string  `json:"unit"`
 	EstPriceCents int64   `json:"est_price_cents"` // the LLM's own rough US grocery price for this quantity - kept as a last-resort pricing fallback (§6.4)
+
+	// ItemUnit is the unit this ingredient's catalog item should be stocked and
+	// bought in - grams for flour, "each" for eggs - which is often not the
+	// unit the recipe measures in (a clove, a cup). Used only when the item is
+	// created for the first time; an existing item keeps whatever unit it has.
+	ItemUnit string `json:"item_unit"`
+
+	// Conversions are item-specific unit factors the builtin metric/imperial
+	// graph cannot know: "1 clove = 5 g", "1 egg = 50 g". Written as catalog
+	// conversion edges so the shopping list can reconcile this line's unit
+	// against the item's stock unit instead of guessing. Optional.
+	Conversions []GeneratedConversion `json:"conversions"`
+}
+
+// GeneratedConversion is one unit factor the model supplies for an ingredient:
+// 1 From = Factor To.
+type GeneratedConversion struct {
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Factor float64 `json:"factor"`
 }
 
 // GeneratedMeal is one meal in the LLM's JSON output (§7.4).

@@ -225,3 +225,83 @@ func TestEnsureItemStillCreatesForUnrelatedNames(t *testing.T) {
 		t.Errorf("source = %q, want auto - this is the yellow-chip case", got.Source)
 	}
 }
+
+// A new item created from a recipe hint takes the hint's stock unit instead of
+// the "each" default, records the hint's odd conversions as item-specific
+// edges, and has its derived one-hop conversion table built straight away.
+func TestEnsureItemWithHintSetsUnitAndConversions(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newStore(t)
+
+	got, err := catalog.EnsureItemWithHint(ctx, store, hhID, "all-purpose flour", catalog.ItemHint{
+		Unit: "g",
+		Conversions: []catalog.UnitEdge{
+			{From: "cup", To: "g", Factor: 120},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if got == nil {
+		t.Fatal("no item created")
+	}
+	if got.StockUnit != "g" {
+		t.Errorf("stock unit = %q, want g (from the hint, not the each default)", got.StockUnit)
+	}
+
+	conv, err := store.ListConversionsForItem(ctx, got.ID)
+	if err != nil {
+		t.Fatalf("conversions: %v", err)
+	}
+	var haveCup, haveDerivedToStock bool
+	for _, c := range conv {
+		if c.ItemID != nil && c.FromUnit == "cup" && c.ToUnit == "g" && c.Factor == 120 {
+			haveCup = true
+		}
+		// RecalcItemConversions writes a direct edge from every known unit to
+		// the stock unit; "lb" -> "g" is a builtin path and must be flattened.
+		if c.FromUnit == "lb" && c.ToUnit == "g" {
+			haveDerivedToStock = true
+		}
+	}
+	if !haveCup {
+		t.Errorf("hint conversion cup->g (120) was not stored: %+v", conv)
+	}
+	if !haveDerivedToStock {
+		t.Errorf("derived conversion table was not rebuilt (no lb->g edge): %+v", conv)
+	}
+}
+
+// A hint never overwrites a conversion the household entered by hand.
+func TestEnsureItemWithHintDoesNotClobberManualConversion(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newStore(t)
+
+	it, err := store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID: hhID, Name: "Garlic", NormalizedTerm: "garlic",
+		StockUnit: "g", DefaultPurchaseQty: 1, Source: "manual",
+	})
+	if err != nil {
+		t.Fatalf("item: %v", err)
+	}
+	id := it.ID
+	if err := store.UpsertUnitConversion(ctx, db.UpsertUnitConversionParams{
+		ItemID: &id, FromUnit: "clove", ToUnit: "g", Factor: 4,
+	}); err != nil {
+		t.Fatalf("manual conv: %v", err)
+	}
+
+	if _, err := catalog.EnsureItemWithHint(ctx, store, hhID, "garlic", catalog.ItemHint{
+		Unit:        "g",
+		Conversions: []catalog.UnitEdge{{From: "clove", To: "g", Factor: 9}},
+	}); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+
+	conv, _ := store.ListConversionsForItem(ctx, it.ID)
+	for _, c := range conv {
+		if c.ItemID != nil && c.FromUnit == "clove" && c.ToUnit == "g" && c.Factor != 4 {
+			t.Errorf("manual clove->g factor was overwritten to %v, want 4", c.Factor)
+		}
+	}
+}

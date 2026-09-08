@@ -5,11 +5,31 @@ package catalog
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"goeat/db"
 	"goeat/pricing"
 )
+
+// ItemHint carries what a recipe generator knows about an ingredient's catalog
+// item beyond its name: the unit it is stocked and bought in, and any
+// item-specific unit conversions ("1 clove garlic ≈ 5 g") the builtin
+// metric/imperial graph cannot know on its own. Every field is optional.
+type ItemHint struct {
+	Unit        string
+	Conversions []UnitEdge
+}
+
+// UnitEdge is one directed conversion supplied by a hint: 1 From = Factor To.
+type UnitEdge struct {
+	From, To string
+	Factor   float64
+}
+
+func (h ItemHint) hasContent() bool {
+	return strings.TrimSpace(h.Unit) != "" || len(h.Conversions) > 0
+}
 
 // EnsureItem returns the household's catalog item for name, in three steps:
 //
@@ -27,6 +47,18 @@ import (
 // "chicken breast" and "chicken breasts" became two items with two prices and
 // two pantry stocks, and nothing ever noticed.
 func EnsureItem(ctx context.Context, store db.Store, householdID int64, name string) (*db.Item, error) {
+	return EnsureItemWithHint(ctx, store, householdID, name, ItemHint{})
+}
+
+// EnsureItemWithHint is EnsureItem plus the recipe generator's knowledge of the
+// item (see ItemHint). A brand-new item takes the hint's canonical unit as its
+// stock unit (instead of the "each" default) and, either way, has its derived
+// one-hop conversion table built immediately so costing and the item page never
+// BFS at read time. Hint conversions are written as item-specific edges, but
+// only where the item does not already have that pair - a hand-entered
+// conversion is never overwritten by the model. For an item that already
+// exists, the hint only enriches conversions; its stock unit is left as set.
+func EnsureItemWithHint(ctx context.Context, store db.Store, householdID int64, name string, hint ItemHint) (*db.Item, error) {
 	term := pricing.Normalize(name)
 	if term == "" {
 		return nil, nil
@@ -34,12 +66,12 @@ func EnsureItem(ctx context.Context, store db.Store, householdID int64, name str
 	if it, err := store.GetItemByTerm(ctx, householdID, term); err != nil {
 		return nil, err
 	} else if it != nil {
-		return it, nil
+		return enrichItem(ctx, store, it, hint, false)
 	}
 	if it, err := store.GetItemByAlias(ctx, householdID, term); err != nil {
 		return nil, err
 	} else if it != nil {
-		return it, nil
+		return enrichItem(ctx, store, it, hint, false)
 	}
 
 	// A fuzzy match confident enough to take without asking is recorded as an
@@ -48,17 +80,73 @@ func EnsureItem(ctx context.Context, store db.Store, householdID int64, name str
 	if it, err := autoMatch(ctx, store, householdID, name, term); err != nil {
 		return nil, err
 	} else if it != nil {
-		return it, nil
+		return enrichItem(ctx, store, it, hint, false)
 	}
 
-	return store.CreateItem(ctx, db.CreateItemParams{
+	stockUnit := "each"
+	if u := pricing.CanonUnit(hint.Unit); u != "" {
+		stockUnit = u
+	}
+	it, err := store.CreateItem(ctx, db.CreateItemParams{
 		HouseholdID:        householdID,
 		Name:               strings.TrimSpace(name),
 		NormalizedTerm:     term,
-		StockUnit:          "each",
+		StockUnit:          stockUnit,
 		DefaultPurchaseQty: 1,
 		Source:             "auto",
 	})
+	if err != nil || it == nil {
+		return it, err
+	}
+	return enrichItem(ctx, store, it, hint, true)
+}
+
+// enrichItem applies a hint's conversion edges to an item (never clobbering an
+// existing pair) and rebuilds its derived conversion table. isNew forces the
+// rebuild even with an empty hint, so every freshly created item gets its
+// conversions precomputed the moment its unit is known. All failures are
+// logged, not fatal: a missing conversion only downgrades a shopping line to an
+// estimate, and losing a whole plan generation over it would be absurd.
+func enrichItem(ctx context.Context, store db.Store, it *db.Item, hint ItemHint, isNew bool) (*db.Item, error) {
+	if !isNew && !hint.hasContent() {
+		return it, nil
+	}
+
+	if len(hint.Conversions) > 0 {
+		existing, _ := store.ListConversionsForItem(ctx, it.ID)
+		have := map[string]bool{}
+		for _, c := range existing {
+			if c.ItemID == nil {
+				continue // global edge - a hint may still specialise it per item
+			}
+			f, t := pricing.CanonUnit(c.FromUnit), pricing.CanonUnit(c.ToUnit)
+			have[f+">"+t] = true
+			have[t+">"+f] = true
+		}
+		for _, e := range hint.Conversions {
+			from, to := pricing.CanonUnit(e.From), pricing.CanonUnit(e.To)
+			if from == "" || to == "" || from == to || e.Factor <= 0 || e.Factor > 100000 {
+				continue
+			}
+			if have[from+">"+to] {
+				continue
+			}
+			id := it.ID
+			if err := store.UpsertUnitConversion(ctx, db.UpsertUnitConversionParams{
+				ItemID: &id, FromUnit: from, ToUnit: to, Factor: e.Factor,
+			}); err != nil {
+				log.Printf("catalog: hint conversion %s->%s for item %d: %v", from, to, it.ID, err)
+				continue
+			}
+			have[from+">"+to] = true
+			have[to+">"+from] = true
+		}
+	}
+
+	if err := RecalcItemConversions(ctx, store, it.ID); err != nil {
+		log.Printf("catalog: recalc conversions for item %d: %v", it.ID, err)
+	}
+	return it, nil
 }
 
 // autoMatch returns the one catalog item that clearly means this name, or nil

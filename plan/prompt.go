@@ -23,9 +23,10 @@ Return ONLY valid JSON matching this schema - no prose, no markdown fences, no e
       "servings": 2,
       "cooked_portions": 2,
       "ingredients": [
-        {"name": "rolled oats", "quantity": 1.0, "unit": "cup", "est_price_cents": 60},
-        {"name": "blueberries", "quantity": 0.5, "unit": "cup", "est_price_cents": 150},
-        {"name": "canned black beans", "quantity": 1, "unit": "can", "est_price_cents": 129}
+        {"name": "rolled oats", "quantity": 1.0, "unit": "cup", "est_price_cents": 60, "item_unit": "g", "conversions": [{"from": "cup", "to": "g", "factor": 90}]},
+        {"name": "blueberries", "quantity": 0.5, "unit": "cup", "est_price_cents": 150, "item_unit": "g", "conversions": [{"from": "cup", "to": "g", "factor": 150}]},
+        {"name": "eggs", "quantity": 2, "unit": "each", "est_price_cents": 50, "item_unit": "each"},
+        {"name": "canned black beans", "quantity": 1, "unit": "can", "est_price_cents": 129, "item_unit": "can"}
       ],
       "steps": ["Boil 2 cups water.", "Stir in oats and cook 5 min.", "Top with berries."],
       "prep_minutes": 5,
@@ -58,6 +59,17 @@ Rules:
   beans ≈ 129). This is a fallback the app keeps and uses only when no live price is
   found later - it does not need to be precise, but it must be a real positive number,
   never 0 or omitted.
+- "item_unit" is the unit this ingredient is actually stocked and bought in, which is
+  often NOT how the recipe measures it: flour is bought by weight ("g") even when a
+  recipe calls for cups; eggs and lemons are bought "each"; a canned good is bought by
+  the "can". Give the plain purchasable stock unit here for every ingredient.
+- "conversions" is REQUIRED whenever "unit" differs from "item_unit" and the two are
+  not a standard metric/imperial pair the app already knows (g<->kg, lb<->oz, tsp<->tbsp,
+  cup<->ml, dozen<->each). Each entry is {"from","to","factor"} meaning 1 from = factor
+  to, and at least one entry MUST connect "unit" to "item_unit". Examples: cup of flour
+  -> {"from":"cup","to":"g","factor":120}; clove of garlic -> {"from":"clove","to":"g","factor":5};
+  a recipe "egg" when item_unit is "g" -> {"from":"each","to":"g","factor":50}. Omit
+  "conversions" only when "unit" and "item_unit" are the same or a known pair.
 - Steps are numbered imperatives, 3-8 per meal
 - "prep_minutes" and "cook_minutes" are your best estimate of hands-on and
   cooking time. Every generated meal is saved to the household's recipe
