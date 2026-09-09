@@ -359,26 +359,33 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 
 	testPrompt := `Reply with exactly one sentence: "Go Eat AI is working!"`
 
-	if s.gen == nil {
-		json.NewEncoder(w).Encode(result{OK: false, Prompt: testPrompt, Error: "No LLM provider configured"})
+	// Build a generator fresh from whatever is saved right now, rather than
+	// using s.gen (built once at server startup - like every other setting
+	// on this page, a provider/model/key edit here only reaches s.gen after
+	// a restart). Without this, Test Connection silently exercised whatever
+	// was running before your last edit instead of what you just picked,
+	// which is exactly the mismatch that made a stale, deprecated model look
+	// like the one just selected in the dropdown.
+	cfg := *s.cfg
+	if err := settings.Apply(r.Context(), s.store, &cfg, func(string, ...any) {}); err != nil {
+		json.NewEncoder(w).Encode(result{OK: false, Prompt: testPrompt, Error: "failed to read settings"})
+		return
+	}
+	gen, err := llm.NewGenerator(&cfg)
+	if err != nil {
+		json.NewEncoder(w).Encode(result{OK: false, Prompt: testPrompt, Error: err.Error()})
 		return
 	}
 
-	// s.gen is the generator built at server startup from whatever was saved
-	// then - like every setting on this page, a provider/model/key change
-	// here takes effect only after a restart. Report the model it's actually
-	// using (not necessarily the one now showing in the dropdown above) on
-	// both outcomes, so a stale-config mismatch reads as "restart needed"
-	// rather than a broken test.
 	start := time.Now()
-	resp, err := s.gen.Generate(r.Context(), llm.GenerateRequest{
+	resp, err := gen.Generate(r.Context(), llm.GenerateRequest{
 		System: "You are a helpful assistant.",
 		Prompt: testPrompt,
 	})
 	ms := time.Since(start).Milliseconds()
 
 	if err != nil {
-		json.NewEncoder(w).Encode(result{OK: false, Prompt: testPrompt, Error: err.Error(), DurationMS: ms, Provider: s.gen.ProviderName(), Model: s.gen.ModelName()})
+		json.NewEncoder(w).Encode(result{OK: false, Prompt: testPrompt, Error: err.Error(), DurationMS: ms, Provider: gen.ProviderName(), Model: gen.ModelName()})
 		return
 	}
 
@@ -387,7 +394,7 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 		Prompt:     testPrompt,
 		Response:   resp.Content,
 		DurationMS: ms,
-		Provider:   s.gen.ProviderName(),
+		Provider:   gen.ProviderName(),
 		Model:      resp.ModelName,
 	})
 }

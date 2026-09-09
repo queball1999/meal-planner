@@ -47,11 +47,15 @@ var Providers = []ProviderInfo{
 		ID: "google", Label: "Google Gemini",
 		DefaultURL: "https://generativelanguage.googleapis.com/v1beta/openai", ShowURL: true,
 		DocsURL: "https://aistudio.google.com/apikey",
-		// gemini-2.0-flash was retired (its /models response now points
-		// callers at gemini-3.6-flash); gemma-4-31b/-26b are Google's
-		// open Gemma models, also served through this same endpoint.
+		// gemini-2.0-flash and gemini-2.5-pro were both retired in quick
+		// succession (their 404s pointed callers at gemini-3.6-flash and
+		// gemini-3.1-pro-preview respectively) - this curated list is only a
+		// fallback for when the live /models call fails, so it will keep
+		// drifting behind Google's actual catalog; "Refresh list" against
+		// the real endpoint is the source of truth. gemma-4-31b/-26b are
+		// Google's open Gemma models, also served through this endpoint.
 		Models: []string{
-			"gemini-2.5-pro", "gemini-2.5-flash", "gemini-3.6-flash",
+			"gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-3.6-flash",
 			"gemma-4-31b", "gemma-4-26b",
 		},
 	},
