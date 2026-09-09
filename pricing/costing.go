@@ -65,12 +65,36 @@ func CostPlan(
 	household *db.Household,
 	stores []*db.GroceryStore,
 ) (*CostResult, error) {
+	seeded, err := SeedShoppingList(ctx, store, planID, household)
+	if err != nil {
+		return nil, err
+	}
+	return ResolvePricing(ctx, store, chain, planID, household, stores, seeded)
+}
+
+// seededItem is one shopping-list line SeedShoppingList has already written
+// as a "pending" skeleton row, carried forward so ResolvePricing knows which
+// existing row to fill in rather than creating a duplicate.
+type seededItem struct {
+	AggItem
+	RowID     int64
+	Deduction PantryDeduction
+}
+
+// SeedShoppingList aggregates a plan's ingredients into shopping-list lines
+// and writes them immediately as `pending` skeleton rows - no network calls,
+// so the shopping list tab has something to render (skeleton loading) the
+// instant a plan is marked ready, before pricing (which is what takes real
+// time: a live scrape or AI price lookup per ingredient) has resolved
+// anything. ResolvePricing turns each of the returned rows into a priced one.
+//
+// Clears any previous shopping list for this plan first (idempotent re-seed).
+func SeedShoppingList(ctx context.Context, store db.Store, planID int64, household *db.Household) ([]seededItem, error) {
 	ingredients, err := store.ListIngredientsByPlan(ctx, planID)
 	if err != nil {
 		return nil, fmt.Errorf("list ingredients: %w", err)
 	}
 
-	// Clear any previous shopping list for this plan (idempotent re-price).
 	if err := store.DeleteShoppingListItems(ctx, planID); err != nil {
 		return nil, fmt.Errorf("clear shopping list: %w", err)
 	}
@@ -89,12 +113,53 @@ func CostPlan(
 		log.Printf("costing: pantry deduction: %v", perr)
 	}
 
+	seeded := make([]seededItem, 0, len(items))
+	for idx, item := range items {
+		ded := deducted[idx]
+		refsJSON, _ := json.Marshal(item.IngredientIDs)
+		row, cerr := store.CreateShoppingListItem(ctx, db.CreateShoppingListItemParams{
+			PlanID:             planID,
+			ItemID:             item.ItemID,
+			MealIngredientRefs: string(refsJSON),
+			DisplayName:        item.DisplayName,
+			BuyQuantity:        item.TotalQuantity,
+			PackSize:           item.TotalQuantity,
+			PurchaseUnit:       item.Unit,
+			PriceSource:        ConfidenceEstimate,
+			Confidence:         ConfidenceEstimate,
+			PantryQtyUsed:      ded.Used,
+			InPantry:           ded.Covered,
+			Pending:            true,
+		})
+		if cerr != nil {
+			log.Printf("costing: seed shopping list item %q: %v", item.DisplayName, cerr)
+			continue
+		}
+		seeded = append(seeded, seededItem{AggItem: item, RowID: row.ID, Deduction: ded})
+	}
+	return seeded, nil
+}
+
+// ResolvePricing prices each of a plan's already-seeded shopping-list lines in
+// place, one at a time - the slow part (a live scrape or AI price lookup per
+// ingredient), run after SeedShoppingList so the household can already see
+// the plan and a skeleton list while this works through it.
+func ResolvePricing(
+	ctx context.Context,
+	store db.Store,
+	chain *Chain,
+	planID int64,
+	household *db.Household,
+	stores []*db.GroceryStore,
+	seeded []seededItem,
+) (*CostResult, error) {
 	region := household.ZIPCode
 
 	var totalCents int64
 	confidenceCounts := map[string]int{}
 
-	for idx, item := range items {
+	for _, seed := range seeded {
+		item := seed.AggItem
 		var priceCents int64
 		var priceSource, confidence string
 		var resolvedStoreID *int64
@@ -209,35 +274,35 @@ func CostPlan(
 		// A line the pantry covered entirely stays on the list but is not
 		// bought, so it must not reach the total either - the same rule the
 		// "I already have this" control follows.
-		ded := deducted[idx]
+		ded := seed.Deduction
 		if !ded.Covered {
 			totalCents += lineTotal
 		}
 		confidenceCounts[confidence]++
 
-		refsJSON, _ := json.Marshal(item.IngredientIDs)
-		_, cerr := store.CreateShoppingListItem(ctx, db.CreateShoppingListItemParams{
-			PlanID:             planID,
-			StoreID:            resolvedStoreID,
-			ItemID:             item.ItemID,
-			MealIngredientRefs: string(refsJSON),
-			DisplayName:        item.DisplayName,
-			BuyQuantity:        buyQuantity,
-			PackSize:           packSize,
-			PurchaseUnit:       purchaseUnit,
-			UnitPriceCents:     priceCents,
-			LineTotalCents:     lineTotal,
-			PriceSource:        priceSource,
-			Confidence:         confidence,
-			PantryQtyUsed:      ded.Used,
-			InPantry:           ded.Covered,
-		})
-		if cerr != nil {
-			log.Printf("costing: create shopping list item %q: %v", item.DisplayName, cerr)
+		// Turn this line's "pending" skeleton row (SeedShoppingList) into a
+		// priced one in place, rather than inserting a duplicate - every other
+		// still-pending row stays a skeleton on the shopping list tab until its
+		// own turn comes up.
+		if uerr := store.UpdateShoppingListItemPrice(ctx, db.UpdateShoppingListItemPriceParams{
+			ID:             seed.RowID,
+			StoreID:        resolvedStoreID,
+			ItemID:         item.ItemID,
+			BuyQuantity:    buyQuantity,
+			PackSize:       packSize,
+			PurchaseUnit:   purchaseUnit,
+			UnitPriceCents: priceCents,
+			LineTotalCents: lineTotal,
+			PriceSource:    priceSource,
+			Confidence:     confidence,
+			PantryQtyUsed:  ded.Used,
+			InPantry:       ded.Covered,
+		}); uerr != nil {
+			log.Printf("costing: price shopping list item %q: %v", item.DisplayName, uerr)
 		}
 	}
 
-	summary := BuildConfidenceSummary(confidenceCounts, len(items))
+	summary := BuildConfidenceSummary(confidenceCounts, len(seeded))
 
 	if err := store.UpdatePlanTotal(ctx, planID, totalCents, summary); err != nil {
 		return nil, fmt.Errorf("update plan total: %w", err)

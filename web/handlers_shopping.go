@@ -773,6 +773,8 @@ func (s *Server) handleShoppingItemPriceSet(w http.ResponseWriter, r *http.Reque
 		LineTotalCents: priceCents * int64(packs),
 		PriceSource:    "manual",
 		Confidence:     pricing.ConfidenceManual,
+		PantryQtyUsed:  line.PantryQtyUsed,
+		InPantry:       line.InPantry,
 	}); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "could not update shopping list line"})
 		return
