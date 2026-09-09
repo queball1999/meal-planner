@@ -20,12 +20,12 @@ func (s *store) CreateShoppingListItem(ctx context.Context, p CreateShoppingList
 			(plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 			 buy_quantity, pack_size, purchase_unit,
 			 unit_price_cents, line_total_cents, price_source, confidence,
-			 pantry_qty_used, in_pantry)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 pantry_qty_used, in_pantry, pending)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.PlanID, storeID, itemID, p.MealIngredientRefs, p.DisplayName,
 		p.BuyQuantity, p.PackSize, p.PurchaseUnit,
 		p.UnitPriceCents, p.LineTotalCents, p.PriceSource, p.Confidence,
-		p.PantryQtyUsed, boolInt(p.InPantry),
+		p.PantryQtyUsed, boolInt(p.InPantry), boolInt(p.Pending),
 	)
 	if err != nil {
 		return nil, err
@@ -47,6 +47,7 @@ func (s *store) CreateShoppingListItem(ctx context.Context, p CreateShoppingList
 		Confidence:         p.Confidence,
 		PantryQtyUsed:      p.PantryQtyUsed,
 		InPantry:           p.InPantry,
+		Pending:            p.Pending,
 	}
 	return item, nil
 }
@@ -55,7 +56,7 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
-		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used
+		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending
 		FROM shopping_list_items
 		WHERE plan_id = ?
 		ORDER BY store_id, display_name`, planID)
@@ -68,12 +69,12 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 	for rows.Next() {
 		var item ShoppingListItem
 		var storeID, itemID *int64
-		var checked, inPantry int
+		var checked, inPantry, pending int
 		if err := rows.Scan(
 			&item.ID, &item.PlanID, &storeID, &itemID, &item.MealIngredientRefs, &item.DisplayName,
 			&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 			&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
-			&checked, &inPantry, &item.PantryQtyUsed,
+			&checked, &inPantry, &item.PantryQtyUsed, &pending,
 		); err != nil {
 			return nil, err
 		}
@@ -81,6 +82,7 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 		item.ItemID = itemID
 		item.Checked = checked != 0
 		item.InPantry = inPantry != 0
+		item.Pending = pending != 0
 		out = append(out, &item)
 	}
 	return out, rows.Err()
@@ -90,18 +92,18 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
-		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used
+		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending
 		FROM shopping_list_items
 		WHERE id = ?`, id)
 
 	var item ShoppingListItem
 	var storeID, itemID *int64
-	var checked, inPantry int
+	var checked, inPantry, pending int
 	err := row.Scan(
 		&item.ID, &item.PlanID, &storeID, &itemID, &item.MealIngredientRefs, &item.DisplayName,
 		&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 		&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
-		&checked, &inPantry, &item.PantryQtyUsed,
+		&checked, &inPantry, &item.PantryQtyUsed, &pending,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -113,11 +115,16 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 	item.ItemID = itemID
 	item.Checked = checked != 0
 	item.InPantry = inPantry != 0
+	item.Pending = pending != 0
 	return &item, nil
 }
 
 // UpdateShoppingListItemPrice rewrites one line's resolved store/item, buy
-// quantity, price, and confidence after a manual price edit.
+// quantity, price, confidence, and pantry deduction in place - a manual price
+// edit (pantry fields passed through unchanged by the caller) or one step of
+// CostPlan's per-item pricing pass turning a pending skeleton row into a
+// priced one. Always clears `pending`: this method only ever writes a
+// resolved price, never a placeholder.
 func (s *store) UpdateShoppingListItemPrice(ctx context.Context, p UpdateShoppingListItemPriceParams) error {
 	var storeID, itemID interface{}
 	if p.StoreID != nil {
@@ -129,10 +136,12 @@ func (s *store) UpdateShoppingListItemPrice(ctx context.Context, p UpdateShoppin
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE shopping_list_items
 		SET store_id = ?, item_id = ?, buy_quantity = ?, pack_size = ?, purchase_unit = ?,
-		    unit_price_cents = ?, line_total_cents = ?, price_source = ?, confidence = ?
+		    unit_price_cents = ?, line_total_cents = ?, price_source = ?, confidence = ?,
+		    pantry_qty_used = ?, in_pantry = ?, pending = 0
 		WHERE id = ?`,
 		storeID, itemID, p.BuyQuantity, p.PackSize, p.PurchaseUnit,
-		p.UnitPriceCents, p.LineTotalCents, p.PriceSource, p.Confidence, p.ID)
+		p.UnitPriceCents, p.LineTotalCents, p.PriceSource, p.Confidence,
+		p.PantryQtyUsed, boolInt(p.InPantry), p.ID)
 	return err
 }
 

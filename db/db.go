@@ -33,6 +33,19 @@ func Open(dsn string) (Store, error) {
 		return nil, fmt.Errorf("db open: %w", err)
 	}
 
+	if dsn == ":memory:" {
+		// Each pooled connection to ":memory:" gets its own private, empty
+		// database - fine as long as every query happens to land on the same
+		// connection, which stops being true the moment two goroutines touch
+		// the store concurrently (e.g. a test's background pricing goroutine
+		// racing the caller): the second one lands on a fresh connection with
+		// no migrations applied and every query fails with "no such table".
+		// One shared connection for the whole pool keeps every caller on the
+		// same database. Test-only - a real deployment always passes a file
+		// path, where WAL already gives it real concurrent access.
+		sqlDB.SetMaxOpenConns(1)
+	}
+
 	// SQLite best-practice pragmas: WAL for concurrent reads, FK enforcement,
 	// and a busy_timeout so a writer blocked by another in-flight write (e.g.
 	// the HA sync scheduler ticking mid-costing-pass) retries for a while

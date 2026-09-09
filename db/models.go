@@ -365,6 +365,9 @@ type ShoppingListItem struct {
 	InPantry           bool
 	ItemID             *int64  // catalog item, nil when unlinked (00010_items.sql)
 	PantryQtyUsed      float64 // how much the household already had (00022)
+	// Pending marks a skeleton row CostPlan seeded but has not yet priced
+	// (00027) - the shopping list tab renders these as loading placeholders.
+	Pending bool
 }
 
 // UpdateShoppingListItemPriceParams rewrites one shopping-list line's price and
@@ -380,6 +383,8 @@ type UpdateShoppingListItemPriceParams struct {
 	LineTotalCents int64
 	PriceSource    string
 	Confidence     string
+	PantryQtyUsed  float64
+	InPantry       bool
 }
 
 // UpsertPriceCacheParams bundles inputs for writing a price to the cache.
@@ -459,6 +464,10 @@ type CreateShoppingListItemParams struct {
 	// InPantry marks a line the pantry covered entirely: kept on the list, out
 	// of the total. The same state the "I already have this" control sets.
 	InPantry bool
+	// Pending marks a skeleton row CostPlan seeds before pricing runs (00027)
+	// - the shopping list tab renders these as loading placeholders until
+	// ResolvePricing turns each one into a priced line.
+	Pending bool
 }
 
 // ── Items catalog + quantity conversions (00010_items.sql) ───────────────────
