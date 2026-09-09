@@ -54,6 +54,7 @@ type aiProviderView struct {
 type settingsPageData struct {
 	HasLLM       bool
 	ActiveID     string
+	ActiveLabel  string // display name of the ActiveID provider, for the "set as default" confirm prompt
 	Providers    []aiProviderView
 	SharedFields []settingsFieldView // sampling params, applied to every provider
 	Categories   []settingsCategoryView
@@ -175,9 +176,15 @@ func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 		providers = append(providers, pv)
 	}
 
+	activeLabel := active
+	if info, ok := llm.ProviderByID(active); ok {
+		activeLabel = info.Label
+	}
+
 	s.render(w, r, "settings", settingsPageData{
 		HasLLM:       s.gen != nil,
 		ActiveID:     active,
+		ActiveLabel:  activeLabel,
 		Providers:    providers,
 		SharedFields: sharedAI,
 		Categories:   categories,

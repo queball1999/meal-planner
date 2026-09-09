@@ -41,6 +41,7 @@
                     aria-selected="{{if .IsDefault}}true{{else}}false{{end}}">
                     {{aiLogo .ID}}
                     <span class="ai-picker__label">{{.Label}}</span>
+                    <span class="badge badge-accent" data-provider-default-badge="{{.ID}}"{{if not .IsDefault}} hidden{{end}}>Default</span>
                     {{if .Configured}}
                     <span class="badge badge-success">Ready</span>
                     {{else}}
@@ -62,6 +63,23 @@
 
     {{range .Data.Providers}}
     <div class="ai-panel" data-provider-panel="{{.ID}}"{{if not .IsDefault}} hidden{{end}}>
+        <div class="field settings-field ai-panel__default">
+            <label class="toggle-wrap">
+                <input type="checkbox" data-provider-default-toggle="{{.ID}}"
+                       data-provider-label="{{.Label}}"
+                       {{if .IsDefault}}checked disabled{{else}}
+                       data-confirm="Set {{.Label}} as your default AI provider? This replaces {{$.Data.ActiveLabel}}, which will no longer be used to generate meal plans."
+                       data-confirm-title="Change default provider"
+                       data-confirm-label="Set as default"
+                       {{end}}>
+                <span class="toggle-track"></span>
+                <span class="toggle-label" data-provider-default-label>
+                    {{if .IsDefault}}Default provider for plan generation{{else}}Set as default provider{{end}}
+                </span>
+            </label>
+            <p class="field-hint">Takes effect after a restart, like every other setting on this page.</p>
+        </div>
+
         {{if .DocsURL}}
         <p class="field-hint" style="margin-top:0">
             <a href="{{.DocsURL}}" target="_blank" rel="noopener noreferrer">Get an API key for {{.Label}}</a>
@@ -391,9 +409,11 @@
         pickBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
 
-    /* Show the chosen provider's panel; the others keep their values in the
-       DOM (and in the DB), so switching back prefills everything. */
-    function selectProvider(id, persist) {
+    /* Show the chosen provider's panel to view/edit it - the others keep
+       their values in the DOM (and in the DB), so switching back prefills
+       everything. Purely a view change: it does not touch which provider is
+       the default (see the per-panel toggle + applyDefaultProvider below). */
+    function selectProvider(id) {
         document.querySelectorAll('[data-provider-panel]').forEach(function (panel) {
             panel.hidden = panel.dataset.providerPanel !== id;
         });
@@ -403,11 +423,45 @@
             opt.setAttribute('aria-selected', on ? 'true' : 'false');
         });
         paintFace(id);
-        if (persist && provSel && provSel.value !== id) {
+        openMenu(false);
+    }
+
+    /* Make `id` the default AI provider: persists PROVIDER (via the existing
+       autosave, through the hidden select the picker also writes into),
+       then updates every panel's toggle and the picker's "Default" badges so
+       the page reflects the new state without a reload. Called only after
+       the toggle's own data-confirm has been accepted - see the change
+       listener below. */
+    function applyDefaultProvider(id) {
+        if (provSel && provSel.value !== id) {
             provSel.value = id;
             provSel.dispatchEvent(new Event('change'));
         }
-        openMenu(false);
+        var newLabel = '';
+        document.querySelectorAll('[data-provider-default-toggle]').forEach(function (cb) {
+            if (cb.dataset.providerDefaultToggle === id) newLabel = cb.dataset.providerLabel;
+        });
+        document.querySelectorAll('[data-provider-default-toggle]').forEach(function (cb) {
+            var isNowDefault = cb.dataset.providerDefaultToggle === id;
+            cb.checked = isNowDefault;
+            cb.disabled = isNowDefault;
+            if (isNowDefault) {
+                cb.removeAttribute('data-confirm');
+                cb.removeAttribute('data-confirm-title');
+                cb.removeAttribute('data-confirm-label');
+            } else {
+                cb.setAttribute('data-confirm',
+                    'Set ' + cb.dataset.providerLabel + ' as your default AI provider? ' +
+                    'This replaces ' + newLabel + ', which will no longer be used to generate meal plans.');
+                cb.setAttribute('data-confirm-title', 'Change default provider');
+                cb.setAttribute('data-confirm-label', 'Set as default');
+            }
+            var label = cb.closest('.toggle-wrap').querySelector('[data-provider-default-label]');
+            if (label) label.textContent = isNowDefault ? 'Default provider for plan generation' : 'Set as default provider';
+        });
+        document.querySelectorAll('[data-provider-default-badge]').forEach(function (badge) {
+            badge.hidden = badge.getAttribute('data-provider-default-badge') !== id;
+        });
     }
 
     if (picker) {
@@ -415,14 +469,18 @@
         pickBtn.addEventListener('click', function () {
             openMenu(pickMenu.hidden);
         });
+        /* Picking a provider here only opens its panel to look at / edit -
+           it no longer sets it as the default. That's the toggle switch
+           inside each panel now (with its own confirm dialog), so there is
+           exactly one place that ever changes PROVIDER. */
         pickMenu.addEventListener('click', function (e) {
             var opt = e.target.closest('[data-provider]');
-            if (opt) selectProvider(opt.dataset.provider, true);
+            if (opt) selectProvider(opt.dataset.provider);
         });
         pickMenu.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter' && e.key !== ' ') return;
             var opt = e.target.closest('[data-provider]');
-            if (opt) { e.preventDefault(); selectProvider(opt.dataset.provider, true); }
+            if (opt) { e.preventDefault(); selectProvider(opt.dataset.provider); }
         });
         document.addEventListener('click', function (e) {
             if (!picker.contains(e.target)) openMenu(false);
@@ -431,6 +489,18 @@
             if (e.key === 'Escape') openMenu(false);
         });
     }
+
+    /* ── Default-provider toggle ────────────────────────────────────────
+       The checkbox itself never toggles on click: it carries data-confirm,
+       so modal.js's global handler intercepts that first click, shows the
+       "are you sure" dialog, and only replays the click (which then really
+       checks the box and fires this) once the user confirms. Cancelling
+       just leaves the checkbox exactly as it was - nothing to revert. */
+    document.querySelectorAll('[data-provider-default-toggle]').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            if (cb.checked) applyDefaultProvider(cb.dataset.providerDefaultToggle);
+        });
+    });
 
     /* ── Model dropdown ─────────────────────────────────────────────── */
     /* The hidden text input is the saved value. Picking "Custom…" reveals it;
