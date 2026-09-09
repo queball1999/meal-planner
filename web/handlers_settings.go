@@ -364,6 +364,12 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// s.gen is the generator built at server startup from whatever was saved
+	// then - like every setting on this page, a provider/model/key change
+	// here takes effect only after a restart. Report the model it's actually
+	// using (not necessarily the one now showing in the dropdown above) on
+	// both outcomes, so a stale-config mismatch reads as "restart needed"
+	// rather than a broken test.
 	start := time.Now()
 	resp, err := s.gen.Generate(r.Context(), llm.GenerateRequest{
 		System: "You are a helpful assistant.",
@@ -372,7 +378,7 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 	ms := time.Since(start).Milliseconds()
 
 	if err != nil {
-		json.NewEncoder(w).Encode(result{OK: false, Prompt: testPrompt, Error: err.Error(), DurationMS: ms, Provider: s.gen.ProviderName()})
+		json.NewEncoder(w).Encode(result{OK: false, Prompt: testPrompt, Error: err.Error(), DurationMS: ms, Provider: s.gen.ProviderName(), Model: s.gen.ModelName()})
 		return
 	}
 
