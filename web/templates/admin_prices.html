@@ -56,8 +56,7 @@
             </div>
             <div class="field field--sm">
                 <label class="field-label" for="unit-{{.Store.ID}}">Unit</label>
-                <input class="field-input" id="unit-{{.Store.ID}}" name="purchase_unit"
-                       type="text" placeholder="lb" value="each">
+                {{template "unitSelect" dict "name" "purchase_unit" "id" (printf "unit-%d" .Store.ID) "current" "each"}}
             </div>
             <div class="field field--action">
                 <button type="submit" class="btn btn-primary">{{icon "plus"}} Add</button>

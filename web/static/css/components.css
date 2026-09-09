@@ -123,14 +123,19 @@
     cursor: default;
 }
 
-/* Right-aligned cluster of icon-only actions in a table row's last cell */
+/* Right-aligned cluster of icon-only actions in a table row's last cell.
+ * Always a single row - the icons never wrap or stack, at any width or in the
+ * <=600px card-stack layout. */
 .data-table__actions {
     display: flex;
     align-items: center;
     gap: var(--sp-1);
     justify-content: flex-end;
+    flex-wrap: nowrap;
     white-space: nowrap;
 }
+.data-table__actions > *,
+.data-table__actions form { flex: 0 0 auto; }
 .data-table__actions form { display: inline-flex; margin: 0; }
 
 /* Size variants */
@@ -341,6 +346,50 @@
     }
 }
 
+/* Shopping list rows still awaiting a price (shopping_list_items.pending) -
+ * generation returns as soon as the meals exist, and pricing (a live scrape
+ * or AI lookup per ingredient) fills these in one at a time afterward. */
+.shopping-item--pending {
+    opacity: 0.75;
+}
+.skel-bar {
+    display: inline-block;
+    width: 3.5rem;
+    height: 0.9em;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg,
+        var(--border) 25%,
+        var(--surface-raised) 50%,
+        var(--border) 75%
+    );
+    background-size: 800px 100%;
+    vertical-align: middle;
+}
+.skel-bar--sm { width: 2.5rem; }
+@media (prefers-reduced-motion: no-preference) {
+    .skel-bar { animation: shimmer 1.4s infinite linear; }
+}
+.skel-pulse {
+    opacity: 0.8;
+}
+@media (prefers-reduced-motion: no-preference) {
+    .skel-pulse { animation: pulse-opacity 1.4s infinite ease-in-out; }
+}
+@keyframes pulse-opacity {
+    0%, 100% { opacity: 0.5; }
+    50%      { opacity: 1; }
+}
+.shopping-pricing-note {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 0 0 var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+}
 /* Skeleton rows painted into a <tbody> while a debounced filter navigation is
  * in flight (initAutoFilter in main.js). The row keeps the table's normal
  * height so the page does not collapse and re-expand around the request. */
@@ -1152,6 +1201,37 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     font-weight: var(--weight-medium);
 }
 
+/* Each pill is a hovercard.js trigger (data-meal-id) for a recipe preview -
+ * cursor:pointer is the only visual affordance needed, matching how meal
+ * titles look elsewhere; hovercard.js supplies the actual popup. */
+.badge--hoverable {
+    cursor: pointer;
+}
+
+/* ── Quick unit conversions popup (conversions.js) ────────────────────────
+ * A .popover, but narrower: the content is one short line per unit, not a
+ * menu of actions, so the shared 12rem min-width would leave a lot of empty
+ * space beside "32 oz". */
+.conv-popup {
+    min-width: 8rem;
+    max-width: 14rem;
+}
+.conv-popup__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.conv-popup__row {
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+.conv-popup__empty {
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
 .shopping-item__qty,
 .shopping-item__unit-price,
 .shopping-item__total,
@@ -1239,8 +1319,25 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 }
 .cal-grid--week .cal-cell { min-height: 132px; }
 .cal-cell--muted { opacity: .4; }
-.cal-cell--today { box-shadow: inset 0 0 0 2px var(--accent); }
-.cal-cell--today .cal-cell__num { color: var(--accent-text, var(--accent)); font-weight: var(--weight-bold); }
+
+/* Today: a solid highlighted cell (opaque accent tint), not just an outline,
+ * with the date sitting in a filled accent chip. */
+.cal-cell--today {
+    background: var(--accent-bg);
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+.cal-cell--today .cal-cell__num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5em;
+    height: 1.5em;
+    padding: 0 0.35em;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: var(--weight-bold);
+}
 
 .cal-cell__head {
     display: flex;
@@ -2104,21 +2201,22 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
  * The card-stack treatment starts at 600px, so 601-900px had wide tables
  * (the item catalog is six columns) pushing out of their card with nothing to
  * scroll them - the page itself scrolled sideways instead, taking the header
- * and everything else with it. A scroll container per table keeps the
- * overflow local.
+ * and everything else with it.
+ *
+ * A previous fix set the table itself to display:block; overflow-x:auto, but a
+ * block-level <table> wraps its rows in an anonymous table box that keeps
+ * shrinking to its content, so narrow tables (pantry, this catalog view) left
+ * a wide band of dead space on the right. Instead keep the table a real
+ * width:100% table and let the *card* be the scroll container for the rare
+ * table that genuinely overflows it.
  *
  * Above 600px only: below that the table is no longer a table, and a scroll
  * container around a stack of cards would be pointless.
  */
 @media (min-width: 601px) {
-    .card > .data-table,
-    .card > table.data-table {
-        display: block;
+    .card:has(> .data-table) {
         overflow-x: auto;
-        /* A block-level table loses its own width:100%, so the cells stop
-           filling the card. min-width restores that without capping how wide
-           the content may get. */
-        min-width: 100%;
+        -webkit-overflow-scrolling: touch;
     }
 }
 

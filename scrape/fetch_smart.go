@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"goeat/safefetch"
 )
@@ -51,7 +52,35 @@ func FetchSmart(ctx context.Context, rawURL string, render RenderConfig) (*Smart
 // before its search page shows anything (see StoreContext). When a context is
 // present the direct fetch is skipped entirely: it cannot carry cookies into
 // the renderer, so it would only ever return the store's empty shell.
+//
+// Every call is recorded into GlobalDebugLog for the admin Audit Log.
 func FetchSmartWithContext(ctx context.Context, rawURL string, render RenderConfig, sc *StoreContext) (*SmartResult, error) {
+	start := time.Now()
+	out, err := fetchSmartWithContext(ctx, rawURL, render, sc)
+
+	rec := DebugEntry{
+		At:         start,
+		URL:        rawURL,
+		Host:       hostOf(rawURL),
+		DurationMS: time.Since(start).Milliseconds(),
+	}
+	if err != nil {
+		rec.Error = err.Error()
+	}
+	if out != nil {
+		rec.Backend = out.Backend
+		rec.ViaProxy = out.ViaProxy
+		rec.Challenge = out.Challenge
+		if out.FetchResult != nil {
+			rec.StatusCode = out.StatusCode
+			rec.Bytes = len(out.HTML)
+		}
+	}
+	GlobalDebugLog.Record(rec)
+	return out, err
+}
+
+func fetchSmartWithContext(ctx context.Context, rawURL string, render RenderConfig, sc *StoreContext) (*SmartResult, error) {
 	if !sc.Empty() {
 		if out, ok := fetchWithStoreContext(ctx, rawURL, render, sc); ok {
 			return out, nil

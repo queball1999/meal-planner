@@ -226,3 +226,57 @@ func TestCostPlan_UnreconcilablePackDegradesToEstimate(t *testing.T) {
 		t.Errorf("line total = %d, want 300 (the LLM per-quantity estimate, not 9 x $6)", line.LineTotalCents)
 	}
 }
+
+// TestCostPlan_DozenPackSizeIsOneCarton is the "144 eggs, $3.99" regression: an
+// AI estimate came back as {unit: "dozen", pack_size: 12}, which reconciled to
+// a 144-egg pack - so a plan needing 6 eggs bought "1 pack = 144" and the line
+// total never multiplied past one pack. sanitizeEstimatePack pulls the 12 back
+// to 1 (a carton is one dozen), so the pack is 12 eggs and the maths works.
+func TestCostPlan_DozenPackSizeIsOneCarton(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newCostingStore(t)
+	gs, _ := store.CreateStore(ctx, db.UpsertStoreParams{HouseholdID: hh.ID, Name: "S", Kind: "grocery"})
+
+	it, err := store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID: hh.ID, Name: "Large eggs", NormalizedTerm: Normalize("eggs"),
+		StockUnit: "each", DefaultPurchaseQty: 12, Source: "manual",
+	})
+	if err != nil {
+		t.Fatalf("item: %v", err)
+	}
+
+	p, _ := store.CreatePlan(ctx, db.CreatePlanParams{HouseholdID: hh.ID, WeekStart: "2026-01-05", WeekEnd: "2026-01-11", BudgetCents: 100000})
+	meal, _ := store.CreateMeal(ctx, db.CreateMealParams{PlanID: p.ID, Day: "2026-01-05", Slot: "breakfast", Title: "X", Effort: "quick", Servings: 2, CookedPortions: 2})
+	id := it.ID
+	if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
+		MealID: meal.ID, Name: "large eggs", Quantity: 6, Unit: "each",
+		NormalizedTerm: it.NormalizedTerm, ItemID: &id,
+	}); err != nil {
+		t.Fatalf("ingredient: %v", err)
+	}
+
+	// The poisoned shape a pre-fix AI estimate wrote into price_cache: unit
+	// "dozen", pack_size 12. Read back through CacheProvider it must self-heal.
+	if err := store.UpsertPriceCache(ctx, db.UpsertPriceCacheParams{
+		StoreID: gs.ID, NormalizedTerm: Normalize("eggs"),
+		PriceCents: 399, PurchaseUnit: "dozen", PackSize: 12,
+		Source: "estimate", Confidence: ConfidenceEstimate,
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	chain := NewChain([]PriceProvider{NewCacheProvider(store, 0)})
+	if _, err := CostPlan(ctx, store, chain, p.ID, hh, []*db.GroceryStore{gs}); err != nil {
+		t.Fatalf("cost plan: %v", err)
+	}
+
+	line := oneLine(t, store, p.ID)
+	if line.BuyQuantity != 12 {
+		t.Errorf("buy quantity = %v, want 12 (one dozen covers 6 eggs), not 144", line.BuyQuantity)
+	}
+	if line.LineTotalCents != 399 {
+		t.Errorf("line total = %d, want 399 (one carton)", line.LineTotalCents)
+	}
+	if line.PurchaseUnit != "dozen" {
+		t.Errorf("purchase unit = %q, want dozen", line.PurchaseUnit)
+	}
+}

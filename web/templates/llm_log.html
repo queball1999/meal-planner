@@ -2,7 +2,7 @@
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "cpu"}} Audit Log</h1>
-    <p class="page-subtitle">Every AI call this household has made &middot; {{.Data.Page.Total}} entries &middot; newest first</p>
+    <p class="page-subtitle">AI calls and web scraping fetches &middot; {{.Data.Page.Total}} entries &middot; newest first</p>
 </div>
 
 {{template "settingsTabs" .}}
@@ -14,8 +14,14 @@
            type="search"
            name="q"
            value="{{.Data.Query}}"
-           placeholder="Search prompt, response, system…"
+           placeholder="Search prompt, response, URL, host…"
            autofocus>
+
+    <select class="field-input llm-log-kind" name="kind">
+        <option value=""       {{if eq .Data.Kind ""      }}selected{{end}}>AI &amp; scraping</option>
+        <option value="llm"    {{if eq .Data.Kind "llm"   }}selected{{end}}>AI calls only</option>
+        <option value="scrape" {{if eq .Data.Kind "scrape"}}selected{{end}}>Web scraping only</option>
+    </select>
 
     <select class="field-input llm-log-status" name="status">
         <option value=""  {{if eq .Data.Status ""     }}selected{{end}}>All</option>
@@ -33,6 +39,21 @@
     <details class="llm-log-entry{{if .Error}} llm-log-entry--error{{end}}">
         <summary class="llm-log-summary">
             <span class="llm-log-time">{{.At}}</span>
+            {{if eq .Kind "scrape"}}
+            <span class="badge">{{icon "code"}} scrape</span>
+            {{if .Host}}<span class="badge">{{.Host}}</span>{{end}}
+            {{if .Backend}}<span class="badge">{{.Backend}}</span>{{else if .ViaProxy}}<span class="badge">headless</span>{{end}}
+            {{if .Error}}
+            <span class="badge badge--danger">Error</span>
+            {{else if .Challenge}}
+            <span class="badge badge--danger">Blocked</span>
+            {{else}}
+            <span class="badge badge--success">{{if .StatusCode}}HTTP {{.StatusCode}} &middot; {{end}}{{.DurationMS}}ms</span>
+            {{end}}
+            {{if .Bytes}}<span class="llm-log-toks">{{.Bytes}} B</span>{{end}}
+            <span class="llm-log-preview">{{truncate .URL 90}}</span>
+            {{else}}
+            <span class="badge">{{icon "cpu"}} AI</span>
             {{if .Provider}}<span class="badge">{{.Provider}}</span>{{end}}
             {{if .Model}}<span class="badge">{{.Model}}</span>{{end}}
             {{if .Error}}
@@ -44,8 +65,36 @@
             <span class="llm-log-toks">{{.InputToks}}↑ {{.OutputToks}}↓ tok</span>
             {{end}}
             <span class="llm-log-preview">{{truncate .Prompt 80}}</span>
+            {{end}}
         </summary>
         <div class="llm-log-body">
+            {{if eq .Kind "scrape"}}
+            <div class="llm-log-section">
+                <div class="llm-log-section__label">URL</div>
+                <pre class="llm-log-pre">{{.URL}}</pre>
+            </div>
+            <div class="llm-log-section">
+                <div class="llm-log-section__label">Fetch</div>
+                <pre class="llm-log-pre">{{if .Backend}}Renderer: {{.Backend}}
+{{else if .ViaProxy}}Renderer: headless browser
+{{else}}Renderer: none (direct fetch){{end}}
+Status: {{if .StatusCode}}HTTP {{.StatusCode}}{{else}}—{{end}}
+Bytes: {{.Bytes}}
+Duration: {{.DurationMS}}ms</pre>
+            </div>
+            {{if .Challenge}}
+            <div class="llm-log-section">
+                <div class="llm-log-section__label llm-log-section__label--error">Challenge</div>
+                <pre class="llm-log-pre llm-log-pre--error">{{.Challenge}}</pre>
+            </div>
+            {{end}}
+            {{if .Error}}
+            <div class="llm-log-section">
+                <div class="llm-log-section__label llm-log-section__label--error">Error</div>
+                <pre class="llm-log-pre llm-log-pre--error">{{.Error}}</pre>
+            </div>
+            {{end}}
+            {{else}}
             {{if .System}}
             <div class="llm-log-section">
                 <div class="llm-log-section__label">System</div>
@@ -67,6 +116,7 @@
                 <pre class="llm-log-pre">{{.Response}}</pre>
             </div>
             {{end}}
+            {{end}}
         </div>
     </details>
     {{end}}
@@ -77,9 +127,10 @@
 {{else}}
 <div class="skeleton-card">
     <div class="skeleton-card__icon" aria-hidden="true">{{icon "robot"}}</div>
-    <h2 class="skeleton-card__title">No AI calls recorded yet</h2>
+    <h2 class="skeleton-card__title">Nothing recorded yet</h2>
     <p class="skeleton-card__body">
-        Generate a meal plan or use the AI test button in Settings to produce log entries.
+        Generate a meal plan, use the AI test button in Settings, or run a price
+        scrape to produce log entries.
     </p>
 </div>
 {{end}}

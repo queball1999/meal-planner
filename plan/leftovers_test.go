@@ -121,6 +121,36 @@ func TestPlanLeftoversRespectsSlotAndDayGap(t *testing.T) {
 	}
 }
 
+// The week's first day starts fresh - even if the model mistitles a first-day
+// meal as leftovers, there is nothing earlier in the plan for it to belong to.
+func TestPlanLeftoversNeverMarksFirstDay(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newGenerateTestStore(t)
+	p, err := store.CreatePlan(ctx, db.CreatePlanParams{HouseholdID: hhID, WeekStart: "2026-01-04", WeekEnd: "2026-01-10"})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	sunLunch := mkMealTitled(t, store, p.ID, "2026-01-04", "lunch", "Chili (leftovers)", 2, 2)
+	sunDinner := mkMealTitled(t, store, p.ID, "2026-01-04", "dinner", "Chili", 2, 6)
+	monLunch := mkMealTitled(t, store, p.ID, "2026-01-05", "lunch", "Chili (leftovers)", 2, 2)
+
+	if err := PlanLeftovers(ctx, store, p.ID, true); err != nil {
+		t.Fatalf("plan leftovers: %v", err)
+	}
+
+	got := leftoverIDs(t, store, p.ID)
+	if got[sunLunch] {
+		t.Errorf("the week's first day was marked a leftover target")
+	}
+	if got[sunDinner] {
+		t.Errorf("the week's first day was marked a leftover source-consumer")
+	}
+	if !got[monLunch] {
+		t.Errorf("the second day's titled leftover meal was NOT marked")
+	}
+}
+
 // Tolerance off: nothing is ever marked.
 func TestPlanLeftoversNoopWhenToleranceOff(t *testing.T) {
 	ctx := context.Background()

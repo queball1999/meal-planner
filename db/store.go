@@ -117,7 +117,7 @@ type Store interface {
 	SetMealIngredientItem(ctx context.Context, ingredientID int64, itemID *int64, normalizedTerm string) error
 	ListIngredientsByMeal(ctx context.Context, mealID int64) ([]*MealIngredient, error)
 	ListIngredientsByPlan(ctx context.Context, planID int64) ([]*MealIngredient, error)
-	ListMealTitlesByIngredientID(ctx context.Context, planID int64) (map[int64]string, error)
+	ListMealTitlesByIngredientID(ctx context.Context, planID int64) (map[int64]MealRef, error)
 
 	// ── Price cache (§6.0, §6.5) ──────────────────────────────────────────────
 

@@ -59,6 +59,14 @@ func PlanLeftovers(ctx context.Context, store db.Store, planID int64, tolerance 
 		return slotOrder[meals[i].Slot] < slotOrder[meals[j].Slot]
 	})
 
+	// The week's first day cooks nothing else to have leftovers from - the
+	// plan starts fresh. Guards against the model titling a first-day meal
+	// as leftovers anyway (BuildPrompt tells it not to; this is the backstop).
+	var firstDay string
+	if len(meals) > 0 {
+		firstDay = meals[0].Day
+	}
+
 	type surplusEntry struct {
 		sourceMealID int64
 		day          time.Time
@@ -87,7 +95,7 @@ func PlanLeftovers(ctx context.Context, store db.Store, planID int64, tolerance 
 		}
 		dropStale(day)
 
-		wantsLeftover := m.Slot != "breakfast" && isLeftoverTitle(m.Title)
+		wantsLeftover := m.Slot != "breakfast" && m.Day != firstDay && isLeftoverTitle(m.Title)
 
 		if wantsLeftover {
 			// Tie it to the nearest still-warm surplus, if one exists. The

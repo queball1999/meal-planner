@@ -55,7 +55,7 @@
             <div class="field-row">
                 <div class="field field--sm">
                     <label class="field-label" for="d-unit">Stock unit</label>
-                    <input class="field-input" id="d-unit" name="stock_unit" value="{{.Data.Item.StockUnit}}" list="unit-opts">
+                    {{template "unitSelect" dict "name" "stock_unit" "id" "d-unit" "current" .Data.Item.StockUnit}}
                 </div>
                 <div class="field field--sm">
                     <label class="field-label" for="d-qty">Default buy qty</label>
@@ -127,9 +127,7 @@
             </div>
             <div class="field field--sm">
                 <label class="field-label" for="p-unit">Purchase unit</label>
-                <select class="field-input" id="p-unit" name="purchase_unit" data-choices>
-                    {{range .Data.UnitOptions}}<option value="{{.}}"{{if eq . $.Data.Item.StockUnit}} selected{{end}}>{{.}}</option>{{end}}
-                </select>
+                {{template "unitSelect" dict "name" "purchase_unit" "id" "p-unit" "current" .Data.Item.StockUnit "attrs" "data-choices"}}
             </div>
             <div class="field field--sm">
                 <label class="field-label" for="p-amt">Amount / package</label>

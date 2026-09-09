@@ -152,6 +152,9 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 	stores, _ := s.store.ListStores(ctx, hh.ID)
 	mealTitles, _ := s.store.ListMealTitlesByIngredientID(ctx, p.ID)
 
+	prefs, _ := s.store.GetPreferences(ctx, hh.ID)
+	unitSystem := prefs.UnitSystem
+
 	storeMap := make(map[int64]string, len(stores))
 	for _, gs := range stores {
 		storeMap[gs.ID] = gs.Name
@@ -181,7 +184,7 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 	var unassigned []shoppingLineItem
 
 	for _, item := range rawItems {
-		line := buildLineItem(item, mealTitles, itemsByID, verdicts)
+		line := buildLineItem(item, mealTitles, itemsByID, verdicts, unitSystem)
 		if item.StoreID == nil {
 			unassigned = append(unassigned, line)
 			continue
@@ -250,7 +253,7 @@ func summarizeLines(items []*db.ShoppingListItem) (total int64, byStore map[int6
 	return total, byStore
 }
 
-func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]string, itemsByID map[int64]*db.Item, verdicts map[int64]priceFlag) shoppingLineItem {
+func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]db.MealRef, itemsByID map[int64]*db.Item, verdicts map[int64]priceFlag, unitSystem string) shoppingLineItem {
 	var linked *db.Item
 	if item.ItemID != nil {
 		linked = itemsByID[*item.ItemID]
@@ -264,7 +267,10 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 	if linked != nil && linked.StockUnit != "" {
 		qtyUnit = linked.StockUnit
 	}
-	buyLabel := qtyLabel(item.BuyQuantity, qtyUnit)
+	// Re-express weight/volume into the household's preferred system before
+	// labelling ("1200 g" -> "1.2 kg"); a no-op for "as-is" and countable units.
+	buyQty, buyUnit := displayQtyUnit(item.BuyQuantity, qtyUnit, unitSystem)
+	buyLabel := qtyLabel(buyQty, buyUnit)
 	priceLabel := ""
 	if item.UnitPriceCents > 0 {
 		priceLabel = fmt.Sprintf("$%.2f / %s", float64(item.UnitPriceCents)/100, item.PurchaseUnit)
@@ -369,8 +375,10 @@ func pantryNote(item *db.ShoppingListItem) string {
 }
 
 // mealTagsFor resolves a shopping-list line's meal_ingredient_refs (a JSON
-// []int64) to the distinct meal titles they came from, in first-seen order.
-func mealTagsFor(refsJSON string, mealTitleByIngredient map[int64]string) []mealTag {
+// []int64 of meal_ingredient ids, not meal ids) to the distinct meals they
+// came from, in first-seen order. Each tag carries the meal's own id (not the
+// ingredient ref) so hovercard.js fetches the right recipe.
+func mealTagsFor(refsJSON string, mealTitleByIngredient map[int64]db.MealRef) []mealTag {
 	if refsJSON == "" || len(mealTitleByIngredient) == 0 {
 		return nil
 	}
@@ -378,15 +386,15 @@ func mealTagsFor(refsJSON string, mealTitleByIngredient map[int64]string) []meal
 	if err := json.Unmarshal([]byte(refsJSON), &refs); err != nil {
 		return nil
 	}
-	seen := make(map[string]bool, len(refs))
+	seen := make(map[int64]bool, len(refs))
 	var tags []mealTag
 	for _, id := range refs {
-		title := mealTitleByIngredient[id]
-		if title == "" || seen[title] {
+		ref, ok := mealTitleByIngredient[id]
+		if !ok || ref.Title == "" || seen[ref.MealID] {
 			continue
 		}
-		seen[title] = true
-		tags = append(tags, mealTag{Title: title, ColorClass: mealColorClass(title)})
+		seen[ref.MealID] = true
+		tags = append(tags, mealTag{Title: ref.Title, ColorClass: mealColorClass(ref.Title), MealID: ref.MealID})
 	}
 	return tags
 }
@@ -711,6 +719,102 @@ func (s *Server) handleShoppingItemPriceGet(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// weightUnitFamily and volumeUnitFamily are the units the quick-conversions
+// popup offers alongside whatever unit a line is already in - the two
+// families a home cook actually swaps between, so a "2 lb" line offers
+// oz/g/kg rather than also trying to express it in cups.
+var (
+	weightUnitFamily = []string{"g", "kg", "oz", "lb"}
+	volumeUnitFamily = []string{"tsp", "tbsp", "fl-oz", "cup", "ml", "l", "pint", "quart", "gallon"}
+)
+
+// quickConversion is one row in the conversions popup.
+type quickConversion struct {
+	Label string `json:"label"`
+}
+
+// quickConversions expresses qty/unit in every other unit of its family
+// (weight or volume - a count-like unit such as "each" or "package" has no
+// family and gets nothing back). extra carries this item's own conversions
+// (e.g. "1 each = 50 g") layered on top of the builtin metric/imperial graph.
+func quickConversions(qty float64, unit string, extra []*db.UnitConversion) []quickConversion {
+	u := pricing.CanonUnit(unit)
+	family := weightUnitFamily
+	inFamily := false
+	for _, f := range family {
+		if f == u {
+			inFamily = true
+			break
+		}
+	}
+	if !inFamily {
+		family = volumeUnitFamily
+		for _, f := range family {
+			if f == u {
+				inFamily = true
+				break
+			}
+		}
+	}
+	if !inFamily {
+		return nil
+	}
+
+	var out []quickConversion
+	for _, target := range family {
+		if target == u {
+			continue
+		}
+		converted, ok := pricing.Convert(qty, unit, target, extra)
+		if !ok || converted <= 0 {
+			continue
+		}
+		out = append(out, quickConversion{Label: qtyLabel(converted, target)})
+	}
+	return out
+}
+
+// handleShoppingItemConversions serves the ruler-icon popup's quick
+// conversions for one shopping-list line - "2 lb" hovered/tapped shows
+// "32 oz", "907 g", "0.91 kg" alongside it.
+//
+//	GET /list/{id}/conversions
+func (s *Server) handleShoppingItemConversions(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad id"})
+		return
+	}
+	ctx := r.Context()
+	line, err := s.loadOwnedShoppingListItem(ctx, hh, id)
+	if err != nil || line == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "not found"})
+		return
+	}
+
+	unit := line.PurchaseUnit
+	qty := line.BuyQuantity
+	itemID := s.resolveLineItemID(ctx, hh, line)
+	var extra []*db.UnitConversion
+	if itemID != 0 {
+		if it, _ := s.store.GetItem(ctx, itemID); it != nil && it.StockUnit != "" {
+			unit = it.StockUnit
+		}
+		extra, _ = s.store.ListConversionsForItem(ctx, itemID)
+	}
+
+	resp := map[string]any{"ok": true, "qty": qtyLabel(qty, unit)}
+	if qty > 0 && unit != "" {
+		resp["conversions"] = quickConversions(qty, unit, extra)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // handleShoppingItemPriceSet saves a manually entered price for the item this
 // line resolves to (creating the catalog item on first use), records it to
 // price_history via UpsertItemStorePackage, and patches the line itself so the
@@ -839,7 +943,8 @@ func (s *Server) handleShoppingItemPriceSet(w http.ResponseWriter, r *http.Reque
 				itemsByID[it.ID] = it
 			}
 		}
-		resp["line"] = buildLineItem(updated, mealTitles, itemsByID, s.priceVerdicts(ctx, []*db.ShoppingListItem{updated}))
+		prefs, _ := s.store.GetPreferences(ctx, hh.ID)
+		resp["line"] = buildLineItem(updated, mealTitles, itemsByID, s.priceVerdicts(ctx, []*db.ShoppingListItem{updated}), prefs.UnitSystem)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

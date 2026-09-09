@@ -138,9 +138,12 @@ func (s *Server) handleInStore(w http.ResponseWriter, r *http.Request) {
 	}
 	items, _ := s.store.ListItems(ctx, hh.ID)
 	catByItem := make(map[int64]string, len(items))
+	unitByItem := make(map[int64]string, len(items))
 	for _, it := range items {
 		catByItem[it.ID] = it.Category
+		unitByItem[it.ID] = it.StockUnit
 	}
+	prefs, _ := s.store.GetPreferences(ctx, hh.ID)
 
 	data := instorePageData{HasPlan: true, WeekStart: p.WeekStart}
 
@@ -173,10 +176,17 @@ func (s *Server) handleInStore(w http.ResponseWriter, r *http.Request) {
 		if ln.StoreID != nil {
 			store = storeNames[*ln.StoreID]
 		}
+		qtyUnit := ln.PurchaseUnit
+		if ln.ItemID != nil {
+			if su := unitByItem[*ln.ItemID]; su != "" {
+				qtyUnit = su
+			}
+		}
+		qty, unit := displayQtyUnit(ln.BuyQuantity, qtyUnit, prefs.UnitSystem)
 		b.aisle.Lines = append(b.aisle.Lines, instoreLine{
 			ID:      ln.ID,
 			Name:    ln.DisplayName,
-			Qty:     fmt.Sprintf("%.4g %s", ln.BuyQuantity, ln.PurchaseUnit),
+			Qty:     strings.TrimSpace(fmt.Sprintf("%.4g %s", qty, unit)),
 			Price:   fmt.Sprintf("$%.2f", float64(ln.LineTotalCents)/100),
 			Checked: ln.Checked,
 			Store:   store,

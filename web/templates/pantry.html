@@ -38,7 +38,7 @@
     <table class="data-table" aria-label="Pantry items">
         <thead>
             <tr>
-                <th>Ingredient</th>
+                <th class="data-table__grow">Ingredient</th>
                 <th>Quantity</th>
                 <th>Unit</th>
                 <th>Updated</th>
@@ -48,7 +48,7 @@
         <tbody id="pantry-rows">
             {{range .Data.Items}}
             <tr>
-                <td data-label="Ingredient">
+                <td data-label="Ingredient" class="data-table__grow">
                     <span class="pantry-row__name">
                         <img class="pantry-thumb" src="{{.ImageURL}}" alt="" width="28" height="28" loading="lazy">
                         {{.Name}}
@@ -57,7 +57,7 @@
                 <td data-label="Quantity">{{.QuantityOnHand}}</td>
                 <td data-label="Unit">{{if .Unit}}<span class="badge {{pill "unit" .Unit}}">{{.Unit}}</span>{{end}}</td>
                 <td data-label="Updated">{{.UpdatedAt.Format "Jan 2, 2006"}}</td>
-                <td data-label="">
+                <td data-label="" class="data-table__actions">
                     <form method="POST" action="/pantry/{{.ID}}/delete" style="display:inline">
                         {{$.CSRFField}}
                         <button type="submit" class="btn btn-danger btn-sm"

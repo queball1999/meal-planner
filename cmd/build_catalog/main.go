@@ -1,13 +1,15 @@
-// Command build_catalog scrapes freefoodphotos.com's image library and emits a
-// seed_items.json for package catalog: one builtin item per photo, each carrying
+// Command build_catalog scrapes freefoodphotos.com's image library to attach
+// photos to the hand-curated catalog/seed_items.json: a curated entry keeps its
+// stock_unit / default_purchase_qty / conversions and just gains
 // image_source_url (the full-size JPG) and image_attribution (the CC BY 3.0
-// credit line the site requires). The runtime image pipeline in package items
-// then lazily downloads and caches each photo on first view.
+// credit line the site requires) when a photo caption matches. The runtime
+// image pipeline in package items then lazily downloads and caches each photo
+// on first view.
 //
-// It MERGES onto the existing hand-curated catalog/seed_items.json: curated
-// entries keep their stock_unit / default_purchase_qty / conversions and just
-// gain the image fields when a photo caption matches; photos with no curated
-// match are appended as new "each" items.
+// Photo captions are vague scene descriptions ("Bone-in thick juicy raw ribeye
+// beef steak"), so by default (-enrich-only) unmatched photos are dropped. Pass
+// -enrich-only=false to also append every unmatched caption as its own "each"
+// item, producing a full photo mirror.
 //
 //	go run ./cmd/build_catalog                 # merge, write seed_items.generated.json
 //	go run ./cmd/build_catalog -limit 5        # 5 photos per category (smoke test)
@@ -78,7 +80,7 @@ func main() {
 	mergePath := flag.String("merge", "catalog/seed_items.json", "curated file to merge onto ('' to skip)")
 	limit := flag.Int("limit", 0, "max photos per category (0 = all)")
 	catList := flag.String("categories", "", "comma-separated subset of freefoodphotos categories")
-	enrichOnly := flag.Bool("enrich-only", false, "only attach photos to curated items; never append photo captions as new items")
+	enrichOnly := flag.Bool("enrich-only", true, "only attach photos to curated items; never append photo captions as new items (photo-caption items are vague and not wanted in the seed)")
 	flag.Parse()
 
 	want := map[string]bool{}

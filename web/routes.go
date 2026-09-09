@@ -61,6 +61,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /list/{id}/match", requireAuth(http.HandlerFunc(s.handleItemMatchOptions)))
 	mux.Handle("POST /list/{id}/match", requireAuth(http.HandlerFunc(s.handleItemMatch)))
 	mux.Handle("GET /list/{id}/price", requireAuth(http.HandlerFunc(s.handleShoppingItemPriceGet)))
+	mux.Handle("GET /list/{id}/conversions", requireAuth(http.HandlerFunc(s.handleShoppingItemConversions)))
 	mux.Handle("POST /list/{id}/price", requireAuth(http.HandlerFunc(s.handleShoppingItemPriceSet)))
 	mux.Handle("POST /list/ai-cost", requireAuth(http.HandlerFunc(s.handleShoppingAICostAnalysis)))
 

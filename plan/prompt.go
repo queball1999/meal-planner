@@ -158,7 +158,7 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 			strings.Join(profile.Dislikes, ", "))
 	}
 	if profile.LeftoverTolerance {
-		b.WriteString("\nLeftover tolerance: ON - you may plan batch-cook meals that cover a later slot as leftovers. Set cooked_portions higher than servings and note in the title when a meal is intentional leftovers.\n")
+		b.WriteString("\nLeftover tolerance: ON - you may plan batch-cook meals that cover a later slot as leftovers. Set cooked_portions higher than servings and note in the title when a meal is intentional leftovers. The week's first day (Sunday) must be a fresh, non-leftover meal at every slot - nothing earlier in the week exists yet to batch-cook from.\n")
 	}
 
 	// Per-slot hints

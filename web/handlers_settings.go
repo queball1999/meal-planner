@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -391,41 +392,107 @@ func (s *Server) handleLLMDebugLog(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(entries)
 }
 
-// handleLLMLogPage renders the full paginated AI call log with search + filters.
-//
-//	GET /admin/llm-log
-func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
-	all := llmDebugEntries()
+// auditLogEntry is one row of the Audit Log page - an LLM call or a web-scrape
+// fetch, merged into one time-ordered list. Kind switches the template layout.
+type auditLogEntry struct {
+	Kind   string // "llm" | "scrape"
+	At     string // "2006-01-02 15:04:05"
+	atSort time.Time
 
+	// LLM
+	System     string
+	Prompt     string
+	Response   string
+	Provider   string
+	Model      string
+	InputToks  int
+	OutputToks int
+
+	// Scrape
+	URL        string
+	Host       string
+	Backend    string
+	Challenge  string
+	StatusCode int
+	Bytes      int
+	ViaProxy   bool
+
+	// Shared
+	Error      string
+	DurationMS int64
+}
+
+// handleLLMLogPage renders the full paginated Audit Log - LLM calls and web
+// scraping fetches together - with search + kind/status filters.
+//
+//	GET /admin/llm-log?kind=llm|scrape&status=ok|error&q=…
+func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
+	kind := r.URL.Query().Get("kind") // "" (both) | "llm" | "scrape"
 	q := r.URL.Query().Get("q")
 	status := r.URL.Query().Get("status") // "ok" | "error" | ""
+	qLow := strings.ToLower(q)
 
-	// Filter in-memory (ring buffer is small - at most 30 entries)
-	filtered := all[:0:len(all)]
-	for _, e := range all {
-		if status == "ok" && e.Error != "" {
-			continue
+	matchStatus := func(hasError bool) bool {
+		switch status {
+		case "ok":
+			return !hasError
+		case "error":
+			return hasError
+		default:
+			return true
 		}
-		if status == "error" && e.Error == "" {
-			continue
-		}
-		if q != "" {
-			qLow := strings.ToLower(q)
-			if !strings.Contains(strings.ToLower(e.Prompt), qLow) &&
-				!strings.Contains(strings.ToLower(e.Response), qLow) &&
-				!strings.Contains(strings.ToLower(e.System), qLow) {
-				continue
-			}
-		}
-		filtered = append(filtered, e)
 	}
 
-	pageEntries, page := paginate(r, filtered)
+	var entries []auditLogEntry
+
+	if kind == "" || kind == "llm" {
+		for _, e := range llmDebugEntries() {
+			if !matchStatus(e.Error != "") {
+				continue
+			}
+			if q != "" && !strings.Contains(strings.ToLower(e.Prompt+"\x00"+e.Response+"\x00"+e.System), qLow) {
+				continue
+			}
+			entries = append(entries, auditLogEntry{
+				Kind: "llm", At: e.At, atSort: parseLogTime(e.At),
+				System: e.System, Prompt: e.Prompt, Response: e.Response,
+				Provider: e.Provider, Model: e.Model,
+				InputToks: e.InputToks, OutputToks: e.OutputToks,
+				Error: e.Error, DurationMS: e.DurationMS,
+			})
+		}
+	}
+
+	if kind == "" || kind == "scrape" {
+		for _, e := range scrape.GlobalDebugLog.Entries() {
+			if !matchStatus(e.Error != "") {
+				continue
+			}
+			if q != "" && !strings.Contains(
+				strings.ToLower(e.URL+"\x00"+e.Host+"\x00"+e.Backend+"\x00"+e.Challenge+"\x00"+e.Error), qLow) {
+				continue
+			}
+			entries = append(entries, auditLogEntry{
+				Kind: "scrape", At: e.At.Format("2006-01-02 15:04:05"), atSort: e.At,
+				URL: e.URL, Host: e.Host, Backend: e.Backend, Challenge: e.Challenge,
+				StatusCode: e.StatusCode, Bytes: e.Bytes, ViaProxy: e.ViaProxy,
+				Error: e.Error, DurationMS: e.DurationMS,
+			})
+		}
+	}
+
+	// Newest first across both sources.
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].atSort.After(entries[j].atSort)
+	})
+
+	pageEntries, page := paginate(r, entries)
 
 	type llmLogPageData struct {
-		Entries []llmDebugEntry
+		Entries []auditLogEntry
 		Query   string
 		Status  string
+		Kind    string
 		Page    Pagination
 	}
 
@@ -433,8 +500,16 @@ func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
 		Entries: pageEntries,
 		Query:   q,
 		Status:  status,
+		Kind:    kind,
 		Page:    page,
 	})
+}
+
+// parseLogTime reads back the timestamp llmDebugEntries formats, for merge-sort
+// against the scrape log's native time.Time.
+func parseLogTime(s string) time.Time {
+	t, _ := time.Parse("2006-01-02 15:04:05", s)
+	return t
 }
 
 type llmDebugEntry struct {

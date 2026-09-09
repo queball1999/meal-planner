@@ -45,7 +45,7 @@
         <thead>
             <tr>
                 <th></th>
-                <th>Name</th>
+                <th class="data-table__grow">Name</th>
                 <th>Category</th>
                 <th>Stock unit</th>
                 <th>Source</th>
@@ -59,7 +59,7 @@
                     <img src="{{.ImageURL}}" alt="" width="40" height="40"
                          loading="lazy" style="border-radius:6px;object-fit:cover">
                 </td>
-                <td data-label="Name"><a href="/pantry/items/{{.ID}}">{{.Name}}</a></td>
+                <td data-label="Name" class="data-table__grow"><a href="/pantry/items/{{.ID}}">{{.Name}}</a></td>
                 <td data-label="Category">
                     {{if .Category}}<span class="badge {{pill "category" .Category}}">{{.Category}}</span>{{end}}
                 </td>
@@ -69,7 +69,7 @@
                 <td data-label="Source">
                     <span class="badge {{pill "source" .Source}}">{{.Source}}</span>
                 </td>
-                <td data-label="">
+                <td data-label="" class="data-table__actions">
                     <button type="button" class="btn btn-ghost btn-sm"
                             data-quick-add data-id="{{.ID}}" data-name="{{.Name}}"
                             data-unit="{{.StockUnit}}" data-qty="{{.DefaultPurchaseQty}}"

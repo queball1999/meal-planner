@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"time"
 
@@ -73,14 +74,33 @@ Return ONLY valid JSON - no prose, no markdown:
 		out.PackSize = 1
 	}
 
+	unit, packSize := sanitizeEstimatePack(out.PurchaseUnit, out.PackSize)
+
 	return &PriceResult{
 		PriceCents:   out.PriceCents,
-		PurchaseUnit: out.PurchaseUnit,
-		PackSize:     out.PackSize,
+		PurchaseUnit: unit,
+		PackSize:     packSize,
 		Source:       "estimate",
 		Confidence:   ConfidenceEstimate,
 		FetchedAt:    time.Now().UTC(),
 	}, nil
+}
+
+// sanitizeEstimatePack fixes the single most damaging shape of a bad LLM price
+// reply: a compound purchase_unit ("dozen") paired with a pack_size that is the
+// unit's own expansion factor (12) rather than how many of that unit are in one
+// pack (a carton is 1 dozen, an 18-count is 1.5). Left through, "dozen" + 12
+// reconciles to 144 eggs a pack - one carton then reads as "144 eggs, $3.99"
+// and every downstream pack-count divides by 144.
+//
+// Only whole multiples of the factor are pulled back (12 -> 1, 24 -> 2); an
+// oddball like 18 is left alone rather than guessed at.
+func sanitizeEstimatePack(unit string, packSize float64) (string, float64) {
+	per, ok := Convert(1, unit, "each", nil)
+	if ok && per > 1 && packSize >= per && math.Mod(packSize, per) == 0 {
+		return unit, packSize / per
+	}
+	return unit, packSize
 }
 
 // stripCodeFences strips a leading/trailing ```json or ``` fence. Many models

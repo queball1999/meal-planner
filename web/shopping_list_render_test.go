@@ -21,17 +21,23 @@ func TestMealColorClass_StableAndInRange(t *testing.T) {
 }
 
 func TestMealTagsFor_DedupesAndPreservesOrder(t *testing.T) {
-	titles := map[int64]string{
-		1: "Chili",
-		2: "Tacos",
-		3: "Chili", // same meal, different ingredient row
+	// Ingredient rows 1 and 3 both belong to meal 100 (the same batch-cooked
+	// chili used in two ingredient lines) - the dedupe key is the meal id, not
+	// the ingredient ref, so both must collapse into one tag.
+	refs := map[int64]db.MealRef{
+		1: {MealID: 100, Title: "Chili"},
+		2: {MealID: 200, Title: "Tacos"},
+		3: {MealID: 100, Title: "Chili"},
 	}
-	tags := mealTagsFor(`[1,2,3]`, titles)
+	tags := mealTagsFor(`[1,2,3]`, refs)
 	if len(tags) != 2 {
 		t.Fatalf("got %d tags, want 2 (deduped): %+v", len(tags), tags)
 	}
-	if tags[0].Title != "Chili" || tags[1].Title != "Tacos" {
-		t.Fatalf("tags in wrong order: %+v", tags)
+	if tags[0].Title != "Chili" || tags[0].MealID != 100 {
+		t.Fatalf("tags[0] = %+v, want Chili/100", tags[0])
+	}
+	if tags[1].Title != "Tacos" || tags[1].MealID != 200 {
+		t.Fatalf("tags[1] = %+v, want Tacos/200", tags[1])
 	}
 	if tags[0].ColorClass == "" {
 		t.Fatal("expected a non-empty color class")
@@ -39,13 +45,13 @@ func TestMealTagsFor_DedupesAndPreservesOrder(t *testing.T) {
 }
 
 func TestMealTagsFor_EmptyInputs(t *testing.T) {
-	if tags := mealTagsFor("", map[int64]string{1: "Chili"}); tags != nil {
+	if tags := mealTagsFor("", map[int64]db.MealRef{1: {MealID: 100, Title: "Chili"}}); tags != nil {
 		t.Fatalf("expected nil for empty refs JSON, got %+v", tags)
 	}
 	if tags := mealTagsFor(`[1]`, nil); tags != nil {
 		t.Fatalf("expected nil for empty title map, got %+v", tags)
 	}
-	if tags := mealTagsFor(`not json`, map[int64]string{1: "Chili"}); tags != nil {
+	if tags := mealTagsFor(`not json`, map[int64]db.MealRef{1: {MealID: 100, Title: "Chili"}}); tags != nil {
 		t.Fatalf("expected nil for unparseable refs, got %+v", tags)
 	}
 }
@@ -76,8 +82,8 @@ func TestShoppingListBody_RendersMealPills(t *testing.T) {
 								BadgeClass:  "badge-estimate",
 								BadgeText:   "Estimated",
 								Meals: []mealTag{
-									{Title: "Chili", ColorClass: "badge-hue-3"},
-									{Title: "Taco Bowls", ColorClass: "badge-hue-6"},
+									{Title: "Chili", ColorClass: "badge-hue-3", MealID: 42},
+									{Title: "Taco Bowls", ColorClass: "badge-hue-6", MealID: 43},
 								},
 							},
 						},
@@ -92,10 +98,93 @@ func TestShoppingListBody_RendersMealPills(t *testing.T) {
 		`Chili`,
 		`badge-hue-6`,
 		`Taco Bowls`,
+		// Each pill is a hovercard.js trigger for the real meal (not the
+		// ingredient row it came from) - see mealTagsFor.
+		`data-meal-id="42"`,
+		`data-meal-id="43"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q", want)
 		}
+	}
+}
+
+// A line CostPlan has seeded but not yet priced (SeedShoppingList) renders as
+// a loading placeholder, not a real (and wrong) $0.00 price, and the page
+// shows the "still pricing" banner that drives the poll loop.
+func TestShoppingListBody_RendersPendingRowsAsSkeleton(t *testing.T) {
+	out := renderPage(t, "plan", pageData{
+		AppName: "Go Eat",
+		Page:    "list",
+		Data: planPageData{
+			HasPlan: true,
+			Tab:     "list",
+			List: &shoppingListPageData{
+				HasPlan:     true,
+				TotalLabel:  "$0.00",
+				BudgetLabel: "$50",
+				Pricing:     true,
+				Groups: []shoppingStoreGroup{
+					{
+						StoreName:     "Kroger",
+						SubtotalLabel: "$0.00",
+						Items: []shoppingLineItem{
+							{ID: 1, DisplayName: "canned black beans", Pending: true},
+						},
+					},
+				},
+			},
+		},
+	})
+	for _, want := range []string{
+		`id="shopping-list-live" data-pricing="1"`,
+		`shopping-pricing-note`,
+		`shopping-item--pending`,
+		`skel-bar`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q", want)
+		}
+	}
+	// A pending row must not show a real price-edit control - editing it
+	// would race CostPlan's own resolve pass overwriting the same row.
+	if strings.Contains(out, `class="btn btn-ghost btn-icon btn-sm price-edit-btn`) {
+		t.Error("a pending row rendered a live price-edit button")
+	}
+}
+
+// Once every line is priced, the "still pricing" banner and skeleton markup
+// disappear and the poll loop's data-pricing flag flips to 0 - see
+// pollPricing in shopping_list_body.html, which stops polling on this.
+func TestShoppingListBody_NoPricingBannerWhenResolved(t *testing.T) {
+	out := renderPage(t, "plan", pageData{
+		AppName: "Go Eat",
+		Page:    "list",
+		Data: planPageData{
+			HasPlan: true,
+			Tab:     "list",
+			List: &shoppingListPageData{
+				HasPlan:     true,
+				TotalLabel:  "$1.29",
+				BudgetLabel: "$50",
+				Pricing:     false,
+				Groups: []shoppingStoreGroup{
+					{
+						StoreName:     "Kroger",
+						SubtotalLabel: "$1.29",
+						Items: []shoppingLineItem{
+							{ID: 1, DisplayName: "canned black beans", BuyLabel: "1 can", TotalLabel: "$1.29", BadgeClass: "badge-estimate", BadgeText: "Estimated"},
+						},
+					},
+				},
+			},
+		},
+	})
+	if !strings.Contains(out, `id="shopping-list-live" data-pricing="0"`) {
+		t.Error("data-pricing should be 0 once every line is resolved")
+	}
+	if strings.Contains(out, `shopping-pricing-note`) {
+		t.Error("the still-pricing banner rendered with nothing pending")
 	}
 }
 
@@ -213,7 +302,7 @@ func TestBuildLineItemLinkState(t *testing.T) {
 		auto: {ID: auto, Name: "chicken breasts", Source: "auto"},
 	}
 
-	green := buildLineItem(&db.ShoppingListItem{ID: 10, DisplayName: "Chicken breast", ItemID: &real}, nil, items, nil)
+	green := buildLineItem(&db.ShoppingListItem{ID: 10, DisplayName: "Chicken breast", ItemID: &real}, nil, items, nil, "")
 	if green.LinkState != "linked" {
 		t.Errorf("LinkState = %q, want linked", green.LinkState)
 	}
@@ -221,16 +310,37 @@ func TestBuildLineItemLinkState(t *testing.T) {
 		t.Errorf("LinkLabel = %q, want it to name the item", green.LinkLabel)
 	}
 
-	yellow := buildLineItem(&db.ShoppingListItem{ID: 11, DisplayName: "chicken breasts", ItemID: &auto}, nil, items, nil)
+	yellow := buildLineItem(&db.ShoppingListItem{ID: 11, DisplayName: "chicken breasts", ItemID: &auto}, nil, items, nil, "")
 	if yellow.LinkState != "unmatched" {
 		t.Errorf("LinkState = %q, want unmatched", yellow.LinkState)
 	}
 
 	// A line whose item id points at nothing must not panic or read as linked.
 	missing := int64(999)
-	orphan := buildLineItem(&db.ShoppingListItem{ID: 12, DisplayName: "mystery", ItemID: &missing}, nil, items, nil)
+	orphan := buildLineItem(&db.ShoppingListItem{ID: 12, DisplayName: "mystery", ItemID: &missing}, nil, items, nil, "")
 	if orphan.LinkState != "unmatched" {
 		t.Errorf("dangling item id = %q, want unmatched", orphan.LinkState)
+	}
+}
+
+func TestBuildLineItemUnitSystem(t *testing.T) {
+	id := int64(1)
+	items := map[int64]*db.Item{id: {ID: id, Name: "Flour", StockUnit: "g"}}
+	line := &db.ShoppingListItem{ID: 5, DisplayName: "Flour", ItemID: &id, BuyQuantity: 1200, PurchaseUnit: "bag"}
+
+	asIs := buildLineItem(line, nil, items, nil, "")
+	if asIs.BuyLabel != "1200 g" {
+		t.Errorf("as-is BuyLabel = %q, want %q", asIs.BuyLabel, "1200 g")
+	}
+
+	metric := buildLineItem(line, nil, items, nil, "metric")
+	if metric.BuyLabel != "1.2 kg" {
+		t.Errorf("metric BuyLabel = %q, want %q", metric.BuyLabel, "1.2 kg")
+	}
+
+	imperial := buildLineItem(line, nil, items, nil, "imperial")
+	if imperial.BuyLabel != "2.65 lb" {
+		t.Errorf("imperial BuyLabel = %q, want %q", imperial.BuyLabel, "2.65 lb")
 	}
 }
 
@@ -293,6 +403,45 @@ func TestShoppingListDialogsUseSharedChrome(t *testing.T) {
 		if strings.Contains(out, dead) {
 			t.Errorf("a native <dialog> panel survives (%q)", dead)
 		}
+	}
+}
+
+func TestQuickConversions_WeightFamily(t *testing.T) {
+	rows := quickConversions(2, "lb", nil)
+	got := map[string]bool{}
+	for _, r := range rows {
+		got[r.Label] = true
+	}
+	// 2 lb = 32 oz, ~907 g, ~0.91 kg - the other three members of the family.
+	if len(rows) != 3 {
+		t.Fatalf("got %d conversions, want 3: %+v", len(rows), rows)
+	}
+	if !got["32 oz"] {
+		t.Errorf("missing oz conversion: %+v", rows)
+	}
+}
+
+func TestQuickConversions_VolumeFamily(t *testing.T) {
+	rows := quickConversions(1, "cup", nil)
+	if len(rows) == 0 {
+		t.Fatal("expected volume-family conversions for cup, got none")
+	}
+	for _, r := range rows {
+		if r.Label == "" {
+			t.Errorf("empty conversion label: %+v", rows)
+		}
+	}
+}
+
+// A count-like unit (each, package, ...) has no family - nothing sensible to
+// convert "3 each" into, so the popup should have nothing to show rather than
+// a made-up number.
+func TestQuickConversions_NoFamilyForCountUnits(t *testing.T) {
+	if rows := quickConversions(3, "each", nil); rows != nil {
+		t.Errorf("expected nil for a count unit, got %+v", rows)
+	}
+	if rows := quickConversions(2, "package", nil); rows != nil {
+		t.Errorf("expected nil for a count unit, got %+v", rows)
 	}
 }
 

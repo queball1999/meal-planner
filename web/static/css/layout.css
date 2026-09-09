@@ -329,6 +329,15 @@
     background: var(--accent-bg);
 }
 
+/* Mark the one column (usually the name) that should absorb the table's slack
+ * width, so a table of otherwise-short columns spans its container instead of
+ * bunching everything at the left with dead space on the right. Ignored in the
+ * <=600px card-stack layout, where every cell is already full width. */
+@media (min-width: 601px) {
+    .data-table th.data-table__grow,
+    .data-table td.data-table__grow { width: 100%; }
+}
+
 /* ── Field row ──────────────────────────────────────────────────────────── */
 
 .field-row {
@@ -470,6 +479,14 @@
             letter-spacing: 0.04em;
             white-space: nowrap;
         }
+
+        /* The action-icon cluster stays a tight right-aligned single row -
+           no label pseudo-element, no space-between spreading it apart. */
+        .data-table td.data-table__actions {
+            justify-content: flex-end;
+            flex-wrap: nowrap;
+        }
+        .data-table td.data-table__actions::before { content: none; }
     }
 
     /* Ensure minimum touch target size (WCAG 2.5.5) */

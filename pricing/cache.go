@@ -36,10 +36,13 @@ func (c *CacheProvider) Lookup(ctx context.Context, term string, storeID int64, 
 	if c.ttl > 0 && time.Since(pc.FetchedAt) > c.ttl {
 		return nil, nil
 	}
+	// Heal the "dozen" + 12 shape that older estimate rows were written with
+	// before sanitizeEstimatePack existed (a carton is 1 dozen, not 12).
+	unit, packSize := sanitizeEstimatePack(pc.PurchaseUnit, pc.PackSize)
 	return &PriceResult{
 		PriceCents:   pc.PriceCents,
-		PurchaseUnit: pc.PurchaseUnit,
-		PackSize:     pc.PackSize,
+		PurchaseUnit: unit,
+		PackSize:     packSize,
 		Source:       "cache",
 		Confidence:   pc.Confidence, // original confidence, not promoted
 		FetchedAt:    pc.FetchedAt,

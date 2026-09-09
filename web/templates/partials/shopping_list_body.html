@@ -13,14 +13,6 @@
 </div>
 {{else}}
 
-<div class="shopping-summary{{if .OverBudget}} shopping-summary--over{{end}}">
-    <span class="shopping-summary__total">
-        {{if .OverBudget}}{{icon "alert"}}{{end}}
-        {{.TotalLabel}} estimated total
-    </span>
-    <span class="shopping-summary__budget">of {{.BudgetLabel}} budget</span>
-</div>
-
 <div class="list-toolbar no-print" style="display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0 1rem">
     {{if not $root.Data.ReadOnly}}
     <a class="btn btn-primary btn-sm" href="/list/shop"
@@ -68,7 +60,7 @@
         </div>
         <div class="field field--sm">
             <label class="field-label" for="price-edit-unit">Unit</label>
-            <input class="field-input" id="price-edit-unit" type="text" placeholder="lb" value="each">
+            {{template "unitSelect" dict "name" "purchase_unit" "id" "price-edit-unit" "current" "each"}}
         </div>
     </div>
 
@@ -82,6 +74,25 @@
     </div>
 {{template "partials/modal_close.html" $root}}
 
+<!-- shopping-list-live is the piece the shopping list tab polls and swaps in
+     place while pricing runs in the background after generation - see
+     pollPricing below. Scoped to just the summary/groups (not the toolbar or
+     modals above) so a poll mid-edit never resets an open modal. -->
+<div id="shopping-list-live" data-pricing="{{if .Pricing}}1{{else}}0{{end}}">
+{{if .Pricing}}
+<p class="shopping-pricing-note no-print">
+    <span class="icon-spin" aria-hidden="true">{{icon "autorenew"}}</span> Still pricing this list - items below fill in as prices come back.
+</p>
+{{end}}
+
+<div class="shopping-summary{{if .OverBudget}} shopping-summary--over{{end}}">
+    <span class="shopping-summary__total">
+        {{if .OverBudget}}{{icon "alert"}}{{end}}
+        {{.TotalLabel}} estimated total
+    </span>
+    <span class="shopping-summary__budget">of {{.BudgetLabel}} budget</span>
+</div>
+
 {{range .Groups}}
 <section class="shopping-group" aria-labelledby="store-{{.StoreName}}">
     <div class="shopping-group__header">
@@ -92,7 +103,7 @@
     </div>
     <ul class="shopping-list" role="list">
         {{range .Items}}
-        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}" data-id="{{.ID}}">
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}{{if .Pending}} shopping-item--pending{{end}}" data-id="{{.ID}}">
             <label class="shopping-item__check">
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
@@ -112,11 +123,29 @@
                     </span>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
-                        {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
+                        {{range .Meals}}<span class="badge {{.ColorClass}} badge--hoverable" data-meal-id="{{.MealID}}">{{.Title}}</span>{{end}}
                     </span>
                     {{end}}
                 </span>
             </label>
+            {{if .Pending}}
+            <span class="shopping-item__qty skel-bar" aria-label="Still pricing this item"></span>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm no-print" disabled
+                    title="Still pricing - check back in a moment" aria-label="Still pricing {{.DisplayName}}">
+                {{icon "pencil"}}
+            </button>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm conv-btn no-print"
+                    data-conv-btn data-id="{{.ID}}" aria-expanded="false"
+                    title="Quick conversions" aria-label="Show quick unit conversions for {{.DisplayName}}">
+                {{icon "swap-horizontal"}}
+            </button>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm no-print" disabled
+                    title="Still pricing - check back in a moment" aria-label="Still pricing {{.DisplayName}}">
+                {{icon "check"}}
+            </button>
+            <span class="shopping-item__total skel-bar skel-bar--sm"></span>
+            <span class="badge badge-muted skel-pulse">Pricing…</span>
+            {{else}}
             <span class="shopping-item__qty">
                 {{.BuyLabel}}
                 {{if .PantryNote}}<span class="shopping-item__pantry-note">{{.PantryNote}}</span>{{end}}
@@ -127,6 +156,13 @@
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
                 {{icon "pencil"}}
             </button>
+            {{end}}
+            <button type="button" class="btn btn-ghost btn-icon btn-sm conv-btn no-print"
+                    data-conv-btn data-id="{{.ID}}" aria-expanded="false"
+                    title="Quick conversions" aria-label="Show quick unit conversions for {{.DisplayName}}">
+                {{icon "swap-horizontal"}}
+            </button>
+            {{if not $root.Data.ReadOnly}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm have-btn no-print{{if .InPantry}} have-btn--on{{end}}"
                     data-id="{{.ID}}" data-name="{{.DisplayName}}"
                     data-qty="{{.BuyQuantity}}" data-unit="{{.Unit}}"
@@ -140,6 +176,7 @@
             <span class="shopping-item__total">{{.TotalLabel}}</span>
             {{if .PriceVerdict}}<span class="price-verdict {{.PriceVerdictClass}}">{{.PriceVerdict}}</span>{{end}}
             <span class="badge {{.BadgeClass}}">{{.BadgeText}}</span>
+            {{end}}
         </li>
         {{end}}
     </ul>
@@ -153,7 +190,7 @@
     </div>
     <ul class="shopping-list" role="list">
         {{range .UnassignedItems}}
-        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}" data-id="{{.ID}}">
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}{{if .Pending}} shopping-item--pending{{end}}" data-id="{{.ID}}">
             <label class="shopping-item__check">
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
@@ -173,7 +210,7 @@
                     </span>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
-                        {{range .Meals}}<span class="badge {{.ColorClass}}">{{.Title}}</span>{{end}}
+                        {{range .Meals}}<span class="badge {{.ColorClass}} badge--hoverable" data-meal-id="{{.MealID}}">{{.Title}}</span>{{end}}
                     </span>
                     {{end}}
                 </span>
@@ -188,6 +225,13 @@
                     data-id="{{.ID}}" title="Set known price" aria-label="Set known price for {{.DisplayName}}">
                 {{icon "pencil"}}
             </button>
+            {{end}}
+            <button type="button" class="btn btn-ghost btn-icon btn-sm conv-btn no-print"
+                    data-conv-btn data-id="{{.ID}}" aria-expanded="false"
+                    title="Quick conversions" aria-label="Show quick unit conversions for {{.DisplayName}}">
+                {{icon "swap-horizontal"}}
+            </button>
+            {{if not $root.Data.ReadOnly}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm have-btn no-print{{if .InPantry}} have-btn--on{{end}}"
                     data-id="{{.ID}}" data-name="{{.DisplayName}}"
                     data-qty="{{.BuyQuantity}}" data-unit="{{.Unit}}"
@@ -206,6 +250,7 @@
     </ul>
 </section>
 {{end}}
+</div><!-- /#shopping-list-live -->
 
 {{template "partials/modal_open.html" dict "ID" "match-item" "Title" "What is this?" "Form" true}}
   <p id="match-item-intro" class="text-muted"></p>
@@ -405,15 +450,18 @@
             .catch(function () { toast('Could not create that item', 'error'); });
     }
 
-    document.querySelectorAll('[data-match-line]').forEach(function (chip) {
-        chip.addEventListener('click', function () {
-            matchLine = chip;
-            matchQ.value = '';
-            matchIntro.textContent = 'Which catalog item is "' + chip.dataset.name + '"?';
-            matchList.innerHTML = '';
-            loadMatches('');
-            window.goeat.openModal('match-item');
-        });
+    // Delegated: a row swapped in later by the shopping-list poll
+    // (still-pricing skeleton -> priced row) needs this to work without any
+    // extra wiring call - see pollPricing below.
+    document.addEventListener('click', function (e) {
+        var chip = e.target.closest('[data-match-line]');
+        if (!chip) return;
+        matchLine = chip;
+        matchQ.value = '';
+        matchIntro.textContent = 'Which catalog item is "' + chip.dataset.name + '"?';
+        matchList.innerHTML = '';
+        loadMatches('');
+        window.goeat.openModal('match-item');
     });
 
     if (matchQ) {
@@ -453,20 +501,21 @@
         }).then(function (r) { return r.json(); });
     }
 
-    document.querySelectorAll('.have-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            // Already marked: one click takes it back off, no dialog - there
-            // is no quantity to ask about when un-marking.
-            if (btn.dataset.have === '1') {
-                setHaveState(btn, false);
-                postHave(btn, false).catch(function () { setHaveState(btn, true); });
-                return;
-            }
-            haveTarget = btn;
-            if (haveQty) haveQty.value = btn.dataset.qty || '';
-            if (haveUnit) haveUnit.textContent = btn.dataset.unit || '';
-            window.goeat.openModal('have-it');
-        });
+    // Delegated, same reason as data-match-line above.
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.have-btn');
+        if (!btn) return;
+        // Already marked: one click takes it back off, no dialog - there
+        // is no quantity to ask about when un-marking.
+        if (btn.dataset.have === '1') {
+            setHaveState(btn, false);
+            postHave(btn, false).catch(function () { setHaveState(btn, true); });
+            return;
+        }
+        haveTarget = btn;
+        if (haveQty) haveQty.value = btn.dataset.qty || '';
+        if (haveUnit) haveUnit.textContent = btn.dataset.unit || '';
+        window.goeat.openModal('have-it');
     });
 
     var haveSave = document.getElementById('have-it-save');
@@ -623,6 +672,21 @@
         var historyEl = document.getElementById('price-edit-history');
         var saveBtn = document.getElementById('price-edit-save');
 
+        // The unit picker is a <select> of common units; a stored purchase_unit
+        // that isn't one of them (an odd scraped value) gets added so it still
+        // shows rather than silently snapping to the first option.
+        function setUnitValue(sel, val) {
+            if (!val) { return; }
+            var has = Array.prototype.some.call(sel.options, function (o) { return o.value === val; });
+            if (!has) {
+                var opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                sel.appendChild(opt);
+            }
+            sel.value = val;
+        }
+
         function renderHistory(rows) {
             if (!rows || !rows.length) { historyEl.innerHTML = ''; return; }
             var html = '<table class="data-table" aria-label="Price history"><thead><tr>' +
@@ -636,8 +700,13 @@
             historyEl.innerHTML = html;
         }
 
-        document.querySelectorAll('.price-edit-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
+        // Delegated, not bound per-button: a row swapped in later by the
+        // shopping-list poll (still-pricing skeleton -> priced row) needs
+        // this to work without any extra wiring call - see pollPricing below.
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.price-edit-btn');
+            if (!btn) return;
+            {
                 priceItemId = btn.dataset.id;
                 statusEl.textContent = 'Loading…';
                 historyEl.innerHTML = '';
@@ -659,11 +728,11 @@
                         });
                         priceInput.value = d.price_dollars || '';
                         amountInput.value = d.amount_per_package || 1;
-                        unitInput.value = d.purchase_unit || 'each';
+                        setUnitValue(unitInput, d.purchase_unit || 'each');
                         renderHistory(d.history);
                     })
                     .catch(function () { statusEl.textContent = 'Request failed'; });
-            });
+            }
         });
 
         saveBtn.addEventListener('click', function () {
@@ -708,6 +777,37 @@
                 .catch(function () { statusEl.textContent = 'Request failed'; });
         });
     }
+
+    // ── Live pricing refresh ────────────────────────────────────────────
+    // Plan generation returns as soon as the meals exist; pricing (a live
+    // scrape or AI lookup per ingredient) keeps running in the background
+    // and fills shopping_list_items in one at a time
+    // (pricing.SeedShoppingList / ResolvePricing). While any line is still
+    // that "pending" skeleton state, this tab polls its own markup and swaps
+    // in the refreshed version - see handlePlanListFragment. The delegated
+    // click handlers above (price-edit-btn, have-btn, data-match-line) work
+    // on swapped-in rows with no extra wiring; only the checkbox's inline
+    // onchange and the plain data-conv-btn/data-meal-id hovercard/popover
+    // delegation need nothing special either.
+    (function pollPricing() {
+        var live = document.getElementById('shopping-list-live');
+        if (!live || live.dataset.pricing !== '1') return;
+
+        setTimeout(function () {
+            fetch('/plan/list/fragment' + window.location.search, { headers: { Accept: 'text/html' } })
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    var fresh = new DOMParser().parseFromString(html, 'text/html')
+                        .getElementById('shopping-list-live');
+                    var current = document.getElementById('shopping-list-live');
+                    if (fresh && current) current.replaceWith(fresh);
+                    pollPricing();
+                })
+                // A transient fetch error just retries on the next tick rather
+                // than leaving the list stuck on stale skeleton rows.
+                .catch(pollPricing);
+        }, 2000);
+    })();
 })();
 </script>
 {{end}}

@@ -78,12 +78,21 @@ func (s *store) ListIngredientsByPlan(ctx context.Context, planID int64) ([]*Mea
 	return scanMealIngredientRows(rows)
 }
 
-// ListMealTitlesByIngredientID returns meal titles keyed by meal_ingredient id
-// for every ingredient in a plan - used to tag each shopping-list line with
-// which meal(s) it was pulled from (§ shopping list "used in" pills).
-func (s *store) ListMealTitlesByIngredientID(ctx context.Context, planID int64) (map[int64]string, error) {
+// MealRef is a meal_ingredient's parent meal - its title (for the shopping
+// list pill's label) and its own id (for the pill's hovercard, which needs
+// the real meal id rather than the ingredient's).
+type MealRef struct {
+	MealID int64
+	Title  string
+}
+
+// ListMealTitlesByIngredientID returns each ingredient's parent meal, keyed by
+// meal_ingredient id, for every ingredient in a plan - used to tag each
+// shopping-list line with which meal(s) it was pulled from (§ shopping list
+// "used in" pills).
+func (s *store) ListMealTitlesByIngredientID(ctx context.Context, planID int64) (map[int64]MealRef, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT mi.id, m.title
+		SELECT mi.id, m.id, m.title
 		FROM meal_ingredients mi
 		JOIN meals m ON m.id = mi.meal_id
 		WHERE m.plan_id = ?`, planID)
@@ -92,14 +101,14 @@ func (s *store) ListMealTitlesByIngredientID(ctx context.Context, planID int64) 
 	}
 	defer rows.Close()
 
-	out := make(map[int64]string)
+	out := make(map[int64]MealRef)
 	for rows.Next() {
 		var id int64
-		var title string
-		if err := rows.Scan(&id, &title); err != nil {
+		var ref MealRef
+		if err := rows.Scan(&id, &ref.MealID, &ref.Title); err != nil {
 			return nil, err
 		}
-		out[id] = title
+		out[id] = ref
 	}
 	return out, rows.Err()
 }
