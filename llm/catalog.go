@@ -49,14 +49,16 @@ var Providers = []ProviderInfo{
 		DocsURL: "https://aistudio.google.com/apikey",
 		// gemini-2.0-flash and gemini-2.5-pro were both retired in quick
 		// succession (their 404s pointed callers at gemini-3.6-flash and
-		// gemini-3.1-pro-preview respectively) - this curated list is only a
+		// gemini-3.1-pro-preview respectively). This curated list is only a
 		// fallback for when the live /models call fails, so it will keep
-		// drifting behind Google's actual catalog; "Refresh list" against
-		// the real endpoint is the source of truth. gemma-4-31b/-26b are
-		// Google's open Gemma models, also served through this endpoint.
+		// drifting behind Google's actual catalog - it is guesswork, not
+		// verified against a real account. The gemma-4-31b/-26b entries this
+		// list previously carried turned out not to exist ("is not found for
+		// API version v1main"), confirming that: "Refresh list" against the
+		// real endpoint is the only reliable source for what an account can
+		// actually use, this list is a last resort when that call fails.
 		Models: []string{
 			"gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-3.6-flash",
-			"gemma-4-31b", "gemma-4-26b",
 		},
 	},
 	{
