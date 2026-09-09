@@ -147,9 +147,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /settings/ha/test", requireAuth(http.HandlerFunc(s.handleHATest)))
 	mux.Handle("POST /settings/ha/entities", requireAuth(http.HandlerFunc(s.handleHAEntities)))
 	mux.Handle("POST /settings/ha/save", requireAuth(http.HandlerFunc(s.handleHASave)))
-	// TODO: mux.Handle("POST /settings/ai/models", requireAuth(http.HandlerFunc(s.handleAIModels)))
-	// handleAIModels doesn't exist yet and nothing in the UI calls this route -
-	// commented out so the build isn't broken; wire it up when that handler lands.
+	mux.Handle("POST /settings/ai/models", requireAuth(http.HandlerFunc(s.handleAIModels)))
 	mux.Handle("GET /admin/llm-debug", requireAuth(http.HandlerFunc(s.handleLLMDebugLog)))
 	mux.Handle("GET /admin/llm-log", requireAuth(http.HandlerFunc(s.handleLLMLogPage)))
 	mux.Handle("GET /admin/events", requireAuth(http.HandlerFunc(s.handleAdminEventsPage)))
