@@ -143,7 +143,7 @@ var Defs = []Definition{
 		Help:       "Drop tokens below this share of the top token's probability. Default 0.1. OpenAI-compatible backends only.",
 		FromConfig: func(c *config.Config) string { return formatFloat(c.LLMMinP) }},
 	{Key: "LLM_PRESENCE_PENALTY", Label: "Presence penalty", Category: "AI Provider", Kind: KindFloat,
-		Help:       "Discourages repeating tokens already used. Default 1.52.",
+		Help:       "Discourages repeating tokens already used. Default 1.52. Not sent to Google Gemini - some Gemini models reject any nonzero value.",
 		FromConfig: func(c *config.Config) string { return formatFloat(c.LLMPresence) }},
 
 	{Key: "PRICE_CACHE_TTL_HOURS", Label: "Price cache lifetime (hours)", Category: "Pricing", Kind: KindInt,

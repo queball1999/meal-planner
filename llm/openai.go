@@ -70,7 +70,11 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 	if c.sampling.TopP > 0 {
 		body.TopP = &c.sampling.TopP
 	}
-	if c.sampling.Presence != 0 {
+	// presence_penalty is a standard OpenAI field, but at least some Gemini
+	// models 400 on any nonzero value ("Penalty is not enabled for this
+	// model") rather than ignoring it - and there is no reliable way to know
+	// per-model which ones do. Sent to openai and openai_compatible only.
+	if c.sampling.Presence != 0 && c.provider != "google" {
 		body.PresencePenalty = &c.sampling.Presence
 	}
 	// top_k / min_p are llama.cpp-family extensions; api.openai.com and the
