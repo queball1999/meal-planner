@@ -57,6 +57,21 @@ var pluralUnits = map[string]string{
 	"cup":     "cups",
 }
 
+// displayQtyUnit re-expresses a stored (qty, unit) in the household's preferred
+// measurement system (pricing.DisplayQuantity). system "" or "as-is" is a
+// pass-through. Only builtin weight/volume factors are used, so item-specific
+// conversions on exotic units are irrelevant here.
+func displayQtyUnit(qty float64, unit, system string) (float64, string) {
+	return pricing.DisplayQuantity(qty, unit, system, nil)
+}
+
+// displayQtyLabel is displayQtyUnit followed by qtyLabel, for the common case
+// of rendering one "1.2 kg" string.
+func displayQtyLabel(qty float64, unit, system string) string {
+	q, u := displayQtyUnit(qty, unit, system)
+	return qtyLabel(q, u)
+}
+
 // qtyLabel renders a quantity and unit the way a person would say it. "each"
 // and its synonyms collapse to just the number ("4 each" -> "4"); countable
 // units pluralize with the quantity ("2 slice" -> "2 slices"); abbreviations

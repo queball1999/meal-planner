@@ -1,0 +1,24 @@
+{{/* Shared unit picker. Renders a <select> of the common item units
+     (each, g, kg, oz, lb, …) so every "unit" field across the site offers the
+     same dropdown instead of a free-text box.
+
+     Call with a dict:
+       {{template "unitSelect" dict "name" "stock_unit" "id" "item-unit" "current" .Item.StockUnit}}
+
+     Keys:
+       name     (required) form field name
+       id       (optional) element id, for the <label for="…">
+       current  (optional) currently-selected unit; an unusual value not in the
+                common list is added so it still shows selected
+       required (optional) truthy -> adds the required attribute
+       class    (optional) extra class(es) appended to field-input
+       attrs    (optional) raw extra attributes (already trusted markup) */}}
+{{define "unitSelect"}}
+{{- $cur := "" -}}
+{{- with .current}}{{$cur = .}}{{end -}}
+<select class="field-input{{with .class}} {{.}}{{end}}"{{with .id}} id="{{.}}"{{end}} name="{{.name}}"{{if .required}} required{{end}}{{with .attrs}} {{.}}{{end}}>
+{{- range unitOptionsFor $cur}}
+    <option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{.}}</option>
+{{- end}}
+</select>
+{{- end}}

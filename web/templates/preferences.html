@@ -192,6 +192,27 @@
         <p class="field-hint">When enabled, the planner can batch-cook one meal and reuse it.</p>
     </section>
 
+    <!-- ── Units ──────────────────────────────────────────────────────── -->
+    <section class="card form-section" aria-labelledby="units-heading">
+        <h2 class="form-section__title" id="units-heading">
+            {{icon "swap-horizontal"}} Units
+        </h2>
+        <p class="form-section__desc">
+            How weight and volume amounts show on the shopping list. Countable
+            things (eggs, cans, bunches) are never converted.
+        </p>
+        <label class="field-label" for="unit_system">Measurement system</label>
+        <select class="field-input" id="unit_system" name="unit_system">
+            <option value="as-is"    {{if eq .Data.UnitSystem "as-is"}}selected{{end}}>Leave as entered</option>
+            <option value="metric"   {{if eq .Data.UnitSystem "metric"}}selected{{end}}>Metric (g, kg, ml, l)</option>
+            <option value="imperial" {{if eq .Data.UnitSystem "imperial"}}selected{{end}}>Imperial (oz, lb, fl-oz, cup)</option>
+        </select>
+        <p class="field-hint">
+            Amounts roll up to the next unit once they read awkwardly large:
+            1200&nbsp;g&nbsp;→&nbsp;1.2&nbsp;kg, 20&nbsp;oz&nbsp;→&nbsp;1.25&nbsp;lb.
+        </p>
+    </section>
+
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">
             {{icon "check"}} Save preferences

@@ -93,7 +93,10 @@ type Preferences struct {
 	Cuisines          []string
 	Dislikes          []string
 	LeftoverTolerance bool
-	UpdatedAt         time.Time
+	// UnitSystem drives shopping-list display of weight/volume quantities:
+	// "as-is" (default, no conversion) | "metric" | "imperial".
+	UnitSystem string
+	UpdatedAt  time.Time
 }
 
 // MealSlotHint holds the free-text description and LLM parse for one meal slot (§4.1).
@@ -146,6 +149,7 @@ type UpsertPreferencesParams struct {
 	Cuisines          []string
 	Dislikes          []string
 	LeftoverTolerance bool
+	UnitSystem        string // "as-is" | "metric" | "imperial"
 }
 
 // UpsertMealSlotHintParams bundles inputs for saving a free-text slot hint.

@@ -34,6 +34,7 @@ type preferencesPageData struct {
 	AllergiesCSV      string
 	DislikesCSV       string
 	LeftoverTolerance bool
+	UnitSystem        string // "as-is" | "metric" | "imperial"
 	HasLLM            bool
 }
 
@@ -88,6 +89,7 @@ func buildPreferencesPageData(prefs *db.Preferences, allergies []string, hints [
 		AllergiesCSV:      strings.Join(allergies, ", "),
 		DislikesCSV:       strings.Join(prefs.Dislikes, ", "),
 		LeftoverTolerance: prefs.LeftoverTolerance,
+		UnitSystem:        prefs.UnitSystem,
 		HasLLM:            hasLLM,
 	}
 }
@@ -139,12 +141,20 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 	dislikes := splitTrimmed(r.FormValue("dislikes"))
 	leftover := r.FormValue("leftover_tolerance") == "1"
 
+	unitSystem := r.FormValue("unit_system")
+	switch unitSystem {
+	case "metric", "imperial", "as-is":
+	default:
+		unitSystem = "as-is"
+	}
+
 	if err := s.store.UpsertPreferences(ctx, db.UpsertPreferencesParams{
 		HouseholdID:       hh.ID,
 		DietTags:          dietTags,
 		Cuisines:          cuisines,
 		Dislikes:          dislikes,
 		LeftoverTolerance: leftover,
+		UnitSystem:        unitSystem,
 	}); err != nil {
 		log.Printf("preferences: upsert: %v", err)
 		s.setNotify(w, NotifyDanger, "Could not save preferences. Please try again.")

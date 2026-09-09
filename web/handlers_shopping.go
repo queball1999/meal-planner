@@ -402,6 +402,13 @@ func (s *Server) handleShoppingListExport(w http.ResponseWriter, r *http.Request
 	for _, gs := range stores {
 		storeName[gs.ID] = gs.Name
 	}
+	itemsByID := map[int64]*db.Item{}
+	if catalogItems, _ := s.store.ListItems(ctx, hh.ID); catalogItems != nil {
+		for _, it := range catalogItems {
+			itemsByID[it.ID] = it
+		}
+	}
+	prefs, _ := s.store.GetPreferences(ctx, hh.ID)
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="shopping-list-%s.csv"`, p.WeekStart))
@@ -418,11 +425,19 @@ func (s *Server) handleShoppingListExport(w http.ResponseWriter, r *http.Request
 		if it.Checked {
 			checked = "yes"
 		}
+		// Same stock-unit / preferred-system treatment the on-screen list gets.
+		qtyUnit := it.PurchaseUnit
+		if it.ItemID != nil {
+			if linked := itemsByID[*it.ItemID]; linked != nil && linked.StockUnit != "" {
+				qtyUnit = linked.StockUnit
+			}
+		}
+		qty, unit := displayQtyUnit(it.BuyQuantity, qtyUnit, prefs.UnitSystem)
 		_ = cw.Write([]string{
 			store,
 			it.DisplayName,
-			fmt.Sprintf("%.4g", it.BuyQuantity),
-			it.PurchaseUnit,
+			fmt.Sprintf("%.4g", qty),
+			unit,
 			fmt.Sprintf("%.2f", float64(it.LineTotalCents)/100),
 			checked,
 		})

@@ -123,8 +123,7 @@
             </div>
             <div class="field field--sm">
                 <label class="field-label" for="item-unit">Stock unit</label>
-                <input class="field-input" id="item-unit" name="stock_unit" type="text"
-                       placeholder="g" value="each">
+                {{template "unitSelect" dict "name" "stock_unit" "id" "item-unit" "current" "each"}}
             </div>
             <div class="field field--sm">
                 <label class="field-label" for="item-qty">Default buy qty</label>

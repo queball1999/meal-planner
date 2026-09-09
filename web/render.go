@@ -91,6 +91,12 @@ func templateFuncs() template.FuncMap {
 			return m, nil
 		},
 		"slots": func() []string { return []string{"breakfast", "lunch", "dinner"} },
+		// unitOptions is the shared unit picker list (each, g, oz, lb, …) used
+		// by the partials/unit_select.html dropdown everywhere an item's unit is
+		// edited. unitOptionsFor keeps an item's own unusual stock unit in the
+		// list (and first) so the <select> can still show it selected.
+		"unitOptions":    func() []string { return commonUnits },
+		"unitOptionsFor": unitOptionsFor,
 		"titleCase": func(s string) string {
 			if s == "" {
 				return s

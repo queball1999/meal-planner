@@ -117,8 +117,7 @@ document.addEventListener('barcode:scanned', function(e) {
             </div>
             <div class="field field--sm">
                 <label class="field-label" for="pantry-unit">Unit</label>
-                <input class="field-input" id="pantry-unit" name="unit"
-                       type="text" placeholder="lb" value="each">
+                {{template "unitSelect" dict "name" "unit" "id" "pantry-unit" "current" "each"}}
             </div>
         </div>
         <div class="modal-dialog__footer">
