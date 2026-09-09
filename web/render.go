@@ -184,3 +184,35 @@ func (s *Server) renderWithPage(w http.ResponseWriter, r *http.Request, name, pa
 		log.Printf("render %s: execute: %v", name, err)
 	}
 }
+
+// renderFragment executes one named partial template directly, without
+// layout.html - for a piece of a page a client polls and swaps in place
+// (the shopping list tab's live pricing refresh) rather than a full
+// navigation. pageSlug only matters for helpers the partial's markup reads
+// off pageData (e.g. settingsTabs' active-tab highlight); most fragments
+// don't need it.
+func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, templateName, pageSlug string, data any) {
+	pd := pageData{
+		AppName:   s.cfg.AppName,
+		Version:   s.version,
+		Page:      pageSlug,
+		User:      middleware.UserFromCtx(r),
+		Household: middleware.HouseholdFromCtx(r),
+		CSRFField: csrf.TemplateField(r),
+		CSRFToken: csrf.Token(r),
+		Data:      data,
+	}
+
+	tmpl, err := template.New("").
+		Funcs(templateFuncs()).
+		ParseFS(templateFS, "templates/partials/*.html")
+	if err != nil {
+		log.Printf("render fragment %s: parse: %v", templateName, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, templateName, pd); err != nil {
+		log.Printf("render fragment %s: execute: %v", templateName, err)
+	}
+}

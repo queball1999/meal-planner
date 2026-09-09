@@ -62,14 +62,21 @@ type shoppingLineItem struct {
 	// nothing - silence is the common case by design.
 	PriceVerdict      string
 	PriceVerdictClass string
+
+	// Pending is true for a skeleton row pricing.SeedShoppingList wrote before
+	// pricing (a live scrape or AI lookup per ingredient) has gotten to it -
+	// the template renders these as a loading placeholder instead of a price.
+	Pending bool
 }
 
 // mealTag is one pill on a shopping-list line naming a meal it belongs to.
 // ColorClass is a stable hash of the title, so the same meal always gets the
-// same color everywhere it appears on the list.
+// same color everywhere it appears on the list. MealID is the id of the meal
+// the pill refers to, used by hovercard.js to show a preview on hover.
 type mealTag struct {
 	Title      string
 	ColorClass string
+	MealID     int64
 }
 
 // mealColorClass picks a pill color from the meal title deterministically, so
@@ -91,6 +98,13 @@ type shoppingListPageData struct {
 	UnassignedItems []shoppingLineItem
 	HALastSync      string // "5m ago" etc, from the ha_sync_map timestamps; "" if never
 	ReadOnly        bool   // viewing a past/other week via ?week= or ?plan_id= - no editing
+
+	// Pricing is true while any line is still a pending skeleton row - plan
+	// generation marks the plan ready and returns before pricing (a live
+	// scrape or AI lookup per ingredient) has resolved anything, so the tab
+	// polls and re-renders itself while this is true. See
+	// pricing.SeedShoppingList / ResolvePricing.
+	Pricing bool
 }
 
 // haLastSyncLabel returns a short "5m ago"-style phrase for the most recent
@@ -153,6 +167,14 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 	}
 	verdicts := s.priceVerdicts(ctx, rawItems)
 
+	stillPricing := false
+	for _, item := range rawItems {
+		if item.Pending {
+			stillPricing = true
+			break
+		}
+	}
+
 	// Group items by store.
 	groupIndex := make(map[int64]int)
 	var groups []shoppingStoreGroup
@@ -200,6 +222,7 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 		UnassignedItems: unassigned,
 		HALastSync:      s.haLastSyncLabel(ctx, hh.ID),
 		ReadOnly:        readOnly,
+		Pricing:         stillPricing,
 	}
 }
 
@@ -274,6 +297,7 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]st
 		PantryNote:        pantryNote(item),
 		PriceVerdict:      verdicts[item.ID].Label,
 		PriceVerdictClass: verdicts[item.ID].Class,
+		Pending:           item.Pending,
 	}
 }
 

@@ -172,48 +172,74 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		log.Printf("plan: leftover planning failed: %v", err)
 	}
 
-	// Price the plan when a pricer is provided. Failure is non-fatal.
-	if pricer != nil {
-		j.EmitStatus("Pricing your shopping list… (checking store prices for each ingredient)")
-		if err := pricer(ctx, plan.ID, hh); err != nil {
-			log.Printf("plan: costing failed for plan %d: %v", plan.ID, err)
-		}
-		// Budget repair loop (§7.6): attempt up to 3 swaps if over budget.
-		if _, err := Repair(ctx, store, gen, plan.ID, hh, profile, stores, pricer, 3, j); err != nil {
-			log.Printf("plan: budget repair failed for plan %d: %v", plan.ID, err)
-		}
-	}
-
-	j.EmitStatus("Building your shopping list…")
-
-	// A plan without a shopping list is not a finished plan. Pricing is
-	// optional (no chain is configured in tests, or when the user has no
-	// stores) and its failures are deliberately non-fatal, so both paths could
-	// previously hand back a finished plan with nothing to shop. Detached from
-	// ctx for the same reason the status update below is: the meals are
-	// already persisted, and a deadline blown during pricing must not also
-	// cost the user their list.
-	listCtx, listCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-	n, lerr := pricing.EnsureShoppingList(listCtx, store, plan.ID, hh)
-	listCancel()
-	if lerr != nil {
-		log.Printf("plan: shopping list fallback failed for plan %d: %v", plan.ID, lerr)
-	} else if n > 0 {
-		log.Printf("plan: wrote %d unpriced shopping lines for plan %d (pricing produced none)", n, plan.ID)
-	}
-
 	j.EmitStatus("Finishing up…")
 
-	// Detach from ctx: the plan is fully built and persisted here, so a
-	// deadline that expired during pricing/repair must not strand the row
-	// in "generating" and leave the progress screen spinning.
+	// The plan itself - meals, recipes, leftovers - is fully built and
+	// persisted at this point. Pricing is what actually takes real time (a
+	// live scrape or AI price lookup per ingredient), so it no longer holds up
+	// the redirect to /plan: the plan is marked ready now, and pricing keeps
+	// running in the background. The shopping list tab shows skeleton rows
+	// (pricing.SeedShoppingList seeds them "pending" before resolving each
+	// one) until it catches up - see priceInBackground.
+	//
+	// Detach from ctx for the status update: the plan is fully persisted here,
+	// so a deadline blown later during background pricing must not strand
+	// this row in "generating" and leave the progress screen spinning.
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
-	if err := store.UpdatePlanStatus(finishCtx, plan.ID, "ready"); err != nil {
+	err = store.UpdatePlanStatus(finishCtx, plan.ID, "ready")
+	cancel()
+	if err != nil {
 		return plan.ID, fmt.Errorf("update plan status: %w", err)
 	}
 
+	if pricer != nil {
+		go priceInBackground(store, gen, plan.ID, hh, profile, stores, pricer)
+	} else {
+		// No pricer configured (tests, or no pricing chain) - nothing to
+		// background; write an unpriced list synchronously so the plan still
+		// has something to shop from.
+		listCtx, listCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		if _, lerr := pricing.EnsureShoppingList(listCtx, store, plan.ID, hh); lerr != nil {
+			log.Printf("plan: shopping list fallback failed for plan %d: %v", plan.ID, lerr)
+		}
+		listCancel()
+	}
+
 	return plan.ID, nil
+}
+
+// priceInBackground runs pricing, budget repair, and the unpriced-list
+// fallback after generate has already marked the plan ready and returned -
+// see the comment above its call site. It uses its own fully detached
+// context/budget: by the time this runs, the job that kicked off generation
+// may already have reported "done" and torn down its own context, and this
+// still has real network work ahead of it (a scrape or AI lookup per
+// ingredient, then up to 3 repair rounds that each re-price the whole list).
+func priceInBackground(store db.Store, gen llm.Generator, planID int64, hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, pricer Pricer) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	if err := pricer(ctx, planID, hh); err != nil {
+		log.Printf("plan: costing failed for plan %d: %v", planID, err)
+	}
+	// Budget repair loop (§7.6): attempt up to 3 swaps if over budget. No job
+	// to report progress to any more - the generation SSE stream already
+	// closed once the plan was marked ready.
+	if _, err := Repair(ctx, store, gen, planID, hh, profile, stores, pricer, 3, nil); err != nil {
+		log.Printf("plan: budget repair failed for plan %d: %v", planID, err)
+	}
+
+	// A plan without a shopping list is not a finished plan. Pricing is
+	// deliberately non-fatal on failure, which could otherwise leave a ready
+	// plan with nothing to shop.
+	listCtx, listCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer listCancel()
+	n, lerr := pricing.EnsureShoppingList(listCtx, store, planID, hh)
+	if lerr != nil {
+		log.Printf("plan: shopping list fallback failed for plan %d: %v", planID, lerr)
+	} else if n > 0 {
+		log.Printf("plan: wrote %d unpriced shopping lines for plan %d (pricing produced none)", n, planID)
+	}
 }
 
 // itemHintFrom carries the model's per-ingredient unit knowledge (the stock

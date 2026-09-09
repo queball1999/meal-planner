@@ -173,6 +173,54 @@ func (s *Server) reconcilePlanStatus(ctx context.Context, hhID int64, p *db.Plan
 	return effective
 }
 
+// resolvePlanForRequest picks which plan a /plan request (the calendar tab,
+// the shopping list tab, or the list's polling fragment) is about, from
+// ?plan_id=/?week=/neither, so every one of them agrees on the same week.
+//
+// ?plan_id=123 loads one specific plan (e.g. a canceled one from
+// /plan/history - its own week now resolves to whatever superseded it, so it
+// can only be reached by id). ?week=YYYY-MM-DD loads that week's current
+// plan. Either way the view is read-only.
+func (s *Server) resolvePlanForRequest(ctx context.Context, hh *db.Household, r *http.Request) (p *db.Plan, readOnly bool) {
+	if idStr := r.URL.Query().Get("plan_id"); idStr != "" {
+		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			if found, _ := s.store.GetPlanByID(ctx, id); found != nil && found.HouseholdID == hh.ID {
+				p = found
+			}
+		}
+		return p, true
+	}
+	if week := r.URL.Query().Get("week"); week != "" {
+		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, week)
+		return p, true
+	}
+	p, _ = s.store.GetLatestPlan(ctx, hh.ID)
+	return p, false
+}
+
+// handlePlanListFragment serves just the shopping-list markup (no layout),
+// so the "Shopping list" tab can poll it while pricing runs in the
+// background after generation and swap in newly priced rows without a full
+// page reload. See shopping_list_body.html's poll loop.
+//
+//	GET /plan/list/fragment
+func (s *Server) handlePlanListFragment(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Error(w, "no household", http.StatusUnauthorized)
+		return
+	}
+	ctx := r.Context()
+	p, readOnly := s.resolvePlanForRequest(ctx, hh, r)
+	listView := s.buildShoppingListView(ctx, hh, p, readOnly)
+	s.renderFragment(w, r, "shoppingListBody", "list", planPageData{
+		HasPlan:  listView.HasPlan,
+		Tab:      "list",
+		List:     &listView,
+		ReadOnly: readOnly,
+	})
+}
+
 func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
@@ -182,28 +230,11 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tab := planTab(r)
 
-	// ?plan_id=123 loads one specific plan (e.g. a canceled one from
-	// /plan/history - its own week now resolves to whatever superseded it, so
-	// it can only be reached by id). ?week=YYYY-MM-DD loads that week's
-	// current plan. Either way the view is read-only. Resolved once, up front,
-	// so the calendar tab and the shopping-list tab always agree on which
-	// week they're showing - switching tabs used to silently drop back to the
-	// latest week's shopping list even while viewing a past plan.
-	readOnly := false
-	var p *db.Plan
-	if idStr := r.URL.Query().Get("plan_id"); idStr != "" {
-		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
-			if found, _ := s.store.GetPlanByID(ctx, id); found != nil && found.HouseholdID == hh.ID {
-				p = found
-			}
-		}
-		readOnly = true
-	} else if week := r.URL.Query().Get("week"); week != "" {
-		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, week)
-		readOnly = true
-	} else {
-		p, _ = s.store.GetLatestPlan(ctx, hh.ID)
-	}
+	// Resolved once, up front, so the calendar tab and the shopping-list tab
+	// always agree on which week they're showing - switching tabs used to
+	// silently drop back to the latest week's shopping list even while
+	// viewing a past plan.
+	p, readOnly := s.resolvePlanForRequest(ctx, hh, r)
 
 	var listView *shoppingListPageData
 	if tab == "list" {
@@ -490,7 +521,11 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.startPlanGeneration(hh.ID)
+	// No "week" field: plan the week that contains today (honouring
+	// WEEK_START_DAY), not the next one. Same week the dashboard and calendar
+	// treat as current.
+	weekStart, _ := plan.WeekBounds(time.Now(), s.cfg.WeekStartDay)
+	s.startPlanGenerationForWeek(hh.ID, weekStart)
 	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 }
 

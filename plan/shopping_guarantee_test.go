@@ -3,6 +3,10 @@ package plan
 import (
 	"context"
 	"testing"
+	"time"
+
+	"goeat/db"
+	"goeat/pricing"
 )
 
 // A plan is not usable without something to shop from. Pricing is optional
@@ -32,6 +36,77 @@ func TestGenerate_AlwaysWritesAShoppingList(t *testing.T) {
 		if it.BuyQuantity <= 0 {
 			t.Errorf("shopping line %q has buy quantity %v, want > 0", it.DisplayName, it.BuyQuantity)
 		}
+	}
+}
+
+// A slow pricer (a live scrape or AI lookup per ingredient in the real one)
+// must not hold up Generate returning - it seeds skeleton rows and prices
+// them in the background, so the caller (and the redirect to /plan it drives)
+// sees the plan as ready long before pricing finishes.
+func TestGenerate_PricingRunsInBackground(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newGenerateTestStore(t)
+
+	unblock := make(chan struct{})
+	pricer := func(ctx context.Context, planID int64, hh *db.Household) error {
+		<-unblock // stands in for a slow network-bound costing pass
+		seeded, err := pricing.SeedShoppingList(ctx, store, planID, hh)
+		if err != nil {
+			return err
+		}
+		for _, s := range seeded {
+			if err := store.UpdateShoppingListItemPrice(ctx, db.UpdateShoppingListItemPriceParams{
+				ID: s.RowID, BuyQuantity: s.TotalQuantity, PackSize: s.TotalQuantity,
+				PurchaseUnit: s.Unit, UnitPriceCents: 100, LineTotalCents: 100,
+				PriceSource: pricing.ConfidenceEstimate, Confidence: pricing.ConfidenceEstimate,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	start := time.Now()
+	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, pricer, nil, nil)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("generate took %v - a blocked pricer should not delay it at all", elapsed)
+	}
+
+	p, err := store.GetPlanByID(ctx, planID)
+	if err != nil || p == nil {
+		t.Fatalf("get plan: %v", err)
+	}
+	if p.Status != "ready" {
+		t.Fatalf("plan status = %q, want ready before pricing even started", p.Status)
+	}
+	if items, _ := store.ListShoppingListItems(ctx, planID); len(items) != 0 {
+		t.Fatalf("got %d shopping list items before the pricer ran, want 0", len(items))
+	}
+
+	close(unblock)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		items, _ := store.ListShoppingListItems(ctx, planID)
+		if len(items) > 0 {
+			allResolved := true
+			for _, it := range items {
+				if it.Pending {
+					allResolved = false
+				}
+			}
+			if allResolved {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background pricing did not finish resolving the list in time")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

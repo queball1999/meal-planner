@@ -57,6 +57,12 @@ type dashPageData struct {
 	WeekNavLabel  string // "Sep 8 – Sep 14", shown when IsCurrentWeek is false
 	WeekParam     string // "2026-09-08" - the viewed week's start, for the generate form's hidden field
 	PlanWeekParam string // "?week=2026-09-08" when viewing a past/future week, else ""
+
+	// PlanWeekAhead is set when the live-week dashboard is showing a plan for a
+	// later week (generation plans the next full week once this one is partway
+	// through). The stats strip and calendar then follow that plan's week so
+	// its meals and budget render instead of a blank current week.
+	PlanWeekAhead bool
 }
 
 // dashCalendar is the dashboard's schedule widget: a week (default) or month
@@ -89,14 +95,16 @@ type calMeal struct {
 }
 
 // buildDashCalendar assembles the calendar widget from the ?cal / ?calref query
-// params and the meals visible in the resulting date range.
-func buildDashCalendar(r *http.Request, store db.Store, householdID int64, weekStartDay string, now time.Time) dashCalendar {
+// params and the meals visible in the resulting date range. now fixes the
+// "today" highlight; defaultRef is the week/month the grid opens on when there
+// is no ?calref (usually today, but the plan's week when that runs ahead).
+func buildDashCalendar(r *http.Request, store db.Store, householdID int64, weekStartDay string, now, defaultRef time.Time) dashCalendar {
 	mode := r.URL.Query().Get("cal")
 	if mode != "month" {
 		mode = "week"
 	}
 	today := now.UTC().Truncate(24 * time.Hour)
-	ref := today
+	ref := defaultRef.UTC().Truncate(24 * time.Hour)
 	if v := r.URL.Query().Get("calref"); v != "" {
 		if t, err := time.Parse("2006-01-02", v); err == nil {
 			ref = t.UTC().Truncate(24 * time.Hour)
@@ -209,6 +217,22 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, from)
 	}
+
+	// The live-week view: if the latest plan is for a week other than the one
+	// containing today (generation plans the next full week once this one is
+	// underway), follow it - otherwise the stats strip and calendar, both
+	// anchored to today's week, show nothing while the card shows the plan.
+	calRef := now
+	if isCurrentWeek && p != nil && p.WeekStart != from {
+		if ws, err := time.Parse("2006-01-02", p.WeekStart); err == nil {
+			weekStart, weekEnd = plan.WeekBounds(ws.UTC(), s.cfg.WeekStartDay)
+			from = weekStart.Format("2006-01-02")
+			to = weekEnd.Format("2006-01-02")
+			calRef = ws.UTC()
+			data.PlanWeekAhead = weekStart.After(curStart)
+		}
+	}
+
 	if p != nil {
 		data.HasPlan = true
 		data.PlanStatus = s.reconcilePlanStatus(ctx, hh.ID, p)
@@ -238,7 +262,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		data.RecentPlans = all
 	}
 
-	data.Calendar = buildDashCalendar(r, s.store, hh.ID, s.cfg.WeekStartDay, time.Now())
+	data.Calendar = buildDashCalendar(r, s.store, hh.ID, s.cfg.WeekStartDay, now, calRef)
 
 	s.render(w, r, "index", data)
 }

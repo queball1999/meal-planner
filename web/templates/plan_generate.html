@@ -2,7 +2,7 @@
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "chef-hat"}} Generating your plan</h1>
-    <p class="page-subtitle">The AI is building your weekly meal plan. This takes 15-30 seconds.</p>
+    <p class="page-subtitle">The AI is building your weekly meal plan. This can take a while depending on your provider.</p>
 </div>
 
 <div class="wizard-progress" id="gen-progress" role="progressbar" aria-label="Generation progress">
@@ -19,15 +19,12 @@
         <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Save</span>
     </div>
     <div class="wizard-progress__step" data-step-indicator="4">
-        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Price</span>
-    </div>
-    <div class="wizard-progress__step" data-step-indicator="5">
-        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Shopping list</span>
-    </div>
-    <div class="wizard-progress__step" data-step-indicator="6">
         <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Finish</span>
     </div>
 </div>
+<p class="page-subtitle" style="text-align:center;margin-top:var(--sp-2)">
+    Pricing the shopping list happens after this - check the Shopping list tab for live prices as they come in.
+</p>
 
 <div class="skeleton-card" id="gen-card">
     <div class="skeleton-card__icon icon-spin" aria-hidden="true" id="gen-icon">{{icon "autorenew"}}</div>
@@ -52,15 +49,18 @@
     var icon   = document.getElementById('gen-icon');
 
     /* ── Step progress bar ──────────────────────────────────────────────
-     * The backend emits free-text status lines (plan/generate.go,
-     * plan/repair.go), not step numbers, so each known phase is matched by
-     * a keyword in that text. Matching only forward from the current step
-     * means a phase the server skips (no pricer configured, so no
-     * "Pricing your shopping list" line ever arrives) is silently passed
-     * over the moment the next phase's line matches, instead of stranding
-     * the bar on a step that was never going to complete. Anything that
-     * matches nothing (a repair-loop swap message) leaves the bar exactly
-     * where it was and only updates the text underneath. */
+     * The backend emits free-text status lines (plan/generate.go), not step
+     * numbers, so each known phase is matched by a keyword in that text.
+     * Matching only forward from the current step means anything that
+     * matches nothing leaves the bar exactly where it was and only updates
+     * the text underneath.
+     *
+     * Pricing is not one of these steps: it used to be (a live scrape or AI
+     * lookup per ingredient made it by far the slowest part), but it now runs
+     * in the background after the plan is already marked ready, so this
+     * screen's job is done - and the "done" event fires - well before pricing
+     * even starts. The shopping list tab shows its own skeleton-loading state
+     * for that; see shopping_list_body.html. */
     var progress = document.getElementById('gen-progress');
     var stepEls = progress ? Array.from(progress.querySelectorAll('[data-step-indicator]')) : [];
     var STEP_KEYWORDS = [
@@ -68,8 +68,6 @@
         'asking the ai',
         'checking it over',
         'saving your meals',
-        'pricing your shopping list',
-        'building your shopping list',
         'finishing up',
     ];
     var currentStep = -1;

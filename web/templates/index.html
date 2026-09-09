@@ -22,7 +22,7 @@
         {{else}}
         <div class="plan-status">
             <div class="plan-status__info">
-                <strong>{{if $d.IsCurrentWeek}}This week{{else}}Week of{{end}}: {{$d.WeekLabel}}</strong>
+                <strong>{{if $d.PlanWeekAhead}}Upcoming week{{else if $d.IsCurrentWeek}}This week{{else}}Week of{{end}}: {{$d.WeekLabel}}</strong>
                 {{if $d.TotalLabel}}
                 <div class="plan-budget-meter{{if $d.OverBudget}} plan-budget-meter--over{{end}}"
                      style="margin-top:.5rem">
@@ -108,7 +108,7 @@
 {{end}}
 <div class="stats-strip" style="margin-bottom:1.5rem">
     <div class="stats-chip">
-        <span class="stats-chip__label">{{if $d.IsCurrentWeek}}This week spent{{else}}Spent{{end}}</span>
+        <span class="stats-chip__label">{{if and $d.IsCurrentWeek (not $d.PlanWeekAhead)}}This week spent{{else}}Spent{{end}}</span>
         {{if $d.StatsSpent}}
         <span class="stats-chip__value {{if $d.StatsOverBudget}}stats-chip__value--over{{else}}stats-chip__value--under{{end}}">
             {{$d.StatsSpent}}
@@ -118,7 +118,7 @@
         {{end}}
     </div>
     <div class="stats-chip">
-        <span class="stats-chip__label">Meals this week</span>
+        <span class="stats-chip__label">{{if $d.PlanWeekAhead}}Meals planned{{else}}Meals this week{{end}}</span>
         <span class="stats-chip__value">{{$d.StatsMeals}}</span>
     </div>
     <div class="stats-chip">
