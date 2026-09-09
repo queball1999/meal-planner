@@ -78,7 +78,7 @@ func TestGenerate_CancelsPreviousPlanForSameWeek(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	firstID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, nil, nil)
+	firstID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("first generate: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestGenerate_CancelsPreviousPlanForSameWeek(t *testing.T) {
 		t.Fatal("first plan should not start canceled")
 	}
 
-	secondID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Second"}, hhID, nil, nil)
+	secondID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Second"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("second generate: %v", err)
 	}
@@ -151,12 +151,12 @@ func TestGenerate_CancelsOldPlanImmediatelyEvenOnFailure(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	firstID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, nil, nil)
+	firstID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("first generate: %v", err)
 	}
 
-	_, err = Generate(ctx, store, failingGenerator{}, hhID, nil, nil)
+	_, err = Generate(ctx, store, failingGenerator{}, hhID, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected the second generate to fail")
 	}

@@ -12,7 +12,7 @@ func TestGenerateSavesRecipesToCatalog(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	if _, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil); err != nil {
+	if _, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil, nil); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 
@@ -62,13 +62,13 @@ func TestGenerateDoesNotDuplicateRecipeTitles(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	if _, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil); err != nil {
+	if _, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil, nil); err != nil {
 		t.Fatalf("first generate: %v", err)
 	}
 	first, _ := store.ListCatalogRecipes(ctx, hhID)
 
 	// Regenerating produces the same 21 titles.
-	if _, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil); err != nil {
+	if _, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil, nil); err != nil {
 		t.Fatalf("second generate: %v", err)
 	}
 	second, _ := store.ListCatalogRecipes(ctx, hhID)
@@ -86,7 +86,7 @@ func TestGenerateLinksIngredientsWithoutAPricer(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil)
+	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Plan"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

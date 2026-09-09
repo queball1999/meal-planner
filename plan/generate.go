@@ -36,10 +36,11 @@ type Pricer func(ctx context.Context, planID int64, hh *db.Household) error
 // Generate resolves preferences, calls the LLM, validates the result, persists
 // it to the DB, optionally prices it, and returns the new plan ID for the
 // upcoming week (today's date rolled forward to the next Sunday - today
-// itself, if today is Sunday). This is what the scheduler and the dashboard's
-// "Plan my week" / "Regenerate" buttons call; see GenerateForWeek for a
-// specific past or future week.
-func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, pricer Pricer, j *Job) (int64, error) {
+// itself, if today is Sunday). This is what the auto-plan scheduler calls;
+// the dashboard's "Plan my week" / "Regenerate" buttons go through
+// GenerateForWeek with an explicit week (the one containing today). See
+// GenerateForWeek for a specific past or future week.
+func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, pricer Pricer, checker PriceChecker, j *Job) (int64, error) {
 	hh, err := store.GetHousehold(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
@@ -48,7 +49,7 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return 0, fmt.Errorf("household not configured")
 	}
 	weekStart := nextSunday(time.Now().In(mustLocation(hh.Timezone)))
-	return generate(ctx, store, gen, householdID, weekStart, pricer, j)
+	return generate(ctx, store, gen, householdID, weekStart, pricer, checker, j)
 }
 
 // GenerateForWeek is Generate for one specific week rather than "whichever
@@ -57,8 +58,8 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 // the current one. weekStart need not be a Sunday; it is used exactly as
 // given (the caller - handlePlanGenerate - is expected to pass a real week
 // boundary from plan.WeekBounds, the same helper the calendar itself uses).
-func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, j *Job) (int64, error) {
-	return generate(ctx, store, gen, householdID, weekStart, pricer, j)
+func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, checker PriceChecker, j *Job) (int64, error) {
+	return generate(ctx, store, gen, householdID, weekStart, pricer, checker, j)
 }
 
 // generate is the shared implementation behind Generate and GenerateForWeek:
@@ -68,7 +69,7 @@ func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, hou
 // each real stage so the progress screen reflects what's actually happening
 // instead of sitting on "asking the AI" through pricing and budget repair,
 // which can run long after the LLM has already answered.
-func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, j *Job) (int64, error) {
+func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, checker PriceChecker, j *Job) (int64, error) {
 	hh, err := store.GetHousehold(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
@@ -124,11 +125,8 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		fmt.Printf("warning: cancel superseded plans failed: %v\n", err)
 	}
 
-	resp, err := gen.Generate(ctx, llm.GenerateRequest{
-		System:    sysPmt,
-		Prompt:    userPmt,
-		MaxTokens: planGenMaxTokens,
-	})
+	gc := &genToolCtx{store: store, householdID: householdID, checker: checker}
+	rawResp, err := runGenerationLoop(ctx, gen, sysPmt, userPmt, gc, j)
 	if err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
 		return plan.ID, fmt.Errorf("llm generate: %w", err)
@@ -137,11 +135,11 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	j.EmitStatus("Got a plan back - checking it over…")
 
 	var gp GeneratedPlan
-	raw := stripFences(strings.TrimSpace(resp.Content))
+	raw := stripFences(strings.TrimSpace(rawResp))
 	if err := json.Unmarshal([]byte(raw), &gp); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
 		if !strings.HasSuffix(raw, "}") {
-			return plan.ID, fmt.Errorf("parse llm response: response was cut off before completing (used %d/%d output tokens) - raise the token limit or shorten the plan: %w", resp.OutputTokens, planGenMaxTokens, err)
+			return plan.ID, fmt.Errorf("parse llm response: response was cut off before completing (max %d output tokens) - raise the token limit or shorten the plan: %w", planGenMaxTokens, err)
 		}
 		return plan.ID, fmt.Errorf("parse llm response: %w", err)
 	}

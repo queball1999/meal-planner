@@ -109,6 +109,36 @@ func buildPricer(store db.Store, chain *pricing.Chain) plan.Pricer {
 	}
 }
 
+// buildPriceChecker returns a plan.PriceChecker the generation tool loop can
+// call mid-draft to ground an ingredient in a real price instead of an
+// LLM guess - the fix for a plan whose every meal looked individually
+// reasonable but whose total quietly blew past the household's budget.
+// Tries every configured store, same order buildPricer's chain.Resolve loop
+// uses, and returns the first hit.
+func buildPriceChecker(store db.Store, chain *pricing.Chain) plan.PriceChecker {
+	if chain == nil {
+		return nil
+	}
+	return func(ctx context.Context, term string) (int64, string, string, bool) {
+		hh, err := store.GetHousehold(ctx)
+		if err != nil || hh == nil {
+			return 0, "", "", false
+		}
+		stores, err := store.ListStores(ctx, hh.ID)
+		if err != nil {
+			return 0, "", "", false
+		}
+		for _, gs := range stores {
+			r, rerr := chain.Resolve(ctx, term, gs.ID, hh.ZIPCode)
+			if rerr != nil || r == nil {
+				continue
+			}
+			return r.PriceCents, r.PurchaseUnit, gs.Name, true
+		}
+		return 0, "", "", false
+	}
+}
+
 // reconcilePlanStatus is the single source of truth for a plan's state across
 // the dashboard, the plan page, and the generation progress screen. A row left
 // at "generating" by a job that is no longer running (timeout, panic, process
@@ -361,8 +391,9 @@ func (s *Server) handlePlanDelete(w http.ResponseWriter, r *http.Request) {
 // the job bookkeeping (status emission, hard timeout, success/error events)
 // both entry points below share, so neither can drift from the other on how
 // progress is reported.
-func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Context, pricer plan.Pricer, j *plan.Job) (int64, error)) (job *plan.Job, started bool) {
+func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error)) (job *plan.Job, started bool) {
 	pricer := buildPricer(s.store, s.chain)
+	checker := buildPriceChecker(s.store, s.chain)
 
 	return s.jobs.Start(context.Background(), hhID, func(j *plan.Job) {
 		j.EmitStatus("Resolving preferences…")
@@ -375,9 +406,9 @@ func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Cont
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 		defer cancel()
 
-		j.EmitStatus("Asking the AI to build your week… (15-30s)")
+		j.EmitStatus("Asking the AI to build your week… (this can take a while depending on your provider)")
 
-		planID, err := generate(ctx, pricer, j)
+		planID, err := generate(ctx, pricer, checker, j)
 		if err != nil {
 			log.Printf("plan generation error household=%d: %v", hhID, err)
 			j.Status = plan.JobFailed
@@ -392,13 +423,14 @@ func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Cont
 }
 
 // startPlanGeneration launches a background generation job for the upcoming
-// week, unless one is already running (single-flight, see plan.JobManager).
-// Shared by the "Regenerate"/"Plan my week" button (when viewing the current
-// week) and the auto-plan scheduler (§ RunAutoPlanScheduler).
+// week (plan.Generate → next Sunday), unless one is already running
+// (single-flight, see plan.JobManager). Used by the auto-plan scheduler
+// (§ RunAutoPlanScheduler); the dashboard's "Plan my week" / "Regenerate"
+// buttons go through startPlanGenerationForWeek with an explicit week.
 func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 	store, gen := s.store, s.gen
-	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, j *plan.Job) (int64, error) {
-		return plan.Generate(ctx, store, gen, hhID, pricer, j)
+	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
+		return plan.Generate(ctx, store, gen, hhID, pricer, checker, j)
 	})
 }
 
@@ -408,16 +440,17 @@ func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 // never reach this.
 func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart time.Time) (job *plan.Job, started bool) {
 	store, gen := s.store, s.gen
-	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, j *plan.Job) (int64, error) {
-		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, pricer, j)
+	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
+		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, pricer, checker, j)
 	})
 }
 
 // handlePlanGenerate starts a background generation job, then redirects to
 // the progress screen.
 //
-// An optional "week" form field (YYYY-MM-DD, any day within the target week)
-// asks for that specific week instead of the upcoming one - the dashboard's
+// With no "week" form field it plans the week containing today (honouring
+// WEEK_START_DAY). An optional "week" field (YYYY-MM-DD, any day within the
+// target week) asks for that specific week instead - the dashboard's
 // generate/regenerate action once the calendar widget has been navigated away
 // from the current week. Only the current week and future weeks are allowed:
 // plan.Generate's callers throughout the app (the dashboard, the shopping

@@ -13,7 +13,7 @@ func TestGenerate_AlwaysWritesAShoppingList(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil)
+	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestGenerate_SeedsPlanDays(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil)
+	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestGenerate_RecordsScalingBaseline(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil)
+	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
