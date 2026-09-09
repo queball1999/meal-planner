@@ -115,7 +115,7 @@ func (s *Server) handlePreferencesPage(w http.ResponseWriter, r *http.Request) {
 	hints, _ := s.store.GetMealSlotHints(ctx, hh.ID)
 	members, _ := s.store.ListHouseholdMembers(ctx, hh.ID)
 
-	s.render(w, r, "preferences", buildPreferencesPageData(prefs, allergies, hints, members, s.gen != nil))
+	s.render(w, r, "preferences", buildPreferencesPageData(prefs, allergies, hints, members, s.llmGen() != nil))
 }
 
 // handlePreferences saves all preference data and optionally parses free-text
@@ -180,9 +180,9 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 		parsedJSON := "null"
 		var inToks, outToks int
 
-		if rawText != "" && s.gen != nil {
+		if rawText != "" && s.llmGen() != nil {
 			var err error
-			parsedJSON, inToks, outToks, err = llm.ParseMealDescription(ctx, s.gen, slot, rawText)
+			parsedJSON, inToks, outToks, err = llm.ParseMealDescription(ctx, s.llmGen(), slot, rawText)
 			if err != nil {
 				log.Printf("preferences: parse %s: %v", slot, err)
 			} else if parsedJSON != "null" {
@@ -194,8 +194,8 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 				if _, err := s.store.CreateAIRun(ctx, db.CreateAIRunParams{
 					HouseholdID:      hh.ID,
 					Purpose:          "free_text_parse",
-					Provider:         s.gen.ProviderName(),
-					Model:            s.gen.ModelName(),
+					Provider:         s.llmGen().ProviderName(),
+					Model:            s.llmGen().ModelName(),
 					PromptTokens:     inToks,
 					CompletionTokens: outToks,
 					Status:           "ok",

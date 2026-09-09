@@ -55,7 +55,7 @@ func (s *Server) maybeAutoGeneratePlanAt(ctx context.Context, wallClock time.Tim
 	s.autoPlanCheckedAt = wallClock
 	s.autoPlanMu.Unlock()
 
-	if s.cfg.AutoPlanHour < 0 || s.gen == nil {
+	if s.cfg.AutoPlanHour < 0 || s.llmGen() == nil {
 		return
 	}
 	hh, err := s.store.GetHousehold(ctx)

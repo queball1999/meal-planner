@@ -959,7 +959,7 @@ func (s *Server) handleShoppingAICostAnalysis(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
 		return
 	}
-	if s.gen == nil {
+	if s.llmGen() == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "no AI provider configured"})
 		return
 	}
@@ -970,7 +970,7 @@ func (s *Server) handleShoppingAICostAnalysis(w http.ResponseWriter, r *http.Req
 		return
 	}
 	lines, _ := s.store.ListShoppingListItems(ctx, p.ID)
-	ai := pricing.NewAIEstimateProvider(s.gen, hh.ZIPCode)
+	ai := pricing.NewAIEstimateProvider(s.llmGen(), hh.ZIPCode)
 
 	updated := 0
 	for _, ln := range lines {

@@ -40,7 +40,7 @@ func (s *Server) handleScrapeConfigPage(w http.ResponseWriter, r *http.Request) 
 		cfg, _ := s.store.GetScrapeConfigByStore(ctx, gs.ID)
 		rows = append(rows, scrapeStoreRow{Store: gs, Config: cfg})
 	}
-	s.render(w, r, "scrape_config", scrapePageData{Stores: rows, HasLLM: s.gen != nil})
+	s.render(w, r, "scrape_config", scrapePageData{Stores: rows, HasLLM: s.llmGen() != nil})
 }
 
 func (s *Server) handleScrapeConfigSave(w http.ResponseWriter, r *http.Request) {
@@ -215,8 +215,8 @@ func (s *Server) handleScrapeConfigTest(w http.ResponseWriter, r *http.Request) 
 		products = scrape.Extract(result.HTML, sels, 3)
 		// Auto + AI configs may have no selectors at all: the model reads the
 		// page. Prove that path works during the test too.
-		if len(products) == 0 && cfg.Mode == "auto_ai" && s.gen != nil {
-			products, _ = scrape.ExtractWithAI(fetchCtx, s.gen, result.HTML, term)
+		if len(products) == 0 && cfg.Mode == "auto_ai" && s.llmGen() != nil {
+			products, _ = scrape.ExtractWithAI(fetchCtx, s.llmGen(), result.HTML, term)
 		}
 		if len(products) > 0 && products[0].Price > 0 {
 			status = "active"
@@ -381,8 +381,8 @@ func (s *Server) handleScrapeAutodetect(w http.ResponseWriter, r *http.Request) 
 
 	wantAI := r.FormValue("ai_assisted") == "1"
 	var proposal *scrape.Proposal
-	if wantAI && s.gen != nil {
-		proposal, err = scrape.ProposeWithAI(ctx, s.gen, res.HTML)
+	if wantAI && s.llmGen() != nil {
+		proposal, err = scrape.ProposeWithAI(ctx, s.llmGen(), res.HTML)
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"confidence": "none",
@@ -392,7 +392,7 @@ func (s *Server) handleScrapeAutodetect(w http.ResponseWriter, r *http.Request) 
 		}
 	} else {
 		proposal = scrape.Detect(res.HTML)
-		if wantAI && s.gen == nil {
+		if wantAI && s.llmGen() == nil {
 			proposal.Notes += " (No LLM is configured, so AI detection was skipped.)"
 		}
 	}
@@ -411,7 +411,7 @@ func (s *Server) handleScrapeAutodetect(w http.ResponseWriter, r *http.Request) 
 // selectors. Exposed as the "Ask AI to read this page" button for stores whose
 // markup is too unstable to pin down.
 func (s *Server) handleScrapeAIExtract(w http.ResponseWriter, r *http.Request) {
-	if s.gen == nil {
+	if s.llmGen() == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"error": "No LLM is configured."})
 		return
 	}
@@ -440,7 +440,7 @@ func (s *Server) handleScrapeAIExtract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	products, err := scrape.ExtractWithAI(ctx, s.gen, res.HTML, term)
+	products, err := scrape.ExtractWithAI(ctx, s.llmGen(), res.HTML, term)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"error": err.Error()})
 		return

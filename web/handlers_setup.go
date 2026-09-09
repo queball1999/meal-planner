@@ -63,7 +63,7 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 		CuisineOptions: cuisineOpts,
 		PortionPresets: portionPresets,
 		KrogerReady:    s.cfg.KrogerClientID != "",
-		HasLLM:         s.gen != nil,
+		HasLLM:         s.llmGen() != nil,
 	})
 }
 

@@ -111,7 +111,7 @@ func (s *Server) handleStoresPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "stores", storesPageData{
 		Stores:      rows,
 		Catalog:     catalog,
-		HasLLM:      s.gen != nil,
+		HasLLM:      s.llmGen() != nil,
 		KrogerReady: s.cfg.KrogerClientID != "",
 		State:       state,
 		AwayCount:   away,
@@ -282,7 +282,7 @@ func (s *Server) ensureScrapeConfig(ctx context.Context, storeID int64, ks *Know
 		return
 	}
 	mode := "auto"
-	if s.gen != nil {
+	if s.llmGen() != nil {
 		mode = "auto_ai" // the model can read the page when selectors fail
 	}
 	if _, err := s.store.CreateScrapeConfig(ctx, db.CreateScrapeConfigParams{
@@ -290,7 +290,7 @@ func (s *Server) ensureScrapeConfig(ctx context.Context, storeID int64, ks *Know
 		SearchURLTemplate: ks.SearchURL,
 		SelectorsJSON:     "{}",
 		Mode:              mode,
-		AIAssisted:        s.gen != nil,
+		AIAssisted:        s.llmGen() != nil,
 	}); err != nil {
 		log.Printf("stores: prefill scrape config store=%d: %v", storeID, err)
 	}

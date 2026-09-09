@@ -182,7 +182,7 @@ func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, r, "settings", settingsPageData{
-		HasLLM:       s.gen != nil,
+		HasLLM:       s.llmGen() != nil,
 		ActiveID:     active,
 		ActiveLabel:  activeLabel,
 		Providers:    providers,
@@ -313,6 +313,9 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		}
 		// Never the value itself for a secret - just that it changed.
 		s.logSettingsEvent(r, "setting.changed", def.Key, "secret updated")
+		if def.Category == "AI Provider" {
+			s.reloadLLM(r.Context())
+		}
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
 		return
 	}
@@ -323,6 +326,11 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.logSettingsEvent(r, "setting.changed", def.Key, "set to "+body.Value)
+	// Provider/model/key/sampling changes take effect immediately - see
+	// reloadLLM. Every other setting on this page still needs a restart.
+	if def.Category == "AI Provider" {
+		s.reloadLLM(r.Context())
+	}
 	json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
@@ -360,8 +368,8 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 	testPrompt := `Reply with exactly one sentence: "Go Eat AI is working!"`
 
 	// Build a generator fresh from whatever is saved right now, rather than
-	// using s.gen (built once at server startup - like every other setting
-	// on this page, a provider/model/key edit here only reaches s.gen after
+	// using s.llmGen() (built once at server startup - like every other setting
+	// on this page, a provider/model/key edit here only reaches s.llmGen() after
 	// a restart). Without this, Test Connection silently exercised whatever
 	// was running before your last edit instead of what you just picked,
 	// which is exactly the mismatch that made a stale, deprecated model look

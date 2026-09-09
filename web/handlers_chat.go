@@ -46,7 +46,7 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":       true,
 		"messages": toTurns(msgs),
-		"enabled":  s.gen != nil,
+		"enabled":  s.llmGen() != nil,
 	})
 }
 
@@ -91,7 +91,7 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no household", http.StatusUnauthorized)
 		return
 	}
-	if s.gen == nil {
+	if s.llmGen() == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"ok":    false,
 			"error": "No AI provider is configured, so the assistant is off. Set one up in Settings.",
@@ -155,7 +155,7 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 	// Every tool that changes data is held for a yes. The assistant edits a
 	// real household's real plan, and a silent write is the one thing about it
 	// that is not recoverable by asking again.
-	runner := &agent.Runner{Gen: s.gen, Registry: reg, ConfirmMutations: true}
+	runner := &agent.Runner{Gen: s.llmGen(), Registry: reg, ConfirmMutations: true}
 	reply, err := runner.Run(ctx, sess, prior, msg)
 
 	s.finishChatTurn(ctx, hh, sess, reply, err, send)
@@ -169,7 +169,7 @@ func (s *Server) handleChatConfirm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no household", http.StatusUnauthorized)
 		return
 	}
-	if s.gen == nil {
+	if s.llmGen() == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "error": "the assistant is off"})
 		return
 	}
@@ -212,7 +212,7 @@ func (s *Server) handleChatConfirm(w http.ResponseWriter, r *http.Request) {
 	sess := &agent.Session{Store: s.store, Household: hh, HouseholdID: hh.ID}
 	sess.OnStep = func(e agent.AuditEntry) { send("step", e) }
 
-	runner := &agent.Runner{Gen: s.gen, Registry: reg, ConfirmMutations: true}
+	runner := &agent.Runner{Gen: s.llmGen(), Registry: reg, ConfirmMutations: true}
 	reply, err := runner.Resume(ctx, sess, pending, approved)
 
 	s.finishChatTurn(ctx, hh, sess, reply, err, send)

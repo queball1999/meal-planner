@@ -198,7 +198,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	isCurrentWeek := weekStart.Equal(curStart)
 
 	data := dashPageData{
-		HasLLM:        s.gen != nil,
+		HasLLM:        s.llmGen() != nil,
 		IsCurrentWeek: isCurrentWeek,
 		IsPastWeek:    weekStart.Before(curStart),
 		WeekParam:     from,

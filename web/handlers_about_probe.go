@@ -150,25 +150,25 @@ func (s *Server) probeDatabase(ctx context.Context) probeResult {
 
 // probeLLM asks the configured provider for one token.
 //
-// The page used to report "configured" - that s.gen was non-nil - which says
+// The page used to report "configured" - that s.llmGen() was non-nil - which says
 // nothing about whether the endpoint answers. A wrong API key, an unreachable
 // local model server, and a working provider all looked identical, which is
 // precisely the case an operator opens this page to distinguish.
 func (s *Server) probeLLM(ctx context.Context) probeResult {
 	res := probeResult{Key: "llm", Name: "AI provider"}
-	if s.gen == nil {
+	if s.llmGen() == nil {
 		res.Status = "off"
 		res.Label = "Not configured"
 		res.Detail = "set a provider in Settings → AI Provider"
 		return res
 	}
-	res.Detail = s.gen.ProviderName() + " · " + s.gen.ModelName()
+	res.Detail = s.llmGen().ProviderName() + " · " + s.llmGen().ModelName()
 
 	c, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
 	err, ms := timed(func() error {
-		_, gerr := s.gen.Generate(c, llm.GenerateRequest{
+		_, gerr := s.llmGen().Generate(c, llm.GenerateRequest{
 			System: "Reply with the single word: ok",
 			Prompt: "ping",
 			// Deliberately tiny. This is a reachability check, and a reasoning

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"net/url"
 	"sync"
@@ -24,8 +25,16 @@ import (
 
 // Server holds shared dependencies and the fully-wired HTTP handler.
 type Server struct {
-	cfg          *config.Config
-	store        db.Store
+	cfg   *config.Config
+	store db.Store
+
+	// genMu guards gen and chain: reloadLLM rebuilds both from whatever is
+	// currently saved (see settings.Apply) and swaps them in together after
+	// an AI Provider setting changes, so a model/provider/key edit reaches
+	// the very next AI request instead of requiring a restart. Read them
+	// only through llmGen()/priceChain(), never as bare fields, or a request
+	// racing a settings save can read a half-updated pair.
+	genMu        sync.RWMutex
 	gen          llm.Generator // nil when no LLM is configured
 	chain        *pricing.Chain
 	jobs         *plan.JobManager
@@ -92,6 +101,61 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 // read its last-run state through the same instance that's actually ticking.
 func (s *Server) RunHAScheduler(ctx context.Context) {
 	s.haScheduler.Run(ctx)
+}
+
+// llmGen returns the current LLM generator (nil when none is configured).
+// Safe to call concurrently with reloadLLM.
+func (s *Server) llmGen() llm.Generator {
+	s.genMu.RLock()
+	defer s.genMu.RUnlock()
+	return s.gen
+}
+
+// priceChain returns the current pricing resolution chain. Safe to call
+// concurrently with reloadLLM - its AI-estimate provider is rebuilt from the
+// same generator llmGen returns.
+func (s *Server) priceChain() *pricing.Chain {
+	s.genMu.RLock()
+	defer s.genMu.RUnlock()
+	return s.chain
+}
+
+// reloadLLM rebuilds the generator and pricing chain from whatever is
+// currently saved (settings.Apply over a copy of the boot-time config,
+// exactly like main.go's own construction), then swaps both in together.
+// Called after a successful save of any "AI Provider" category setting
+// (handleSettingsSave), so a provider/model/key/sampling-parameter change
+// takes effect on the very next AI request instead of needing a restart -
+// every *other* setting on that page still does, since nothing else reads
+// live like this.
+func (s *Server) reloadLLM(ctx context.Context) {
+	cfg := *s.cfg
+	if err := settings.Apply(ctx, s.store, &cfg, func(format string, args ...any) {
+		log.Printf(format, args...)
+	}); err != nil {
+		log.Printf("reload llm: apply settings: %v", err)
+		return
+	}
+
+	var gen llm.Generator
+	if cfg.Provider != "" {
+		g, err := llm.NewGenerator(&cfg)
+		if err != nil {
+			log.Printf("reload llm: skipping generator: %v", err)
+		} else {
+			gen = g
+			log.Printf("reload llm: provider=%s model=%s", gen.ProviderName(), gen.ModelName())
+		}
+	}
+	if gen != nil {
+		gen = llm.NewDebugLogger(gen)
+	}
+	chain := buildChain(&cfg, s.store, gen)
+
+	s.genMu.Lock()
+	s.gen = gen
+	s.chain = chain
+	s.genMu.Unlock()
 }
 
 // buildChain constructs the five-provider resolution chain in §6.1 order:

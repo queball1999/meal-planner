@@ -122,15 +122,15 @@ func (s *Server) buildAboutData(ctx context.Context, householdID int64) aboutPag
 		data.DBReachable = true
 	}
 
-	// Reports what s.gen actually is, not a live-resolved credential set: an
+	// Reports what s.llmGen() actually is, not a live-resolved credential set: an
 	// AI provider edit on the Settings page needs a restart to take effect
 	// (see settings.Apply's own doc comment), so probing "live" settings here
 	// could report a provider as reachable when it isn't the one actually
 	// wired into plan generation.
-	if s.gen != nil {
+	if s.llmGen() != nil {
 		data.LLMConfigured = true
-		data.LLMProvider = s.gen.ProviderName()
-		data.LLMModel = s.gen.ModelName()
+		data.LLMProvider = s.llmGen().ProviderName()
+		data.LLMModel = s.llmGen().ModelName()
 	}
 
 	data.Probes = probePlaceholders()
@@ -185,7 +185,7 @@ func (s *Server) buildBackgroundProcesses(ctx context.Context, householdID int64
 			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the Saturday night before it starts.",
 			Status: "off", StatusLabel: "Not configured", Detail: "AUTO_PLAN_HOUR=-1",
 		})
-	case s.gen == nil:
+	case s.llmGen() == nil:
 		procs = append(procs, backgroundProcess{
 			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the Saturday night before it starts.",
 			Status: "warn", StatusLabel: "Waiting on AI provider", Detail: "AUTO_PLAN_HOUR is set but no LLM is configured",

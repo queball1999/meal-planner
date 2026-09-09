@@ -5,7 +5,7 @@
 
 <div class="page-header">
     <h1 class="page-title">{{icon "cog"}} Settings</h1>
-    <p class="page-subtitle">Every .env-configurable option, editable here. Changes are saved immediately but need a restart to take effect - <code>make docker-restart</code> (or <code>make docker-rebuild</code> after a code change).</p>
+    <p class="page-subtitle">Every .env-configurable option, editable here. Changes save immediately; most need a restart to take effect - <code>make docker-restart</code> (or <code>make docker-rebuild</code> after a code change) - except AI Provider settings below, which apply on the next request.</p>
 </div>
 
 {{template "settingsTabs" .}}
@@ -22,8 +22,9 @@
     </div>
     <p class="field-hint" style="margin-top:var(--sp-2)">
         Configure as many providers as you like - each keeps its own key, URL and model.
-        The one picked here is the default used to generate meal plans. Changes save
-        immediately and take effect after a restart.
+        The one picked here is the default used to generate meal plans. Unlike every
+        other setting on this page, changes here take effect on the very next AI
+        request - no restart needed.
     </p>
 
     <div class="field">
@@ -77,7 +78,7 @@
                     {{if .IsDefault}}Default provider for plan generation{{else}}Set as default provider{{end}}
                 </span>
             </label>
-            <p class="field-hint">Takes effect after a restart, like every other setting on this page.</p>
+            <p class="field-hint">Takes effect immediately - no restart needed.</p>
         </div>
 
         {{if .DocsURL}}

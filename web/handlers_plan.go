@@ -258,7 +258,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		} else if status == "generating" {
 			s.setNotify(w, NotifyInfo, "Your plan is still generating. This page will fill in once it's ready.")
 		}
-		s.renderWithPage(w, r, "plan", planNavSlug(tab), planPageData{HasPlan: false, HasLLM: s.gen != nil, Tab: tab, List: listView})
+		s.renderWithPage(w, r, "plan", planNavSlug(tab), planPageData{HasPlan: false, HasLLM: s.llmGen() != nil, Tab: tab, List: listView})
 		return
 	}
 
@@ -357,7 +357,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		OverBudget:        p.TotalCents > p.BudgetCents && p.TotalCents > 0,
 		ConfidenceSummary: p.ConfidenceSummary,
 		Days:              days,
-		HasLLM:            s.gen != nil,
+		HasLLM:            s.llmGen() != nil,
 		ReadOnly:          readOnly,
 		Canceled:          p.Canceled,
 		Status:            status,
@@ -423,8 +423,8 @@ func (s *Server) handlePlanDelete(w http.ResponseWriter, r *http.Request) {
 // both entry points below share, so neither can drift from the other on how
 // progress is reported.
 func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error)) (job *plan.Job, started bool) {
-	pricer := buildPricer(s.store, s.chain)
-	checker := buildPriceChecker(s.store, s.chain)
+	pricer := buildPricer(s.store, s.priceChain())
+	checker := buildPriceChecker(s.store, s.priceChain())
 
 	return s.jobs.Start(context.Background(), hhID, func(j *plan.Job) {
 		j.EmitStatus("Resolving preferences…")
@@ -459,7 +459,7 @@ func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Cont
 // (§ RunAutoPlanScheduler); the dashboard's "Plan my week" / "Regenerate"
 // buttons go through startPlanGenerationForWeek with an explicit week.
 func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
-	store, gen := s.store, s.gen
+	store, gen := s.store, s.llmGen()
 	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
 		return plan.Generate(ctx, store, gen, hhID, pricer, checker, j)
 	})
@@ -470,7 +470,7 @@ func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 // calendar widget to a future week. See handlePlanGenerate for why past weeks
 // never reach this.
 func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart time.Time) (job *plan.Job, started bool) {
-	store, gen := s.store, s.gen
+	store, gen := s.store, s.llmGen()
 	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
 		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, pricer, checker, j)
 	})
@@ -492,7 +492,7 @@ func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart time.Time) (jo
 // the app - wrong shopping list, wrong headcount target, wrong everything -
 // so it is refused here rather than silently corrupting those.
 func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
-	if s.gen == nil {
+	if s.llmGen() == nil {
 		http.Error(w, "No LLM configured", http.StatusServiceUnavailable)
 		return
 	}
@@ -742,7 +742,7 @@ func guestNote(guests int, slots []string) string {
 // far too long to hold a form POST open, so the user gets an immediate redirect
 // and the list catches up. At most one rebuild per plan runs at a time.
 func (s *Server) repriceInBackground(planID int64, hh *db.Household) {
-	pricer := buildPricer(s.store, s.chain)
+	pricer := buildPricer(s.store, s.priceChain())
 
 	s.repriceMu.Lock()
 	if s.repricingPlans[planID] {
