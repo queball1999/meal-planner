@@ -9,8 +9,8 @@ import (
 // unitAliases folds common spellings and plurals onto one canonical token so
 // "Tablespoons", "tbsp", and "tbs" all convert the same way.
 var unitAliases = map[string]string{
-	"":        "each",
-	"ea":      "each", "each": "each", "ct": "each", "count": "each",
+	"":   "each",
+	"ea": "each", "each": "each", "ct": "each", "count": "each",
 	"piece": "each", "pieces": "each", "pc": "each", "pcs": "each", "unit": "each",
 	"lb": "lb", "lbs": "lb", "pound": "lb", "pounds": "lb", "#": "lb",
 	"oz": "oz", "ounce": "oz", "ounces": "oz",

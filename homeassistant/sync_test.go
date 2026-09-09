@@ -28,7 +28,9 @@ func (f *fakeHA) server(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{"message":"API running."}`))
 	})
 	mux.HandleFunc("/api/services/todo/add_item", func(w http.ResponseWriter, r *http.Request) {
-		var b struct{ Item string `json:"item"` }
+		var b struct {
+			Item string `json:"item"`
+		}
 		json.NewDecoder(r.Body).Decode(&b)
 		f.mu.Lock()
 		f.nextID++

@@ -74,7 +74,7 @@ func AggregateByItem(ctx context.Context, store db.Store, householdID int64, ing
 	index := make(map[key]int)
 	var out []AggItem
 
-	itemCache := map[string]*db.Item{}        // normalized_term → item (nil = looked up, none)
+	itemCache := map[string]*db.Item{}            // normalized_term → item (nil = looked up, none)
 	convCache := map[int64][]*db.UnitConversion{} // item id → conversion graph
 
 	resolveItem := func(ing *db.MealIngredient, term string) *db.Item {

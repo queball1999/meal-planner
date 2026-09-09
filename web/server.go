@@ -209,6 +209,10 @@ func (s *Server) buildHandler() http.Handler {
 		csrf.Secure(false),                  // Allow plain HTTP on LAN (§9.3)
 		csrf.SameSite(csrf.SameSiteLaxMode), // Required alongside Secure(false)
 		csrf.HttpOnly(true),
+		csrf.Path("/"), // Pin the cookie's scope; otherwise it defaults to the
+		// directory of whichever URL last set it (e.g. "/plan" from a GET to
+		// /plan/generate), so the browser can end up holding two same-named
+		// cookies at different paths and send the stale one.
 		csrf.ErrorHandler(http.HandlerFunc(s.handleCSRFError)),
 	}
 	// Trust the external origin declared in PUBLIC_BASE_URL. This is required

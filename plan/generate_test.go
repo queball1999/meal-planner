@@ -26,7 +26,7 @@ func (f *fakeGenerator) Generate(ctx context.Context, req llm.GenerateRequest) (
 		for _, slot := range []string{"breakfast", "lunch", "dinner"} {
 			meals = append(meals, GeneratedMeal{
 				Day: day, Slot: slot,
-				Title: f.titlePrefix + " " + day + " " + slot,
+				Title:  f.titlePrefix + " " + day + " " + slot,
 				Effort: "quick", Servings: 2, CookedPortions: 2,
 				Ingredients: []GeneratedIngredient{
 					{Name: "canned black beans", Quantity: 1, Unit: "can", EstPriceCents: 129},
