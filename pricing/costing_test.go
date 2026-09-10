@@ -112,6 +112,57 @@ func TestCostPlan_ZeroWhenNoEstimateAvailable(t *testing.T) {
 	}
 }
 
+// TestCostPlan_BatchesAIEstimateCalls confirms multiple ingredients that all
+// miss the rest of the chain are priced with one LLM call, not one per
+// ingredient - the same "canned black beans: 38" pricing pass done for a
+// full week's list used to mean 30+ Generate calls.
+func TestCostPlan_BatchesAIEstimateCalls(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newCostingStore(t)
+	gs, err := store.CreateStore(ctx, db.UpsertStoreParams{HouseholdID: hh.ID, Name: "S", Kind: "grocery"})
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	p, _ := store.CreatePlan(ctx, db.CreatePlanParams{HouseholdID: hh.ID, WeekStart: "2026-01-05", WeekEnd: "2026-01-11", BudgetCents: 100000})
+	meal, _ := store.CreateMeal(ctx, db.CreateMealParams{PlanID: p.ID, Day: "2026-01-05", Slot: "dinner", Title: "X", Effort: "quick", Servings: 2, CookedPortions: 2})
+
+	names := []string{"flour", "sugar", "butter"}
+	for _, n := range names {
+		if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
+			MealID: meal.ID, Name: n, Quantity: 1, Unit: "each",
+		}); err != nil {
+			t.Fatalf("ingredient %s: %v", n, err)
+		}
+	}
+
+	gen := &fakeBatchGen{}
+	chain := NewChain([]PriceProvider{NewAIEstimateProvider(gen, "")})
+	if _, err := CostPlan(ctx, store, chain, p.ID, hh, []*db.GroceryStore{gs}); err != nil {
+		t.Fatalf("cost plan: %v", err)
+	}
+
+	if gen.calls != 1 {
+		t.Fatalf("Generate called %d times, want 1 (one batched call for %d items)", gen.calls, len(names))
+	}
+
+	items, err := store.ListShoppingListItems(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("list items: %v", err)
+	}
+	if len(items) != len(names) {
+		t.Fatalf("got %d shopping list items, want %d", len(items), len(names))
+	}
+	for _, it := range items {
+		if it.UnitPriceCents <= 0 {
+			t.Errorf("item %q priced at %d, want >0 from the batched estimate", it.DisplayName, it.UnitPriceCents)
+		}
+		if it.Confidence != ConfidenceEstimate {
+			t.Errorf("item %q confidence = %q, want %q", it.DisplayName, it.Confidence, ConfidenceEstimate)
+		}
+	}
+}
+
 type fakeProvider struct{ r *PriceResult }
 
 func (f fakeProvider) Name() string { return "fake" }

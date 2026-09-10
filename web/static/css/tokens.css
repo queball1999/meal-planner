@@ -100,11 +100,17 @@
     --dur:      0.15s;
     --dur-slow: 0.25s;
     --ease:     cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* ── Decorative background (themes opt in; see base.css body rule) ── */
+    --bg-pattern: none;
+    --bg-pattern-size: 320px;
 }
 
-/* ── Dark mode: system preference (strategy 2 from style guide §2.3) ───── */
+/* ── Dark mode: system preference (strategy 2 from style guide §2.3) ─────
+   Only kicks in for "auto" (no data-theme set). Every named theme below
+   is explicit and ignores the system preference entirely. */
 @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]):not([data-theme="nord"]):not([data-theme="pink-light"]):not([data-theme="pink-dark"]) {
         --bg:             #121212;
         --surface:        #1e1e1e;
         --surface-raised: #252525;
@@ -166,4 +172,162 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow:    0 2px 8px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Nord ─────────────────────────────────────────────────────────────
+   The Arctic, north-bluish palette (nordtheme.com). Always dark - it does
+   not follow the system preference. */
+:root[data-theme="nord"] {
+    --accent:         #5e81ac;
+    --accent-hover:   #81a1c1;
+    --accent-bg:      #242e3d;
+    --accent-text:    #88c0d0;
+    --accent-border:  #3b4252;
+
+    --bg:             #2e3440;
+    --surface:        #3b4252;
+    --surface-raised: #434c5e;
+    --border:         #4c566a;
+    --text:           #eceff4;
+    --text-muted:     #9aa5b8;
+
+    --success:        #a3be8c;
+    --success-bg:     #2e3527;
+    --success-border: #4c5a41;
+
+    --warning:        #d08770;
+    --warning-bg:     #3a2c22;
+    --warning-border: #5c4433;
+
+    --danger:         #bf616a;
+    --danger-bg:      #3a2426;
+    --danger-border:  #5c3438;
+
+    --info:           #81a1c1;
+    --info-bg:        #242c38;
+    --info-border:    #3d4c5e;
+
+    --meal-1-bg: #2e3c4a; --meal-1-text: #88c0d0;
+    --meal-2-bg: #3b3245; --meal-2-text: #b48ead;
+    --meal-3-bg: #2f3d3c; --meal-3-text: #8fbcbb;
+    --meal-4-bg: #3d3a2a; --meal-4-text: #ebcb8b;
+    --meal-5-bg: #3d2a34; --meal-5-text: #d18aa8;
+    --meal-6-bg: #2a2e3d; --meal-6-text: #81a1c1;
+    --meal-7-bg: #332d28; --meal-7-text: #c8a27a;
+    --meal-8-bg: #1f383c; --meal-8-text: #a3d9d3;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow:    0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Pink (kawaii) - light ────────────────────────────────────────────
+   Requested by the maintainer's wife: "cute pink kawaii version". Soft
+   pastel candy-shop palette, deep plum text for readable contrast, and
+   extra-rounded corners for a softer, bubblier feel. */
+:root[data-theme="pink-light"] {
+    --accent:         #ff6fa5;
+    --accent-hover:   #ff4d8d;
+    --accent-bg:      #ffe0ec;
+    --accent-text:    #c2185b;
+    --accent-border:  #ffb3d1;
+
+    --bg:             #fff5f9;
+    --surface:        #ffffff;
+    --surface-raised: #fff0f6;
+    --border:         #ffd1e6;
+    --text:           #6b2540;
+    --text-muted:     #b0708c;
+
+    --success:        #3fae7a;
+    --success-bg:     #e0f7ec;
+    --success-border: #a8e6c9;
+
+    --warning:        #e2882a;
+    --warning-bg:     #fff1d9;
+    --warning-border: #ffd39b;
+
+    --danger:         #e8577a;
+    --danger-bg:      #ffe0e9;
+    --danger-border:  #ffb3cd;
+
+    --info:           #3f9fd6;
+    --info-bg:        #e0f4ff;
+    --info-border:    #a8ddff;
+
+    --meal-1-bg: #e0f0ff; --meal-1-text: #3d6fa8;
+    --meal-2-bg: #f3e0ff; --meal-2-text: #8a4fae;
+    --meal-3-bg: #dff7f0; --meal-3-text: #2f9e82;
+    --meal-4-bg: #fff1d9; --meal-4-text: #c8790a;
+    --meal-5-bg: #ffd9ec; --meal-5-text: #c2185b;
+    --meal-6-bg: #e6e3ff; --meal-6-text: #5952c9;
+    --meal-7-bg: #f5e6d8; --meal-7-text: #8a5a35;
+    --meal-8-bg: #dbf7fb; --meal-8-text: #0a8fa3;
+
+    --radius-sm: 6px;
+    --radius:    10px;
+    --radius-lg: 18px;
+
+    --shadow-sm: 0 1px 3px rgba(255, 111, 165, 0.15);
+    --shadow:    0 2px 10px rgba(255, 111, 165, 0.18);
+    --shadow-lg: 0 6px 28px rgba(255, 111, 165, 0.22);
+
+    /* Wife-requested: "cute pink kawaii version" - a scattering of tiny
+       cherry-blossom flowers behind the page (see base.css), tuned faint
+       enough not to fight with card content. */
+    --bg-pattern: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22320%22%20height%3D%22320%22%20viewBox%3D%220%200%20320%20320%22%3E%3Cg%20transform%3D%22translate(46%2054)%20rotate(8)%20scale(1.15)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.28%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.43000000000000005%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(58%2070)%20rotate(30)%20scale(1)%22%20fill%3D%22%238fbc9c%22%20fill-opacity%3D%220.3%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(168%2034)%20rotate(-20)%20scale(1.1)%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.3%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-6%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%223.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-3.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-5.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(266%20108)%20rotate(25)%20scale(1.3)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.28%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.43000000000000005%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(248%20128)%20rotate(-15)%20scale(1.1)%22%20fill%3D%22%238fbc9c%22%20fill-opacity%3D%220.3%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(70%20168)%20rotate(50)%20scale(0.95)%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.3%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-6%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%223.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-3.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-5.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(150%20210)%20rotate(-12)%20scale(1)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.28%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.43000000000000005%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(134%20224)%20rotate(60)%20scale(0.9)%22%20fill%3D%22%238fbc9c%22%20fill-opacity%3D%220.3%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(272%20250)%20rotate(15)%20scale(0.85)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.28%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.43000000000000005%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(24%20268)%20rotate(-35)%20scale(1.05)%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.3%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-6%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%223.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-3.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-5.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(300%2040)%20rotate(-40)%20scale(0.9)%22%20fill%3D%22%238fbc9c%22%20fill-opacity%3D%220.3%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+}
+
+/* ── Pink (kawaii) - dark ─────────────────────────────────────────────
+   Neutral grey surfaces (same grays as the plain dark theme) so nothing
+   reads as purple or red - the pink lives only in the accent and meal-tag
+   highlights, copied straight from pink-light. */
+:root[data-theme="pink-dark"] {
+    --accent:         #ff6fa5;
+    --accent-hover:   #ff4d8d;
+    --accent-bg:      #ffe0ec;
+    --accent-text:    #c2185b;
+    --accent-border:  #ffb3d1;
+
+    --bg:             #121212;
+    --surface:        #1e1e1e;
+    --surface-raised: #252525;
+    --border:         #333333;
+    --text:           #e0e0e0;
+    --text-muted:     #9e9e9e;
+
+    --success:        #2e7d32;
+    --success-bg:     #1a2e1b;
+    --success-border: #2e5c30;
+
+    --warning:        #e65100;
+    --warning-bg:     #2e1e00;
+    --warning-border: #5c4322;
+
+    --danger:         #c62828;
+    --danger-bg:      #2e0a0a;
+    --danger-border:  #5c2d3c;
+
+    --info:           #1565c0;
+    --info-bg:        #0a1a2e;
+    --info-border:    #2f4c5e;
+
+    --meal-1-bg: #e0f0ff; --meal-1-text: #3d6fa8;
+    --meal-2-bg: #f3e0ff; --meal-2-text: #8a4fae;
+    --meal-3-bg: #dff7f0; --meal-3-text: #2f9e82;
+    --meal-4-bg: #fff1d9; --meal-4-text: #c8790a;
+    --meal-5-bg: #ffd9ec; --meal-5-text: #c2185b;
+    --meal-6-bg: #e6e3ff; --meal-6-text: #5952c9;
+    --meal-7-bg: #f5e6d8; --meal-7-text: #8a5a35;
+    --meal-8-bg: #dbf7fb; --meal-8-text: #0a8fa3;
+
+    --radius-sm: 6px;
+    --radius:    10px;
+    --radius-lg: 18px;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow:    0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
+
+    --bg-pattern: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22320%22%20height%3D%22320%22%20viewBox%3D%220%200%20320%20320%22%3E%3Cg%20transform%3D%22translate(46%2054)%20rotate(8)%20scale(1.15)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.16%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.31%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(58%2070)%20rotate(30)%20scale(1)%22%20fill%3D%22%237fae8f%22%20fill-opacity%3D%220.14%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(168%2034)%20rotate(-20)%20scale(1.1)%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.16%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-6%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%223.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-3.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-5.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(266%20108)%20rotate(25)%20scale(1.3)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.16%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.31%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(248%20128)%20rotate(-15)%20scale(1.1)%22%20fill%3D%22%237fae8f%22%20fill-opacity%3D%220.14%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(70%20168)%20rotate(50)%20scale(0.95)%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.16%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-6%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%223.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-3.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-5.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(150%20210)%20rotate(-12)%20scale(1)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.16%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.31%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(134%20224)%20rotate(60)%20scale(0.9)%22%20fill%3D%22%237fae8f%22%20fill-opacity%3D%220.14%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(272%20250)%20rotate(15)%20scale(0.85)%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.16%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-9%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%225.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-5.3%22%20cy%3D%227.3%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%22-8.6%22%20cy%3D%22-2.8%22%20r%3D%229%22%2F%3E%3C%2Fg%3E%3Ccircle%20r%3D%225%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.31%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(24%20268)%20rotate(-35)%20scale(1.05)%22%20fill%3D%22%23ff6fa5%22%20fill-opacity%3D%220.16%22%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-6%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%225.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%223.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-3.5%22%20cy%3D%224.9%22%20r%3D%223.4%22%2F%3E%3Ccircle%20cx%3D%22-5.7%22%20cy%3D%22-1.9%22%20r%3D%223.4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(300%2040)%20rotate(-40)%20scale(0.9)%22%20fill%3D%22%237fae8f%22%20fill-opacity%3D%220.14%22%3E%3Cellipse%20cx%3D%22-6%22%20cy%3D%220%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(-25%20-6%200)%22%2F%3E%3Cellipse%20cx%3D%226%22%20cy%3D%221%22%20rx%3D%226%22%20ry%3D%222.6%22%20transform%3D%22rotate(20%206%201)%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }

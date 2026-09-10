@@ -140,10 +140,30 @@ func SeedShoppingList(ctx context.Context, store db.Store, planID int64, househo
 	return seeded, nil
 }
 
-// ResolvePricing prices each of a plan's already-seeded shopping-list lines in
-// place, one at a time - the slow part (a live scrape or AI price lookup per
-// ingredient), run after SeedShoppingList so the household can already see
-// the plan and a skeleton list while this works through it.
+// lineState is one shopping-list line's pricing progress, carried between
+// ResolvePricing's resolve pass and its finalize pass so the AI-estimate step
+// in between can fill in whatever the resolve pass couldn't.
+type lineState struct {
+	priceCents      int64
+	priceSource     string
+	confidence      string
+	resolvedStoreID *int64
+	packAmount      float64
+	packUnit        string
+	priced          bool
+}
+
+// ResolvePricing prices each of a plan's already-seeded shopping-list lines:
+// a resolve pass (store package, then the chain minus AI estimate) for every
+// line, then one batched AI-estimate call for whatever the resolve pass
+// couldn't price (see BatchAIEstimates/AIEstimateProvider.LookupBatch) rather
+// than an AI lookup per ingredient, then a finalize pass that reconciles
+// units and writes each row.
+//
+// Cancel ctx (e.g. a "stop pricing" request) to abort early: any resolve or
+// batch call already in flight fails fast, and every line - reached or not -
+// still gets finalized and written, falling through to its own tier-3/default
+// fallback exactly as if nothing further had ever answered it.
 func ResolvePricing(
 	ctx context.Context,
 	store db.Store,
@@ -155,27 +175,12 @@ func ResolvePricing(
 ) (*CostResult, error) {
 	region := household.ZIPCode
 
-	var totalCents int64
-	confidenceCounts := map[string]int{}
+	lines := make([]lineState, len(seeded))
+	var missIdx []int
 
-	for _, seed := range seeded {
+	for i, seed := range seeded {
 		item := seed.AggItem
-		var priceCents int64
-		var priceSource, confidence string
-		var resolvedStoreID *int64
-		priced := false
-
-		// A pack is `packAmount` of `packUnit` for `priceCents`. Every pricing
-		// path below fills these in its own unit (a store's "lb", "bag", the
-		// LLM's "each"); the pack maths afterwards is what reconciles that unit
-		// against the item's stock unit - see reconcilePack. Filling packSize
-		// directly here without that step is how a 1.5 lb chicken breast turned
-		// into "681 lb": TotalQuantity is grams, r.PackSize was pounds, and
-		// PacksNeeded happily divided the two.
-		var packAmount float64 = 1
-		var packUnit string
-
-		conv := loadConversions(ctx, store, item.ItemID)
+		ls := lineState{packAmount: 1}
 
 		// 1. Prefer a per-store package for a catalogued item: it carries the
 		//    real "amount per package" in a known unit, so pack maths is exact.
@@ -189,85 +194,139 @@ func ResolvePricing(
 				if pkg == nil {
 					continue
 				}
-				packAmount = pkg.AmountPerPackage
-				packUnit = pkg.PurchaseUnit
-				priceCents = pkg.PriceCents
-				priceSource = "manual"
-				confidence = ConfidenceManual
+				ls.packAmount = pkg.AmountPerPackage
+				ls.packUnit = pkg.PurchaseUnit
+				ls.priceCents = pkg.PriceCents
+				ls.priceSource = "manual"
+				ls.confidence = ConfidenceManual
 				sid := gs.ID
-				resolvedStoreID = &sid
-				priced = true
+				ls.resolvedStoreID = &sid
+				ls.priced = true
 				break
 			}
 		}
 
-		// 2. Fall back to the resolution chain keyed by normalized term.
-		if !priced {
+		// 2. Fall back to the resolution chain, minus the AI estimate provider -
+		//    a chain miss here is batched into one AI-estimate call below
+		//    instead of asking the LLM once per ingredient.
+		if !ls.priced {
 			for _, gs := range stores {
-				r, rerr := chain.Resolve(ctx, item.NormalizedTerm, gs.ID, region)
+				r, rerr := chain.resolveExcluding(ctx, item.NormalizedTerm, gs.ID, region, aiEstimateProviderName)
 				if rerr != nil {
 					log.Printf("costing: %v", rerr)
 					continue
 				}
 				if r != nil {
-					packAmount = r.PackSize
-					packUnit = r.PurchaseUnit
-					priceCents = r.PriceCents
-					priceSource = r.Source
-					confidence = r.Confidence
+					ls.packAmount = r.PackSize
+					ls.packUnit = r.PurchaseUnit
+					ls.priceCents = r.PriceCents
+					ls.priceSource = r.Source
+					ls.confidence = r.Confidence
 					sid := gs.ID
-					resolvedStoreID = &sid
-					priced = true
+					ls.resolvedStoreID = &sid
+					ls.priced = true
 					break
 				}
 			}
 		}
 
+		if !ls.priced && len(stores) > 0 {
+			missIdx = append(missIdx, i)
+		}
+		lines[i] = ls
+	}
+
+	// 2b. Batch every chain miss into as few AI-estimate calls as possible.
+	// stores[0].ID is the same store a per-item AI lookup would have landed
+	// on: the old per-store loop always resolved (and cached) an AI-only
+	// answer against the first store it tried, since the provider ignores
+	// storeID entirely.
+	if ai := chain.aiEstimateProvider(); ai != nil && len(missIdx) > 0 {
+		terms := make([]string, len(missIdx))
+		for j, i := range missIdx {
+			terms[j] = seeded[i].AggItem.NormalizedTerm
+		}
+		estimates := ai.LookupBatch(ctx, terms, region)
+		sid := stores[0].ID
+		for j, i := range missIdx {
+			r := estimates[j]
+			if r == nil {
+				continue
+			}
+			ls := &lines[i]
+			ls.packAmount = r.PackSize
+			ls.packUnit = r.PurchaseUnit
+			ls.priceCents = r.PriceCents
+			ls.priceSource = r.Source
+			ls.confidence = r.Confidence
+			ls.resolvedStoreID = &sid
+			ls.priced = true
+			if chain.persistFn != nil {
+				if werr := chain.persistFn(ctx, r, sid, Normalize(terms[j])); werr != nil {
+					log.Printf("pricing: persist write-back error: %v", werr)
+				}
+			}
+		}
+	}
+
+	// Finalize pass: reconcile units and write every row. Detached from ctx -
+	// a canceled ctx (stop pricing) must still let whatever was already
+	// resolved above land in the database instead of stranding it mid-write.
+	writeCtx := context.WithoutCancel(ctx)
+
+	var totalCents int64
+	confidenceCounts := map[string]int{}
+
+	for i, seed := range seeded {
+		item := seed.AggItem
+		ls := lines[i]
+		conv := loadConversions(writeCtx, store, item.ItemID)
+
 		// 3. Last resort: the meal-planning LLM's own price guess, captured per
 		// ingredient at generation time (plan.systemPrompt requires it). Used
-		// only when nothing above - including a fresh AI estimate in the chain
-		// above - could price the item, e.g. no stores configured, every
-		// provider errored, or the LLM provider was since removed. Its guess is
-		// for exactly TotalQuantity of the recipe's own unit, so the pack is
-		// that whole amount and reconciliation is a no-op.
-		if !priced && item.EstPriceCents > 0 {
-			packAmount = item.TotalQuantity
-			packUnit = item.Unit
-			priceCents = item.EstPriceCents
-			priceSource = "estimate"
-			confidence = ConfidenceEstimate
-			priced = true
+		// only when nothing above - including a batched AI estimate - could
+		// price the item, e.g. no stores configured, every provider errored,
+		// the LLM provider was since removed, or pricing was stopped early.
+		// Its guess is for exactly TotalQuantity of the recipe's own unit, so
+		// the pack is that whole amount and reconciliation is a no-op.
+		if !ls.priced && item.EstPriceCents > 0 {
+			ls.packAmount = item.TotalQuantity
+			ls.packUnit = item.Unit
+			ls.priceCents = item.EstPriceCents
+			ls.priceSource = "estimate"
+			ls.confidence = ConfidenceEstimate
+			ls.priced = true
 		}
 
 		var buyQuantity, packSize float64
 		var lineTotal int64
 		purchaseUnit := item.Unit
-		if priced {
-			packs, bq, ps, reconciled := reconcilePack(item.TotalQuantity, packAmount, packUnit, item.Unit, conv)
+		if ls.priced {
+			packs, bq, ps, reconciled := reconcilePack(item.TotalQuantity, ls.packAmount, ls.packUnit, item.Unit, conv)
 			buyQuantity, packSize = bq, ps
 			if reconciled {
-				lineTotal = priceCents * int64(packs)
-				purchaseUnit = packUnit
+				lineTotal = ls.priceCents * int64(packs)
+				purchaseUnit = ls.packUnit
 			} else {
 				// packUnit and the stock unit don't connect on the conversion
 				// graph, so how many packs cover the need is unknowable - and
 				// guessing it is exactly the "9 cartons of eggs" bug. Buy the
 				// recipe amount as-is, price it from the LLM's own per-quantity
 				// guess where there is one, and let the estimate badge show.
-				priceSource = "estimate"
-				confidence = ConfidenceEstimate
+				ls.priceSource = "estimate"
+				ls.confidence = ConfidenceEstimate
 				if item.EstPriceCents > 0 {
 					lineTotal = item.EstPriceCents
 				} else {
-					lineTotal = priceCents
+					lineTotal = ls.priceCents
 				}
 			}
 		} else {
 			// Truly nothing to go on: no live price, no chain estimate, and no
 			// initial LLM guess either. Show the recipe's own quantity/unit
 			// instead of rounding up to whole units in a blank purchase unit.
-			priceSource = "estimate"
-			confidence = ConfidenceEstimate
+			ls.priceSource = "estimate"
+			ls.confidence = ConfidenceEstimate
 			packSize = item.TotalQuantity
 			buyQuantity = item.TotalQuantity
 		}
@@ -278,23 +337,23 @@ func ResolvePricing(
 		if !ded.Covered {
 			totalCents += lineTotal
 		}
-		confidenceCounts[confidence]++
+		confidenceCounts[ls.confidence]++
 
 		// Turn this line's "pending" skeleton row (SeedShoppingList) into a
 		// priced one in place, rather than inserting a duplicate - every other
 		// still-pending row stays a skeleton on the shopping list tab until its
 		// own turn comes up.
-		if uerr := store.UpdateShoppingListItemPrice(ctx, db.UpdateShoppingListItemPriceParams{
+		if uerr := store.UpdateShoppingListItemPrice(writeCtx, db.UpdateShoppingListItemPriceParams{
 			ID:             seed.RowID,
-			StoreID:        resolvedStoreID,
+			StoreID:        ls.resolvedStoreID,
 			ItemID:         item.ItemID,
 			BuyQuantity:    buyQuantity,
 			PackSize:       packSize,
 			PurchaseUnit:   purchaseUnit,
-			UnitPriceCents: priceCents,
+			UnitPriceCents: ls.priceCents,
 			LineTotalCents: lineTotal,
-			PriceSource:    priceSource,
-			Confidence:     confidence,
+			PriceSource:    ls.priceSource,
+			Confidence:     ls.confidence,
 			PantryQtyUsed:  ded.Used,
 			InPantry:       ded.Covered,
 		}); uerr != nil {
@@ -304,7 +363,7 @@ func ResolvePricing(
 
 	summary := BuildConfidenceSummary(confidenceCounts, len(seeded))
 
-	if err := store.UpdatePlanTotal(ctx, planID, totalCents, summary); err != nil {
+	if err := store.UpdatePlanTotal(writeCtx, planID, totalCents, summary); err != nil {
 		return nil, fmt.Errorf("update plan total: %w", err)
 	}
 

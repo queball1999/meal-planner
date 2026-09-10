@@ -82,6 +82,7 @@
 {{if .Pricing}}
 <p class="shopping-pricing-note no-print">
     <span class="icon-spin" aria-hidden="true">{{icon "autorenew"}}</span> Still pricing this list - items below fill in as prices come back.
+    <button type="button" class="btn btn-ghost btn-sm shopping-pricing-note__stop" id="pricing-stop-btn">{{icon "stop"}} Stop pricing</button>
 </p>
 {{end}}
 
@@ -304,6 +305,25 @@
         var li = cb.closest('li');
         if (li) li.classList.toggle('shopping-item--checked', cb.checked);
     };
+
+    // ── Stop pricing ─────────────────────────────────────────────────────
+    // Aborts the background pricing run (handlePlanListStopPricing /
+    // plan.StopPricing) so no further live/AI lookups happen; whatever
+    // wasn't priced yet falls back to its own estimate instead. The next
+    // poll tick (pollPricing below) picks up the now-fully-resolved list and
+    // stops polling once data-pricing flips to 0 - no extra wiring needed
+    // here beyond disabling the button so it can't be clicked twice.
+    var stopBtn = document.getElementById('pricing-stop-btn');
+    if (stopBtn) {
+        stopBtn.addEventListener('click', function () {
+            stopBtn.disabled = true;
+            stopBtn.textContent = 'Stopping…';
+            fetch('/plan/list/stop-pricing' + window.location.search, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken },
+            }).catch(function () {});
+        });
+    }
 
     // ── Item matching (the tag chip) ─────────────────────────────────────
     // Yellow means the line is linked only to an auto-created placeholder, so

@@ -18,33 +18,84 @@ const ICONS = {
     'eye-off': '<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2,5.27L3.28,4L20,20.72L18.73,22L15.65,18.92C14.5,19.3 13.28,19.5 12,19.5C7,19.5 2.73,16.39 1,12C1.69,10.24 2.79,8.69 4.19,7.46L2,5.27M12,9A3,3 0 0,1 15,12C15,12.35 14.94,12.69 14.83,13L11,9.17C11.31,9.06 11.65,9 12,9M12,4.5C17,4.5 21.27,7.61 23,12C22.18,14.08 20.79,15.88 19,17.19L17.58,15.76C18.94,14.82 20.06,13.54 20.82,12C19.17,8.64 15.76,6.5 12,6.5C10.91,6.5 9.84,6.68 8.84,7L7.3,5.47C8.74,4.85 10.33,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 12,17.5C12.69,17.5 13.37,17.43 14,17.29L11.72,15C10.29,14.85 9.15,13.71 9,12.28L5.6,8.87C4.61,9.72 3.78,10.78 3.18,12Z"/></svg>',
 };
 
-// ── Dark mode toggle ─────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────────────────
+// Families selectable in Settings: 'auto' (default, follows system
+// light/dark), 'light', 'dark', 'nord', 'pink'. 'pink' isn't a single look -
+// like 'auto' it has a light and a dark side (--pinkMode, remembered
+// separately), and the header sun/moon button is what flips it, same as it
+// flips plain light/dark. Everything here is client-side only
+// (localStorage) - a personal display preference, not a household setting,
+// so it isn't part of the server-backed Settings autosave.
+const THEME_FAMILIES = ['auto', 'light', 'dark', 'nord', 'pink'];
+const DARK_FAMILIES = ['dark', 'nord']; // families with no light/dark split of their own
 
-(function initTheme() {
+function resolveDataTheme(family, pinkMode) {
+    if (family === 'auto') return '';
+    if (family === 'pink') return pinkMode === 'dark' ? 'pink-dark' : 'pink-light';
+    return family;
+}
+
+function goeatApplyTheme(family, pinkMode) {
     const root = document.documentElement;
+    const resolved = resolveDataTheme(family, pinkMode);
+    if (resolved === '') {
+        delete root.dataset.theme;
+    } else {
+        root.dataset.theme = resolved;
+    }
+    try {
+        localStorage.setItem('theme', family);
+        if (family === 'pink') localStorage.setItem('pinkMode', pinkMode);
+    } catch (_) {}
+
     const btn  = document.getElementById('themeToggle');
     const icon = btn && btn.querySelector('.theme-icon');
-
-    const STORED = localStorage.getItem('theme'); // 'light' | 'dark' | null
-
-    function applyTheme(theme) {
-        root.dataset.theme = theme;
-        if (icon) icon.innerHTML = theme === 'dark' ? ICONS.sun : ICONS.moon;
-        try { localStorage.setItem('theme', theme); } catch (_) {}
+    if (icon) {
+        const isDark = family === 'auto'
+            ? window.matchMedia('(prefers-color-scheme: dark)').matches
+            : family === 'pink' ? pinkMode === 'dark' : DARK_FAMILIES.indexOf(family) !== -1;
+        icon.innerHTML = isDark ? ICONS.sun : ICONS.moon;
     }
 
-    if (STORED === 'dark' || STORED === 'light') {
-        applyTheme(STORED);
-    } else {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (icon) icon.innerHTML = prefersDark ? ICONS.sun : ICONS.moon;
-    }
+    const select = document.getElementById('themeSelect');
+    if (select && select.value !== family) select.value = family;
+}
 
+(function initTheme() {
+    const storedFamily = localStorage.getItem('theme');
+    const storedPinkMode = localStorage.getItem('pinkMode');
+    const family = THEME_FAMILIES.indexOf(storedFamily) !== -1 ? storedFamily : 'auto';
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const pinkMode = (storedPinkMode === 'light' || storedPinkMode === 'dark')
+        ? storedPinkMode
+        : (systemPrefersDark ? 'dark' : 'light');
+    goeatApplyTheme(family, pinkMode);
+
+    const btn = document.getElementById('themeToggle');
     if (btn) {
         btn.addEventListener('click', function () {
-            const current = root.dataset.theme;
-            const next = current === 'dark' ? 'light' : 'dark';
-            applyTheme(next);
+            const current = localStorage.getItem('theme') || 'auto';
+            if (current === 'pink') {
+                const currentPinkMode = localStorage.getItem('pinkMode') === 'dark' ? 'dark' : 'light';
+                goeatApplyTheme('pink', currentPinkMode === 'dark' ? 'light' : 'dark');
+                return;
+            }
+            const currentIsDark = current === 'auto'
+                ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                : DARK_FAMILIES.indexOf(current) !== -1;
+            goeatApplyTheme(currentIsDark ? 'light' : 'dark');
+        });
+    }
+
+    const select = document.getElementById('themeSelect');
+    if (select) {
+        select.value = family;
+        select.addEventListener('change', function () {
+            const storedPinkMode = localStorage.getItem('pinkMode');
+            const nextPinkMode = (storedPinkMode === 'light' || storedPinkMode === 'dark')
+                ? storedPinkMode
+                : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            goeatApplyTheme(select.value, nextPinkMode);
         });
     }
 })();

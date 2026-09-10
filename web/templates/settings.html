@@ -10,6 +10,27 @@
 
 {{template "settingsTabs" .}}
 
+{{/* ── Appearance ───────────────────────────────────────────
+     A personal display preference, not a household one - saved to this
+     browser's localStorage, applied instantly, no restart and no server
+     round-trip (unlike everything else on this page). */}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "palette"}} Appearance</h2>
+    <p class="field-hint" style="margin-top:0">Applies instantly, only in this browser.</p>
+    <div class="field settings-field">
+        <label class="field-label" for="themeSelect">Theme</label>
+        <select class="field-input" id="themeSelect">
+            <option value="auto">Auto (match system)</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="nord">Nord</option>
+            <option value="pink">Pink</option>
+        </select>
+        <span class="field-hint">"Auto" follows your OS/browser light or dark setting. Pink has its own
+            light/dark side too - flip it with the sun/moon button, top right.</span>
+    </div>
+</div>
+
 {{/* ── AI provider configuration ─────────────────────────── */}}
 <div class="card form-section" style="margin-bottom:1.5rem">
     <div class="ai-head">

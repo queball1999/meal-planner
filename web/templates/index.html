@@ -8,7 +8,8 @@
 {{$d := .Data}}
 
 {{/* ── Plan status card ─────────────────────────────────────────────────── */}}
-<div class="card" style="margin-bottom:1.5rem">
+<div class="card dash-plan-card" style="margin-bottom:1.5rem">
+    {{template "partials/cat_lying.html" .}}
     {{if $d.HasPlan}}
         {{if eq $d.PlanStatus "generating"}}
         <div class="plan-status plan-status--generating">

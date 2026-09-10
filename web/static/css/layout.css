@@ -60,6 +60,17 @@
     text-decoration: none;
 }
 
+/* Pink themes: a little blossom next to the wordmark (SVG, not emoji). */
+:root[data-theme="pink-light"] .site-brand::after,
+:root[data-theme="pink-dark"] .site-brand::after {
+    content: "";
+    width: 16px;
+    height: 16px;
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cg%20fill%3D%22%23ff6fa5%22%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%224.5%22%20r%3D%224.2%22%2F%3E%3Ccircle%20cx%3D%2214.6%22%20cy%3D%227.7%22%20r%3D%224.2%22%2F%3E%3Ccircle%20cx%3D%2212.9%22%20cy%3D%2213%22%20r%3D%224.2%22%2F%3E%3Ccircle%20cx%3D%227.1%22%20cy%3D%2213%22%20r%3D%224.2%22%2F%3E%3Ccircle%20cx%3D%225.4%22%20cy%3D%227.7%22%20r%3D%224.2%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%229%22%20r%3D%222.4%22%20fill%3D%22%23fff4f8%22%2F%3E%3C%2Fsvg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
 /* ── Primary navigation ─────────────────────────────────────────────────── */
 
 .site-nav {

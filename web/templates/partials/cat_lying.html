@@ -1,0 +1,33 @@
+{{/* A black cat lying along the top of the dashboard's "this week" card -
+     pink themes only (see .dash-cat in components.css). Multi-color, so it
+     can't go through the single-fill {{icon}} helper; kept as its own
+     partial instead. A thin grey rim (and, in pink-dark, a soft CSS glow -
+     see .dash-cat) keeps the black silhouette visible against a dark page,
+     not just a light one. */}}
+{{define "partials/cat_lying.html"}}
+<svg class="dash-cat" viewBox="0 0 180 70" aria-hidden="true" focusable="false">
+    {{/* Tail: a stroked line has no separate fill, so the rim is a second,
+         wider copy of the same stroke laid down first and drawn over. */}}
+    <path d="M160,50 C176,50 178,30 166,24 C158,20 152,28 158,33 C162,36 166,32 163,29"
+          stroke="#5a5a5a" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="M160,50 C176,50 178,30 166,24 C158,20 152,28 158,33 C162,36 166,32 163,29"
+          stroke="#1a1a1a" stroke-width="7" fill="none" stroke-linecap="round"/>
+
+    <g fill="#1a1a1a" stroke="#5a5a5a" stroke-width="1.4" stroke-linejoin="round">
+        <path d="M18,58 C10,58 8,44 18,40 C30,34 130,34 150,42 C160,46 158,58 148,58 Z"/>
+        <path d="M10,50 C4,50 2,36 12,30 C20,25 34,26 38,36 C41,44 34,52 24,52 Z"/>
+        <path d="M10,30 L6,16 L20,28 Z"/>
+        <path d="M24,27 L26,13 L36,26 Z"/>
+    </g>
+
+    <path d="M10,40 Q14,43 18,40" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.85"/>
+    <path d="M22,39 Q26,42 30,39" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.85"/>
+    <path d="M18,45 l3,1.4 l-3,1.4 Z" fill="#ffb3d1"/>
+    <g stroke="#cfcfcf" stroke-width="0.8" opacity="0.7">
+        <line x1="4" y1="44" x2="-6" y2="42"/>
+        <line x1="4" y1="47" x2="-6" y2="48"/>
+        <line x1="34" y1="44" x2="44" y2="41"/>
+        <line x1="34" y1="47" x2="44" y2="49"/>
+    </g>
+</svg>
+{{end}}

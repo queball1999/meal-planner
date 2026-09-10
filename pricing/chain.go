@@ -45,8 +45,22 @@ func NewChain(providers []PriceProvider, opts ...ChainOption) *Chain {
 // Resolve walks providers in order and returns the first result at or above the
 // configured minimum confidence. Returns nil when all providers answer "no answer".
 func (ch *Chain) Resolve(ctx context.Context, term string, storeID int64, region string) (*PriceResult, error) {
+	return ch.resolve(ctx, term, storeID, region, "")
+}
+
+// resolveExcluding is Resolve but skips the named provider - used by
+// costing.go's ResolvePricing to walk everything except the AI estimate
+// provider, whose misses it batches into one call instead of asking per item.
+func (ch *Chain) resolveExcluding(ctx context.Context, term string, storeID int64, region string, exclude string) (*PriceResult, error) {
+	return ch.resolve(ctx, term, storeID, region, exclude)
+}
+
+func (ch *Chain) resolve(ctx context.Context, term string, storeID int64, region string, exclude string) (*PriceResult, error) {
 	normalized := Normalize(term)
 	for _, p := range ch.providers {
+		if exclude != "" && p.Name() == exclude {
+			continue
+		}
 		r, err := p.Lookup(ctx, normalized, storeID, region)
 		if err != nil {
 			log.Printf("pricing: provider %s error for %q: %v", p.Name(), normalized, err)
@@ -67,4 +81,15 @@ func (ch *Chain) Resolve(ctx context.Context, term string, storeID int64, region
 		return r, nil
 	}
 	return nil, fmt.Errorf("pricing: no price found for %q at store %d", normalized, storeID)
+}
+
+// aiEstimateProvider returns the chain's AIEstimateProvider, or nil when none
+// is configured (no LLM set up).
+func (ch *Chain) aiEstimateProvider() *AIEstimateProvider {
+	for _, p := range ch.providers {
+		if ap, ok := p.(*AIEstimateProvider); ok {
+			return ap
+		}
+	}
+	return nil
 }

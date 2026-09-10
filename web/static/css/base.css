@@ -30,6 +30,10 @@ body {
     line-height: 1.5;
     color: var(--text);
     background-color: var(--bg);
+    /* Themes opt in via --bg-pattern (plain "none" everywhere but pink) -
+       a faint tiled motif behind the page content. */
+    background-image: var(--bg-pattern);
+    background-size: var(--bg-pattern-size) var(--bg-pattern-size);
     -webkit-font-smoothing: antialiased;
 }
 

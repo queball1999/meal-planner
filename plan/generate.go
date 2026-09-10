@@ -219,6 +219,11 @@ func priceInBackground(store db.Store, gen llm.Generator, planID int64, hh *db.H
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
+	// Lets the shopping list's "stop pricing" button abort this run early -
+	// see StopPricing.
+	RegisterPricingCancel(planID, cancel)
+	defer ClearPricingCancel(planID)
+
 	if err := pricer(ctx, planID, hh); err != nil {
 		log.Printf("plan: costing failed for plan %d: %v", planID, err)
 	}

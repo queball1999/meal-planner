@@ -221,6 +221,30 @@ func (s *Server) handlePlanListFragment(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// handlePlanListStopPricing aborts whichever background pricing run
+// (priceInBackground after generation, or repriceInBackground after a
+// day/meal edit) is currently filling in this plan's shopping list, leaving
+// every not-yet-priced line on its own tier-3/default fallback instead of
+// waiting for more live or AI lookups. See the "Stop pricing" button in
+// shopping_list_body.html's pending-pricing banner.
+//
+//	POST /plan/list/stop-pricing
+func (s *Server) handlePlanListStopPricing(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Error(w, "no household", http.StatusUnauthorized)
+		return
+	}
+	ctx := r.Context()
+	p, _ := s.resolvePlanForRequest(ctx, hh, r)
+	if p == nil {
+		http.Error(w, "no plan", http.StatusNotFound)
+		return
+	}
+	plan.StopPricing(p.ID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
@@ -762,6 +786,11 @@ func (s *Server) repriceInBackground(planID int64, hh *db.Household) {
 		// Detached from the request: the response is long gone by now.
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 		defer cancel()
+
+		// Lets the shopping list's "stop pricing" button abort this run early -
+		// see plan.StopPricing.
+		plan.RegisterPricingCancel(planID, cancel)
+		defer plan.ClearPricingCancel(planID)
 
 		if pricer != nil {
 			if err := pricer(ctx, planID, hh); err != nil {

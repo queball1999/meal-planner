@@ -68,6 +68,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /plan", requireAuth(http.HandlerFunc(s.handlePlanPage)))
 	mux.Handle("GET /plan/list", requireAuth(http.HandlerFunc(s.handlePlanPage)))
 	mux.Handle("GET /plan/list/fragment", requireAuth(http.HandlerFunc(s.handlePlanListFragment)))
+	mux.Handle("POST /plan/list/stop-pricing", requireAuth(http.HandlerFunc(s.handlePlanListStopPricing)))
 	mux.Handle("GET /plan/history", requireAuth(http.HandlerFunc(s.handlePlanHistory)))
 	mux.Handle("POST /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGenerate)))
 	mux.Handle("GET /plan/generate", requireAuth(http.HandlerFunc(s.handlePlanGeneratePage)))

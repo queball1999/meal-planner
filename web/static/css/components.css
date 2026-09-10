@@ -59,6 +59,71 @@
     color: var(--text-inverse);
 }
 
+/* ── Pink themes: hand-drawn "sticker" border ─────────────────────────────
+ * All the cute lives in the border, not emoji: a dashed ring, roughed up
+ * with the SVG turbulence filter defined once in layout.html (#kawaii-
+ * wobble), floats just outside every button. Skips icon-only buttons (too
+ * small to carry it) and :not(.is-loading) so it never fights the busy-
+ * spinner's own ::before above. */
+:root[data-theme="pink-light"] .btn:not(.btn-icon),
+:root[data-theme="pink-dark"] .btn:not(.btn-icon) {
+    position: relative;
+}
+:root[data-theme="pink-light"] .btn:not(.btn-icon):not(.is-loading)::before,
+:root[data-theme="pink-dark"] .btn:not(.btn-icon):not(.is-loading)::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border: 2px dashed var(--accent);
+    border-radius: inherit;
+    filter: url(#kawaii-wobble);
+    opacity: .7;
+    pointer-events: none;
+}
+
+/* The primary action also gets a tiny hand-drawn bubble cluster in its
+ * corner - an SVG, like the border, never emoji. */
+:root[data-theme="pink-light"] .btn-primary::after,
+:root[data-theme="pink-dark"] .btn-primary::after {
+    content: "";
+    position: absolute;
+    top: -11px;
+    right: 4px;
+    width: 16px;
+    height: 16px;
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%2226%22%20r%3D%2211%22%20fill%3D%22%23ffe08a%22%2F%3E%3Ccircle%20cx%3D%2227%22%20cy%3D%2214%22%20r%3D%229%22%20fill%3D%22%238ecbff%22%2F%3E%3Ccircle%20cx%3D%2228%22%20cy%3D%2228%22%20r%3D%227%22%20fill%3D%22%238ecbff%22%2F%3E%3C%2Fsvg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+/* ── Dashboard mascot ─────────────────────────────────────────────────────
+ * A black cat lying along the top edge of the "this week" card - pink
+ * themes only. Markup lives in index.html (partials/cat_lying.html);
+ * hidden everywhere else so it costs nothing outside the kawaii themes. */
+.dash-plan-card {
+    position: relative;
+    overflow: visible;
+}
+.dash-cat {
+    display: none;
+    position: absolute;
+    top: -34px;
+    right: 32px;
+    width: 150px;
+    height: auto;
+    pointer-events: none;
+}
+:root[data-theme="pink-light"] .dash-cat,
+:root[data-theme="pink-dark"] .dash-cat {
+    display: block;
+}
+/* The plain black silhouette needs a lift to read against a near-black
+   page - a soft light halo instead of another color (it's a black cat). */
+:root[data-theme="pink-dark"] .dash-cat {
+    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
+}
+
 /* Secondary - outlined */
 .btn-secondary {
     background: var(--surface);
@@ -393,6 +458,10 @@
     color: var(--accent-text);
     border-radius: var(--radius);
     font-size: var(--text-sm);
+}
+.shopping-pricing-note__stop {
+    margin-left: auto;
+    flex-shrink: 0;
 }
 /* Skeleton rows painted into a <tbody> while a debounced filter navigation is
  * in flight (initAutoFilter in main.js). The row keeps the table's normal
@@ -1341,6 +1410,13 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     background: var(--accent);
     color: #fff;
     font-weight: var(--weight-bold);
+}
+/* Meal titles default to --text, tuned for the page background - not
+ * guaranteed readable against --accent-bg (pink-dark pairs a light pink
+ * accent-bg with light theme text, which is unreadable). --accent-text is
+ * the token already meant to sit on --accent-bg, so use it here too. */
+.cal-cell--today .cal-meal__title {
+    color: var(--accent-text);
 }
 
 .cal-cell__head {

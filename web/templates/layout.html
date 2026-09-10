@@ -17,6 +17,17 @@
     <link rel="stylesheet" href="/static/css/choices-overrides.css">
 </head>
 <body>
+    {{/* Shared SVG filter: roughs up the pink themes' dashed button borders
+         into a hand-drawn wobble (components.css #kawaii-wobble). Needs to
+         exist in the DOM once for url(#kawaii-wobble) to resolve; renders
+         nothing itself. */}}
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <filter id="kawaii-wobble" x="-30%" y="-30%" width="160%" height="160%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.06 0.09" numOctaves="2" seed="7" result="noise"/>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.5" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+    </svg>
+
     <a href="#main-content" class="skip-link">Skip to content</a>
 
     <header class="site-header" role="banner">
