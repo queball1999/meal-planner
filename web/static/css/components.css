@@ -76,7 +76,6 @@
     inset: -4px;
     border: 2px dashed var(--accent);
     border-radius: inherit;
-    filter: url(#kawaii-wobble);
     opacity: .7;
     pointer-events: none;
 }
