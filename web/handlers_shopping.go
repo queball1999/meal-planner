@@ -14,6 +14,7 @@ import (
 	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
+	"goeat/plan"
 	"goeat/pricing"
 )
 
@@ -170,11 +171,21 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 	}
 	verdicts := s.priceVerdicts(ctx, rawItems)
 
+	// A user-requested stop (plan.StopPricing) can outlive the page view that
+	// triggered it - the background run may still be winding down a slow
+	// provider call the canceled context can't interrupt any faster. Treat
+	// every line as resolved rather than showing "still pricing" again (with
+	// its rows back in the loading-skeleton state) just because that request
+	// beat the background goroutine to the next render.
+	stopped := plan.IsPricingStopped(p.ID)
 	stillPricing := false
 	for _, item := range rawItems {
+		if stopped {
+			item.Pending = false
+			continue
+		}
 		if item.Pending {
 			stillPricing = true
-			break
 		}
 	}
 

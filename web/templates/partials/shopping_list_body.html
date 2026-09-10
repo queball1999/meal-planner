@@ -294,6 +294,19 @@
 (function () {
     var csrfInput = document.querySelector('#csrf-form input[name]');
     var csrfToken = csrfInput ? csrfInput.value : '';
+
+    // Set the moment "Stop pricing" is clicked, before the backend has
+    // actually canceled anything. hidePricingNote (used both here and in
+    // pollPricing below) reads this so the "still pricing" banner disappears
+    // right away and never comes back, even if a poll tick already in flight
+    // swaps in one more fragment the backend rendered before it caught up to
+    // the cancellation.
+    var pricingStopped = false;
+    function hidePricingNote() {
+        var btn = document.getElementById('pricing-stop-btn');
+        var note = btn && btn.parentElement;
+        if (note) note.hidden = true;
+    }
     window.toggleCheck = function(cb) {
         var id = cb.dataset.id;
         var checked = cb.checked ? '1' : '0';
@@ -309,15 +322,18 @@
     // ── Stop pricing ─────────────────────────────────────────────────────
     // Aborts the background pricing run (handlePlanListStopPricing /
     // plan.StopPricing) so no further live/AI lookups happen; whatever
-    // wasn't priced yet falls back to its own estimate instead. The next
-    // poll tick (pollPricing below) picks up the now-fully-resolved list and
-    // stops polling once data-pricing flips to 0 - no extra wiring needed
-    // here beyond disabling the button so it can't be clicked twice.
+    // wasn't priced yet falls back to its own estimate instead. That
+    // cancellation isn't instant server-side (an in-flight LLM call has to
+    // actually abort), so the banner is hidden on the client the moment the
+    // button is clicked rather than waiting for the backend or the next poll
+    // tick (up to 2s away) to confirm it - see pricingStopped/hidePricingNote
+    // above and their use in pollPricing below, which keeps refreshing rows
+    // in the background until the list is fully resolved.
     var stopBtn = document.getElementById('pricing-stop-btn');
     if (stopBtn) {
         stopBtn.addEventListener('click', function () {
-            stopBtn.disabled = true;
-            stopBtn.textContent = 'Stopping…';
+            pricingStopped = true;
+            hidePricingNote();
             fetch('/plan/list/stop-pricing' + window.location.search, {
                 method: 'POST',
                 headers: { 'X-CSRF-Token': csrfToken },
@@ -810,10 +826,12 @@
     // onchange and the plain data-conv-btn/data-meal-id hovercard/popover
     // delegation need nothing special either.
     (function pollPricing() {
+        if (pricingStopped) return;
         var live = document.getElementById('shopping-list-live');
         if (!live || live.dataset.pricing !== '1') return;
 
         setTimeout(function () {
+            if (pricingStopped) return;
             fetch('/plan/list/fragment' + window.location.search, { headers: { Accept: 'text/html' } })
                 .then(function (r) { return r.text(); })
                 .then(function (html) {
@@ -821,11 +839,20 @@
                         .getElementById('shopping-list-live');
                     var current = document.getElementById('shopping-list-live');
                     if (fresh && current) current.replaceWith(fresh);
+                    // The fragment just swapped in was rendered from whatever
+                    // the backend had at request time - if pricing was
+                    // stopped after that render started, it can still carry
+                    // the "still pricing" banner. Never let it reappear once
+                    // the user has asked to stop.
+                    if (pricingStopped) {
+                        hidePricingNote();
+                        return;
+                    }
                     pollPricing();
                 })
                 // A transient fetch error just retries on the next tick rather
                 // than leaving the list stuck on stale skeleton rows.
-                .catch(pollPricing);
+                .catch(function () { if (!pricingStopped) pollPricing(); });
         }, 2000);
     })();
 })();

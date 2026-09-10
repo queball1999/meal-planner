@@ -126,9 +126,18 @@ input, textarea, select, button {
 
 /* ── Animations (§8.5) ──────────────────────────────────────────────────── */
 
+/* Opacity only - deliberately no transform. This animation is applied to
+ * .site-main with fill-mode `both`, so its final frame sticks permanently;
+ * a `transform` here (even the identity `translateY(0)`) would leave
+ * .site-main as the containing block for every `position: fixed`
+ * descendant. That silently re-anchors them from the viewport to .site-main
+ * - they land offset by its own top/left, i.e. down and to the right. The
+ * popover (people picker), tooltip.js, hovercard.js and conversions.js all
+ * place `position: fixed` panels from viewport coordinates and all break at
+ * once if a transform comes back here. */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 @keyframes slideDown {

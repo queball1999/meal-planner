@@ -492,18 +492,61 @@ function goeatCSRF() {
 // Distinct from data-autofilter too: that is a GET navigation that restores the
 // caret afterwards; this is a POST whose response is a redirect.
 
+// A flat debounce can't tell "still filling this in" from "done", so this reads
+// the popover instead of guessing from a clock alone:
+//
+//   - while a panel inside the form is open, the user is mid-task, so the idle
+//     window is much longer and every interaction (change, typing, a click on
+//     the +/- stepper) restarts it;
+//   - closing the panel is the "done" signal - save immediately, no wait;
+//   - a form with no panel keeps the original short debounce.
+//
+// The long window is still a safety net rather than a trap: if the panel is
+// left open and idle it saves anyway, and the reload reopens it (popover.js,
+// data-popover-restore), so nothing is lost either way.
+
 (function initAutoSubmit() {
-    const DEBOUNCE_MS = 700;
+    const IDLE_MS = 700;        // no popover in play
+    const IDLE_OPEN_MS = 2500;  // a panel in this form is open - they're still working
 
     document.querySelectorAll('form[data-autosubmit]').forEach(function (form) {
-        let timer;
-        form.addEventListener('change', function () {
+        let timer = null;
+        let dirty = false;
+
+        function panelOpen() {
+            const panel = form.querySelector('[data-popover-panel]');
+            return !!(panel && panel.classList.contains('popover--open'));
+        }
+
+        function submitNow() {
             clearTimeout(timer);
-            // Longer than the filter debounce on purpose: ticking three people
-            // off a list is one intent, and firing a rescale between each tick
-            // would be three round trips and two wrong shopping lists.
-            timer = setTimeout(function () { form.submit(); }, DEBOUNCE_MS);
+            timer = null;
+            if (!dirty) return;
+            dirty = false;
+            form.submit();
+        }
+
+        function schedule() {
+            clearTimeout(timer);
+            timer = setTimeout(submitNow, panelOpen() ? IDLE_OPEN_MS : IDLE_MS);
+        }
+
+        form.addEventListener('change', function () {
+            // Ticking three people off a list is one intent; firing a rescale
+            // between each tick would be three round trips and two wrong
+            // shopping lists.
+            dirty = true;
+            schedule();
         });
+
+        // Activity that isn't a `change` yet - typing in the headcount box, or
+        // clicking the guest stepper - still means "not finished", so it
+        // restarts the window rather than letting it run out mid-edit.
+        form.addEventListener('input', function () { if (dirty) schedule(); });
+        form.addEventListener('click', function () { if (dirty) schedule(); });
+
+        // Panel closed: they're done. Save now instead of waiting out the idle.
+        form.addEventListener('goeat:popover-close', function () { submitNow(); });
     });
 })();
 

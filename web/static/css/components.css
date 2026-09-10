@@ -80,6 +80,18 @@
     opacity: .7;
     pointer-events: none;
 }
+/* Buttons in table rows are packed into ~36-40px of height. Even pulled in,
+ * the ring's filter-blurred dashed edge still reaches the row's
+ * border-bottom and paints over it, breaking the separator line right where
+ * the buttons sit - there's no inset small enough to fix that without the
+ * ring basically disappearing anyway, so skip it in tables entirely. Plain
+ * ghost buttons (their look in every other theme too) read fine at this
+ * density. Scoped to `.data-table`, not `.data-table__actions`, so a row
+ * whose action cell is missing that class can't reintroduce the ring. */
+:root[data-theme="pink-light"] .data-table .btn:not(.btn-icon):not(.is-loading)::before,
+:root[data-theme="pink-dark"] .data-table .btn:not(.btn-icon):not(.is-loading)::before {
+    content: none;
+}
 
 /* The primary action also gets a tiny hand-drawn bubble cluster in its
  * corner - an SVG, like the border, never emoji. */
@@ -191,17 +203,34 @@
 /* Right-aligned cluster of icon-only actions in a table row's last cell.
  * Always a single row - the icons never wrap or stack, at any width or in the
  * <=600px card-stack layout. */
+/* Right-aligned cluster of icon-only actions in a table row's last cell.
+ * Always a single row - the icons never wrap or stack, at any width or in
+ * the <=600px card-stack layout.
+ *
+ * This class sits on the <td> itself, so it must NOT be `display: flex`
+ * here. A flex <td> is no longer a table-cell, which drops
+ * `.data-table td { vertical-align: middle }` on the floor and leaves the
+ * cell at its own content height instead of the row's - measured at 45px
+ * inside a 57.5px row, putting the buttons ~6px above the row's centre and
+ * breaking the separator line beside them. Left as a real table cell, the
+ * row centres it for us; the buttons only need to be inline-level and
+ * middle-aligned. */
 .data-table__actions {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1);
-    justify-content: flex-end;
-    flex-wrap: nowrap;
+    text-align: right;
     white-space: nowrap;
+    /* Collapses the whitespace between the inline-level children so they
+     * space by margin alone; each child sets its own size back. These cells
+     * only ever hold buttons and single-button forms. */
+    font-size: 0;
 }
 .data-table__actions > *,
-.data-table__actions form { flex: 0 0 auto; }
-.data-table__actions form { display: inline-flex; margin: 0; }
+.data-table__actions form {
+    display: inline-flex;
+    vertical-align: middle;
+    font-size: var(--text-sm);
+    margin: 0;
+}
+.data-table__actions > * + * { margin-left: var(--sp-1); }
 
 /* Size variants */
 .btn-sm {
@@ -1218,6 +1247,62 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     .icon-spin svg { animation-duration: 2.4s; }
 }
 
+/* ── Shopping list: summary + per-store groups ──────────────────────────
+ * Previously unstyled - .shopping-summary and .shopping-group sat directly
+ * on the page background with only default <h2>/<span> rendering. Hard to
+ * see at all in pink themes' flower wallpaper; give both an actual card
+ * surface, matching how every other page groups content. */
+
+.shopping-summary {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: var(--sp-4) var(--sp-5);
+    margin-bottom: var(--sp-4);
+    font-size: var(--text-sm);
+}
+.shopping-summary__total { font-weight: var(--weight-bold); font-size: var(--text-lg); }
+.shopping-summary__budget { color: var(--text-muted); }
+.shopping-summary--over .shopping-summary__total { color: var(--danger); }
+
+.shopping-group {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: var(--sp-5);
+    margin-bottom: var(--sp-4);
+}
+.shopping-group:last-child { margin-bottom: 0; }
+.shopping-group__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border);
+}
+.shopping-group__title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--weight-semi);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.shopping-group__subtotal {
+    color: var(--text-muted);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+}
+
 /* ── Item lists (shopping list, meal ingredients) ───────────────────────── */
 
 /* These are <ul>s for semantics; the UA markers and indent are not wanted on
@@ -1566,6 +1651,10 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 /* ── Plan page: day-column meal board ─────────────────────────────────── */
 
+/* Actions row + board used to sit right on the page background - hard to
+ * see in pink themes' flower wallpaper. Now wrapped in a plain .card. */
+.plan-card { margin-bottom: var(--sp-4); }
+
 .plan-board {
     display: grid;
     grid-auto-flow: column;
@@ -1584,7 +1673,9 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .plan-col__head {
     position: sticky;
     top: 0;
-    background: var(--bg, var(--surface));
+    /* Matches .plan-card's surface now, not the page background - it used
+     * to be var(--bg) on the assumption the board sat directly on the page. */
+    background: var(--surface);
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1594,6 +1685,14 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     font-weight: var(--weight-semi);
     z-index: 1;
 }
+/* Each day header is a sticky, z-index:1 stacking context, so the picker
+ * panel inside one is capped at its owner's level and a *later* column's
+ * header (same z-index, later in DOM) paints over it. Lift the header that
+ * currently owns an open picker so its panel wins against its siblings. */
+.plan-col__head:has(.people-picker__summary[aria-expanded="true"]) {
+    z-index: 3;
+}
+
 .plan-col__day { font-size: var(--text-lg); font-weight: var(--weight-bold); text-align: center; }
 .plan-col__meta { font-size: var(--text-xs); color: var(--text-muted); font-weight: var(--weight-normal); }
 .plan-col__headcount { display: flex; align-items: center; gap: var(--sp-1); margin: 0; }

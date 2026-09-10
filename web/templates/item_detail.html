@@ -102,7 +102,7 @@
                         </button>
                     </form>
                 </td>
-                <td data-label="">
+                <td data-label="" class="data-table__actions">
                     <form method="POST" action="/pantry/items/{{$.Data.Item.ID}}/packages/{{.ID}}/delete" style="display:inline">
                         {{$.CSRFField}}
                         <button type="submit" class="btn btn-ghost btn-danger btn-sm"
@@ -210,7 +210,7 @@
                 <td data-label="From">1 {{.FromUnit}}</td>
                 <td data-label="To">{{.ToUnit}}</td>
                 <td data-label="Factor">{{.Factor}}</td>
-                <td data-label="">
+                <td data-label="" class="data-table__actions">
                     <form method="POST" action="/pantry/items/{{$.Data.Item.ID}}/conversions/{{.ID}}/delete" style="display:inline">
                         {{$.CSRFField}}
                         <button type="submit" class="btn btn-ghost btn-danger btn-sm"

@@ -37,6 +37,7 @@
 </div>
 {{end}}
 
+<div class="card plan-card">
 <div class="plan-actions">
     {{if .Data.TotalLabel}}
     <div class="plan-budget-meter{{if .Data.OverBudget}} plan-budget-meter--over{{end}}">
@@ -79,6 +80,7 @@
                     <div class="people-picker">
                         <button type="button" class="people-picker__summary"
                                 data-popover="people-picker-{{$day.Date}}" data-popover-placement="bottom-start"
+                                data-popover-restore
                                 aria-expanded="false" aria-controls="people-picker-{{$day.Date}}"
                                 aria-label="Who is eating on {{$day.DateLabel}}">
                             {{icon "account-group"}} <span class="people-picker__count">{{$day.Headcount}}</span>
@@ -201,6 +203,7 @@
     </section>
     {{end}}
 </div>
+</div><!-- /.plan-card -->
 
 {{if not .Data.ReadOnly}}
 {{template "partials/modal_open.html" dict "ID" "pick-recipe" "Title" "Pick a meal" "Form" true}}

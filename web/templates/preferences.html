@@ -46,7 +46,7 @@
                     <span class="text-muted">&times;{{printf "%.2g" .PortionFactor}}</span>
                 </td>
                 <td data-label="Notes">{{if .Notes}}{{.Notes}}{{else}}<span class="text-muted">-</span>{{end}}</td>
-                <td data-label="">
+                <td data-label="" class="data-table__actions">
                     <button type="button" class="btn btn-ghost btn-sm"
                             data-modal-open="member-edit-{{.ID}}"
                             aria-label="Edit {{.Name}}" title="Edit">{{icon "pencil"}}</button>
