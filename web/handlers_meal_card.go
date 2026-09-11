@@ -122,6 +122,20 @@ func (s *Server) mealCostLabel(ctx context.Context, meal *db.Meal, ings []*db.Me
 	if err != nil || len(lines) == 0 {
 		return ""
 	}
+	cents := mealCostCentsFromLines(lines, ings)
+	if cents == 0 {
+		return ""
+	}
+	return fmt.Sprintf("about $%.2f", float64(cents)/100)
+}
+
+// mealCostCentsFromLines is mealCostLabel's split-the-line math against an
+// already-loaded set of shopping list lines - callers pricing every meal in a
+// plan share one query instead of repeating it per meal.
+func mealCostCentsFromLines(lines []*db.ShoppingListItem, ings []*db.MealIngredient) int64 {
+	if len(ings) == 0 || len(lines) == 0 {
+		return 0
+	}
 
 	mine := make(map[int64]bool, len(ings))
 	for _, ing := range ings {
@@ -148,10 +162,7 @@ func (s *Server) mealCostLabel(ctx context.Context, meal *db.Meal, ings []*db.Me
 		}
 		total += ln.LineTotalCents * int64(hits) / int64(len(refs))
 	}
-	if total == 0 {
-		return ""
-	}
-	return fmt.Sprintf("about $%.2f", float64(total)/100)
+	return total
 }
 
 // shoppingLineRefs decodes a line's meal_ingredient_refs JSON array. A bad or

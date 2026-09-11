@@ -159,5 +159,13 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /scan/{code}", requireAuth(http.HandlerFunc(s.handleScanCode)))
 	mux.Handle("POST /pantry/scan", requireAuth(http.HandlerFunc(s.handlePantryScan)))
 
+	// Finance dashboard - literal routes before the /finance/{...} wildcards.
+	mux.Handle("GET /finance", requireAuth(http.HandlerFunc(s.handleFinanceOverview)))
+	mux.Handle("GET /finance/ai", requireAuth(http.HandlerFunc(s.handleFinanceAI)))
+	mux.Handle("GET /finance/prices", requireAuth(http.HandlerFunc(s.handleFinancePrices)))
+	mux.Handle("POST /finance/ai/reference", requireAuth(http.HandlerFunc(s.handleFinanceRefSave)))
+	mux.Handle("POST /finance/ai/reference/{id}/delete", requireAuth(http.HandlerFunc(s.handleFinanceRefDelete)))
+	mux.Handle("POST /finance/ai/mapping", requireAuth(http.HandlerFunc(s.handleFinanceMappingSave)))
+
 	mux.Handle("GET /", requireAuth(http.HandlerFunc(s.handleDashboard)))
 }

@@ -1,0 +1,267 @@
+{{define "title"}}AI usage &amp; cost - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "cpu"}} AI usage &amp; cost</h1>
+    <p class="page-subtitle">
+        Token usage and reference cost for every LLM call. Costs are <em>reference
+        estimates</em> - what the usage would have cost on a third-party provider -
+        not a bill. Models without a mapping are shown as unpriced, never as $0.00.
+    </p>
+</div>
+{{template "financeTabs" .}}
+
+<div class="page-stack">
+    {{/* ── Summary strip ─────────────────────────────────────────────── */}}
+    <div class="stats-strip">
+        <div class="stats-chip">
+            <span class="stats-chip__label">Runs</span>
+            <span class="stats-chip__value">{{.Data.RunCount}}</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Tokens</span>
+            <span class="stats-chip__value">{{.Data.TotalTokens}}</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Est. cost</span>
+            <span class="stats-chip__value">{{.Data.EstCostLabel}}</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Unpriced models</span>
+            <span class="stats-chip__value {{if .Data.HasUnpriced}}stats-chip__value--over{{end}}">{{.Data.UnpricedCount}}</span>
+        </div>
+    </div>
+
+    {{if .Data.HasUnpriced}}
+    <p class="empty-note">
+        {{icon "information"}} {{.Data.UnpricedCount}} model(s) have no price mapping yet -
+        their cost is not included in the estimate. Add a mapping below to price them.
+    </p>
+    {{end}}
+
+    {{/* ── Trend ─────────────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="trend-title">
+        <h2 class="form-section__title" id="trend-title">{{icon "history"}} Daily usage</h2>
+        {{if .Data.Daily}}
+        {{$max := maxDaily .Data.Daily}}
+        <div class="fin-chart" role="img" aria-label="AI runs and tokens per day">
+            {{range .Data.Daily}}
+            <div class="fin-chart__col">
+                <div class="fin-chart__bars">
+                    <div class="fin-chart__bar fin-chart__bar--actual"
+                         style="height: {{pct .RunCount $max}}%"
+                         title="{{.RunCount}} runs, {{.TotalTokens}} tokens"></div>
+                </div>
+                <span class="fin-chart__label">{{.Label}}</span>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="empty-note">No AI runs recorded in this range yet.</p>
+        {{end}}
+    </section>
+
+    {{/* ── By purpose ────────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="purpose-title">
+        <h2 class="form-section__title" id="purpose-title">{{icon "tag"}} By purpose</h2>
+        {{if .Data.ByPurpose}}
+        <table class="data-table" aria-label="AI usage by purpose">
+            <thead>
+                <tr><th>Purpose</th><th>Runs</th><th>Tokens</th><th>Est. cost</th></tr>
+            </thead>
+            <tbody>
+                {{range .Data.ByPurpose}}
+                <tr>
+                    <td data-label="Purpose">{{.Purpose}}</td>
+                    <td data-label="Runs">{{.RunCount}}</td>
+                    <td data-label="Tokens">{{.TotalTokens}}</td>
+                    <td data-label="Est. cost">{{.EstCostLabel}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">No usage to break down yet.</p>
+        {{end}}
+    </section>
+
+    {{/* ── By model ──────────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="model-title">
+        <h2 class="form-section__title" id="model-title">{{icon "cpu"}} By model</h2>
+        {{if .Data.ByModel}}
+        <table class="data-table" aria-label="AI usage by model">
+            <thead>
+                <tr><th>Model</th><th>Runs</th><th>Tokens</th><th>Est. cost</th><th>Pricing</th></tr>
+            </thead>
+            <tbody>
+                {{range .Data.ByModel}}
+                <tr>
+                    <td data-label="Model">{{.Provider}} / {{.Model}}</td>
+                    <td data-label="Runs">{{.RunCount}}</td>
+                    <td data-label="Tokens">{{.TotalTokens}}</td>
+                    <td data-label="Est. cost">{{.EstCostLabel}}</td>
+                    <td data-label="Pricing">
+                        {{if .Priced}}
+                        <span class="badge badge-success">priced</span>
+                        {{else}}
+                        <span class="badge badge-muted">unpriced</span>
+                        {{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">No models in use yet.</p>
+        {{end}}
+    </section>
+
+    {{/* ── Recent runs ───────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="recent-title">
+        <h2 class="form-section__title" id="recent-title">{{icon "history"}} Recent runs</h2>
+        {{if .Data.RecentRuns}}
+        <table class="data-table" aria-label="Recent AI runs">
+            <thead>
+                <tr><th>When</th><th>Purpose</th><th>Model</th><th>In / out</th><th>Est. cost</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {{range .Data.RecentRuns}}
+                <tr>
+                    <td data-label="When">{{.When}}</td>
+                    <td data-label="Purpose">{{.Purpose}}</td>
+                    <td data-label="Model">{{.Model}}</td>
+                    <td data-label="In / out">{{.PromptTokens}} / {{.Completion}}</td>
+                    <td data-label="Est. cost">{{.EstCostLabel}}</td>
+                    <td data-label="Status">
+                        {{if eq .Status "ok"}}<span class="badge badge-success">ok</span>
+                        {{else}}<span class="badge badge-muted">{{.Status}}</span>{{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">No runs recorded yet.</p>
+        {{end}}
+    </section>
+
+    {{/* ── Pricing references ────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="ref-title">
+        <h2 class="form-section__title" id="ref-title">{{icon "tag"}} Reference prices</h2>
+        <p class="page-subtitle" style="margin-top:0">
+            A reference price is what a model's tokens would cost per million on a
+            third-party provider. Add one, then map your local model to it below.
+        </p>
+
+        <form method="POST" action="/finance/ai/reference" class="pref-form">
+            {{$.CSRFField}}
+            <div class="field-row">
+                <div class="field field--sm">
+                    <label class="field-label" for="ref-provider">Provider</label>
+                    <input class="field-input" id="ref-provider" name="provider" type="text" placeholder="anthropic">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="ref-model">Reference model</label>
+                    <input class="field-input" id="ref-model" name="reference_model" type="text" placeholder="claude-sonnet-5">
+                </div>
+                <div class="field field--sm">
+                    <label class="field-label" for="ref-in">Input $/M</label>
+                    <input class="field-input" id="ref-in" name="input_per_million" type="number" min="0" step="0.01" placeholder="3.00">
+                </div>
+                <div class="field field--sm">
+                    <label class="field-label" for="ref-out">Output $/M</label>
+                    <input class="field-input" id="ref-out" name="output_per_million" type="number" min="0" step="0.01" placeholder="15.00">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="ref-notes">Notes</label>
+                    <input class="field-input" id="ref-notes" name="notes" type="text" placeholder="sourced 2026-09-10">
+                </div>
+                <div class="field field--action">
+                    <button type="submit" class="btn btn-primary">{{icon "plus"}} Save</button>
+                </div>
+            </div>
+        </form>
+
+        {{if .Data.References}}
+        <table class="data-table" aria-label="Reference prices">
+            <thead>
+                <tr><th>Provider</th><th>Model</th><th>Input</th><th>Output</th><th>Effective</th><th></th></tr>
+            </thead>
+            <tbody>
+                {{range .Data.References}}
+                <tr>
+                    <td data-label="Provider">{{.Provider}}</td>
+                    <td data-label="Model">{{.ReferenceModel}}</td>
+                    <td data-label="Input">{{.InputLabel}}</td>
+                    <td data-label="Output">{{.OutputLabel}}</td>
+                    <td data-label="Effective">{{.EffectiveDate}}</td>
+                    <td data-label="" class="data-table__actions">
+                        <form method="POST" action="/finance/ai/reference/{{.ID}}/delete" style="display:inline">
+                            {{$.CSRFField}}
+                            <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete reference" title="Delete">{{icon "delete"}}</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">No reference prices yet - add one above.</p>
+        {{end}}
+    </section>
+
+    {{/* ── Model mappings ────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="map-title">
+        <h2 class="form-section__title" id="map-title">{{icon "swap-horizontal"}} Model → price mappings</h2>
+        <p class="page-subtitle" style="margin-top:0">
+            Map a local model label (as it appears in the "By model" table) to a
+            reference price. Unmapped models are reported as unpriced.
+        </p>
+
+        <form method="POST" action="/finance/ai/mapping" class="pref-form">
+            {{$.CSRFField}}
+            <div class="field-row">
+                <div class="field">
+                    <label class="field-label" for="map-local">Local model</label>
+                    <input class="field-input" id="map-local" name="local_model" type="text" placeholder="e.g. claude-sonnet-5">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="map-ref">Reference price</label>
+                    <select class="field-input" id="map-ref" name="reference_id">
+                        <option value="">— unmap —</option>
+                        {{range .Data.References}}
+                        <option value="{{.ID}}">{{.Provider}} / {{.ReferenceModel}} ({{.InputLabel}} in, {{.OutputLabel}} out)</option>
+                        {{end}}
+                    </select>
+                </div>
+                <div class="field field--action">
+                    <button type="submit" class="btn btn-primary">{{icon "check"}} Save mapping</button>
+                </div>
+            </div>
+        </form>
+
+        {{if .Data.Unmapped}}
+        <p class="empty-note">
+            {{icon "information"}} Unmapped: {{join .Data.Unmapped ", "}}
+        </p>
+        {{end}}
+
+        {{if .Data.Mappings}}
+        <table class="data-table" aria-label="Model cost mappings">
+            <thead>
+                <tr><th>Local model</th><th>Mapped to</th></tr>
+            </thead>
+            <tbody>
+                {{range .Data.Mappings}}
+                <tr>
+                    <td data-label="Local model">{{.LocalModel}}</td>
+                    <td data-label="Mapped to">{{.Provider}} / {{.ReferenceModel}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">No mappings yet.</p>
+        {{end}}
+    </section>
+</div>
+{{end}}

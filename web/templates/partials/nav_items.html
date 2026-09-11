@@ -12,6 +12,7 @@
 {{- $active := "nav-link--active" -}}
 {{- if eq .Style "popover" -}}{{- $link = "popover__item" -}}{{- $active = "popover__item--active" -}}{{- end -}}
 {{- $pantrySection := or (eq $page "pantry") (eq $page "items") (eq $page "item_detail") -}}
+{{- $financeSection := or (eq $page "finance_overview") (eq $page "finance_ai") (eq $page "finance_prices") -}}
 <a href="/" class="{{$link}}{{if eq $page "index"}} {{$active}}{{end}}"{{if eq $page "index"}} aria-current="page"{{end}}>
     {{icon "home"}} <span>Dashboard</span>
 </a>
@@ -26,6 +27,9 @@
 </a>
 <a href="/recipes" class="{{$link}}{{if eq $page "recipes"}} {{$active}}{{end}}"{{if eq $page "recipes"}} aria-current="page"{{end}}>
     {{icon "fork"}} <span>Recipes</span>
+</a>
+<a href="/finance" class="{{$link}}{{if $financeSection}} {{$active}}{{end}}"{{if $financeSection}} aria-current="page"{{end}}>
+    {{icon "history"}} <span>Finance</span>
 </a>
 <a href="/settings" class="{{$link}}{{if eq $page "settings"}} {{$active}}{{end}}"{{if eq $page "settings"}} aria-current="page"{{end}}>
     {{icon "cog"}} <span>Settings</span>

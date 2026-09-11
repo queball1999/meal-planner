@@ -1445,7 +1445,12 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     font-size: var(--text-base, 1rem);
     font-weight: var(--weight-semi);
 }
-.cal-toolbar__modes { display: flex; gap: var(--sp-1); }
+.cal-toolbar__modes { display: flex; gap: var(--sp-1); align-items: center; }
+.cal-toolbar__budget {
+    font-size: var(--text-sm, .85rem);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
 
 .cal-grid {
     display: grid;
@@ -1585,6 +1590,24 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .stats-chip__value { font-size: var(--text-lg); font-weight: var(--weight-bold); display: inline-flex; align-items: baseline; gap: .35em; }
 .stats-chip__sub   { font-size: var(--text-xs); font-weight: var(--weight-normal); color: var(--text-muted); }
 .stats-chip__hint  { font-size: var(--text-xs); color: var(--text-muted); }
+/* A chip that doubles as a link (e.g. "This week spent" → shopping list).
+   The whole card is the affordance; the explicit "List" button keeps it
+   discoverable and keyboard-focusable. */
+.stats-chip--link { position: relative; cursor: pointer; transition: border-color .15s ease, transform .15s ease; }
+.stats-chip--link:hover { border-color: var(--accent); transform: translateY(-1px); }
+.stats-chip__go {
+    margin-top: var(--sp-1);
+    display: inline-flex;
+    align-items: center;
+    gap: .35em;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semi);
+    color: var(--accent);
+    text-decoration: none;
+    align-self: flex-start;
+}
+.stats-chip__go:hover { text-decoration: underline; }
+.stats-chip__go .icon { width: 1em; height: 1em; }
 
 /* Generic muted-text utility (About page's background-process table, etc). */
 .text-muted { color: var(--text-muted); }
@@ -2187,6 +2210,100 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .stats-chip__value--under { color: var(--success); }
 .stats-chip__value--over  { color: var(--danger); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   FINANCE CHARTS
+   Inline-SVG / div bar charts for the Finance section. No charting library:
+   a handful of weekly bars and a couple of sparklines don't justify a
+   dependency, and drawing them here means they inherit the theme tokens.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.fin-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-2);
+    height: 180px;
+    padding-top: var(--sp-2);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.fin-chart__col {
+    flex: 1 1 0;
+    min-width: 34px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-1);
+    height: 100%;
+}
+
+/* The bar track is a fixed-height column the bars grow up from the bottom. */
+.fin-chart__bars {
+    flex: 1 1 auto;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 3px;
+}
+
+.fin-chart__bar {
+    width: 14px;
+    max-width: 40%;
+    min-height: 2px;
+    border-radius: 3px 3px 0 0;
+    transition: height var(--dur) var(--ease);
+}
+
+.fin-chart__bar--actual   { background: var(--accent); }
+.fin-chart__bar--estimate { background: var(--accent-bg); border: 1px solid var(--accent); }
+
+.fin-chart__label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.fin-legend {
+    display: flex;
+    gap: var(--sp-3);
+    margin-top: var(--sp-2);
+}
+
+.fin-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.fin-legend__swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.fin-legend__swatch--actual   { background: var(--accent); }
+.fin-legend__swatch--estimate { background: var(--accent-bg); border: 1px solid var(--accent); }
+
+/* Compact sparkline for the price-tracking table. */
+.fin-spark {
+    display: block;
+    width: 96px;
+    height: 28px;
+    overflow: visible;
+}
+
+.fin-spark__line {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    MEAL HOVER CARD

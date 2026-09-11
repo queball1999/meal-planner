@@ -2,21 +2,30 @@
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "calendar"}} Weekly Plan</h1>
-    {{if .Data.HasPlan}}
-    <p class="page-subtitle">
-        {{if .Data.ReadOnly}}<a href="/" class="btn btn-ghost btn-sm" style="margin-right:.5rem">{{icon "arrow-left"}} Dashboard</a>{{end}}
-        {{.Data.WeekStart}} - {{.Data.WeekEnd}} &middot; Budget: {{.Data.BudgetLabel}}
-        {{if .Data.Canceled}}<span class="badge badge-muted" style="margin-left:.5rem" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled - archived, read only</span>
-        {{else if .Data.ReadOnly}}<span class="badge badge-muted" style="margin-left:.5rem">Past plan - read only</span>{{end}}
-    </p>
-    {{else}}
+    <div class="cal-toolbar">
+        <div class="cal-toolbar__nav">
+            <a href="{{.Data.WeekNavPrevURL}}" class="btn-icon" title="Previous week" aria-label="Previous week">{{icon "arrow-left"}}</a>
+            <a href="{{.Data.WeekNavTodayURL}}" class="btn btn-ghost btn-sm" title="Jump to current week">Today</a>
+            <a href="{{.Data.WeekNavNextURL}}" class="btn-icon" title="Next week" aria-label="Next week"><span style="display:inline-flex;transform:rotate(180deg)">{{icon "arrow-left"}}</span></a>
+            <h2 class="cal-toolbar__title">{{.Data.WeekNavTitle}}</h2>
+        </div>
+        {{if .Data.HasPlan}}
+        <div class="cal-toolbar__modes">
+            {{if .Data.ReadOnly}}<a href="/" class="btn btn-ghost btn-sm">{{icon "arrow-left"}} Dashboard</a>{{end}}
+            <span class="cal-toolbar__budget">Budget: {{.Data.BudgetLabel}}</span>
+            {{if .Data.Canceled}}<span class="badge badge-muted" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled - archived, read only</span>
+            {{else if .Data.ReadOnly}}<span class="badge badge-muted">Past plan - read only</span>{{end}}
+        </div>
+        {{end}}
+    </div>
+    {{if not .Data.HasPlan}}
     <p class="page-subtitle">No plan yet for this week.</p>
     {{end}}
 </div>
 
 <nav class="subtabs no-print" aria-label="Plan sections">
-    <a href="/plan"      class="subtab{{if eq .Data.Tab "plan"}} subtab--active{{end}}"{{if eq .Data.Tab "plan"}} aria-current="page"{{end}}>{{icon "calendar"}} Plan</a>
-    <a href="/plan/list" class="subtab{{if eq .Data.Tab "list"}} subtab--active{{end}}"{{if eq .Data.Tab "list"}} aria-current="page"{{end}}>{{icon "cart"}} Shopping list</a>
+    <a href="{{.Data.PlanTabURL}}" class="subtab{{if eq .Data.Tab "plan"}} subtab--active{{end}}"{{if eq .Data.Tab "plan"}} aria-current="page"{{end}}>{{icon "calendar"}} Plan</a>
+    <a href="{{.Data.ListTabURL}}" class="subtab{{if eq .Data.Tab "list"}} subtab--active{{end}}"{{if eq .Data.Tab "list"}} aria-current="page"{{end}}>{{icon "cart"}} Shopping list</a>
 </nav>
 
 {{if eq .Data.Tab "list"}}
@@ -141,7 +150,7 @@
 
         {{range $slot := slots}}
         {{$cell := index $day.Slots $slot}}
-        <article class="meal-card meal-card--{{$slot}}{{if $cell.IsEmpty}} meal-card--empty{{end}}{{if $cell.Locked}} meal-card--locked{{end}}{{if and (not $cell.IsEmpty) $cell.Status (ne $cell.Status "cooking")}} meal-card--off{{end}}">
+        <article class="meal-card meal-card--{{$slot}}{{if $cell.Locked}} meal-card--locked{{end}}{{if and (not $cell.IsEmpty) $cell.Status (ne $cell.Status "cooking")}} meal-card--off{{end}}" data-meal-id="{{$cell.MealID}}">
             <span class="meal-card__slot">{{titleCase $slot}}</span>
             {{if $cell.IsEmpty}}
             <span class="meal-card__empty">No meal</span>

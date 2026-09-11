@@ -33,12 +33,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type dashPageData struct {
-	HasPlan         bool
-	PlanStatus      string // "generating" | "ready" | "error" | ""
-	WeekLabel       string // "Sep 1 - Sep 7"
-	TotalLabel      string // "$47.20" or ""
-	BudgetLabel     string // "$120"
-	OverBudget      bool
+	HasPlan     bool
+	PlanStatus  string // "generating" | "ready" | "error" | ""
+	WeekLabel   string // "Sep 1 - Sep 7"
+	TotalLabel  string // "$47.20" or ""
+	BudgetLabel string // "$120"
+	OverBudget  bool
 	// StatsSpent is what has actually been bought so far: the sum of the
 	// shopping-list lines checked off. This is the "This week spent" number -
 	// real money out the door, not the plan's estimate.
@@ -47,9 +47,9 @@ type dashPageData struct {
 	StatsOverBudget bool
 	StatsMeals      int64
 	StatsPlans      int
-	RecentPlans []*db.Plan // up to 8 for the history strip
-	HasLLM      bool
-	Calendar    dashCalendar
+	RecentPlans     []*db.Plan // up to 8 for the history strip
+	HasLLM          bool
+	Calendar        dashCalendar
 
 	// The plan card and the spend stats track whichever week the calendar
 	// widget is showing (?calref, week mode only). IsCurrentWeek is false when

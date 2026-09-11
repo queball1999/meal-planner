@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ type calendarSlot struct {
 	Title      string
 	Effort     string
 	Servings   int
+	Cost       string
 	Locked     bool
 	IsLeftover bool
 	IsEmpty    bool
@@ -68,6 +70,64 @@ type planPageData struct {
 
 	Tab  string                // "plan" (calendar) | "list" (shopping list)
 	List *shoppingListPageData // populated when Tab == "list"
+
+	// Sub-tab links, carrying over the current ?week=/?plan_id= selector so
+	// switching tabs keeps the same week or historic plan in view.
+	PlanTabURL string
+	ListTabURL string
+
+	// Week-nav toolbar (mirrors the dashboard calendar widget). Prev/Next step
+	// the viewed week by 7 days; Today jumps back to the live week. The links
+	// carry ?week=<start> so resolvePlanForRequest picks that week's plan.
+	WeekNavPrevURL  string
+	WeekNavNextURL  string
+	WeekNavTodayURL string
+	WeekNavTitle    string // "Sep 6 – Sep 12"
+}
+
+// weekNav holds the plan page's week-switcher links, computed once so the
+// empty-state and full render paths stay in sync.
+type weekNav struct {
+	prev, next, today, title string
+}
+
+// buildWeekNav derives the toolbar links for the week starting at weekStart,
+// anchored to basePath ("/plan" or "/plan/list") so stepping weeks keeps you
+// on whichever sub-tab you were viewing instead of always bouncing to the
+// calendar. The links carry ?week=<start> so resolvePlanForRequest resolves
+// that week's plan; a week with no plan renders the empty state, which is the
+// right answer.
+func buildWeekNav(weekStart time.Time, basePath string) weekNav {
+	weekEnd := weekStart.AddDate(0, 0, 6)
+	return weekNav{
+		prev:  basePath + "?week=" + weekStart.AddDate(0, 0, -7).Format("2006-01-02"),
+		next:  basePath + "?week=" + weekStart.AddDate(0, 0, 7).Format("2006-01-02"),
+		today: basePath,
+		title: weekStart.Format("Jan 2") + " – " + weekEnd.Format("Jan 2"),
+	}
+}
+
+// planTabURL points a sub-tab link (Plan / Shopping list) at path while
+// carrying over whichever selector (?plan_id= or ?week=) the current request
+// used, so switching tabs keeps the same week or historic plan in view
+// instead of silently dropping back to the latest one.
+func planTabURL(r *http.Request, path string) string {
+	if id := r.URL.Query().Get("plan_id"); id != "" {
+		return path + "?plan_id=" + url.QueryEscape(id)
+	}
+	if week := r.URL.Query().Get("week"); week != "" {
+		return path + "?week=" + url.QueryEscape(week)
+	}
+	return path
+}
+
+// planBasePath is the sub-tab's own path, used to anchor week-nav links so
+// they stay on the tab the user is viewing.
+func planBasePath(tab string) string {
+	if tab == "list" {
+		return "/plan/list"
+	}
+	return "/plan"
 }
 
 // planTab returns the requested sub-tab, defaulting to the calendar.
@@ -179,8 +239,11 @@ func (s *Server) reconcilePlanStatus(ctx context.Context, hhID int64, p *db.Plan
 //
 // ?plan_id=123 loads one specific plan (e.g. a canceled one from
 // /plan/history - its own week now resolves to whatever superseded it, so it
-// can only be reached by id). ?week=YYYY-MM-DD loads that week's current
-// plan. Either way the view is read-only.
+// can only be reached by id) and is always read-only. ?week=YYYY-MM-DD loads
+// that week's plan and is read-only unless it names the live week - the
+// Prev/Next toolbar links always carry ?week=, so landing back on the current
+// week that way (rather than via the bare "Today" link) must still be
+// editable, not silently fall back to a past-plan view.
 func (s *Server) resolvePlanForRequest(ctx context.Context, hh *db.Household, r *http.Request) (p *db.Plan, readOnly bool) {
 	if idStr := r.URL.Query().Get("plan_id"); idStr != "" {
 		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
@@ -192,7 +255,8 @@ func (s *Server) resolvePlanForRequest(ctx context.Context, hh *db.Household, r 
 	}
 	if week := r.URL.Query().Get("week"); week != "" {
 		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, week)
-		return p, true
+		liveWeekStart, _ := plan.WeekBounds(time.Now().UTC(), s.cfg.WeekStartDay)
+		return p, week != liveWeekStart.Format("2006-01-02")
 	}
 	p, _ = s.store.GetLatestPlan(ctx, hh.ID)
 	return p, false
@@ -268,6 +332,23 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 
 	status := s.reconcilePlanStatus(ctx, hh.ID, p)
 
+	// Week the toolbar is anchored to: the ?week= param when navigating, else
+	// the resolved plan's week, else the live week. Computed once so the
+	// empty-state and full render paths stay in sync.
+	viewedWeekStart, _ := plan.WeekBounds(time.Now().UTC(), s.cfg.WeekStartDay)
+	if week := r.URL.Query().Get("week"); week != "" {
+		if t, err := time.Parse("2006-01-02", week); err == nil {
+			viewedWeekStart = t
+		}
+	} else if p != nil {
+		if t, err := time.Parse("2006-01-02", p.WeekStart); err == nil {
+			viewedWeekStart = t
+		}
+	}
+	weekNav := buildWeekNav(viewedWeekStart, planBasePath(tab))
+	planTabHref := planTabURL(r, "/plan")
+	listTabHref := planTabURL(r, "/plan/list")
+
 	// Show any plan that actually has meals, whatever its status - a plan
 	// still finishing (or one that erred after persisting some meals) is far
 	// more useful on screen than an empty "no plan" card. Only fall back to
@@ -282,19 +363,45 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		} else if status == "generating" {
 			s.setNotify(w, NotifyInfo, "Your plan is still generating. This page will fill in once it's ready.")
 		}
-		s.renderWithPage(w, r, "plan", planNavSlug(tab), planPageData{HasPlan: false, HasLLM: s.llmGen() != nil, Tab: tab, List: listView})
+		s.renderWithPage(w, r, "plan", planNavSlug(tab), planPageData{
+			HasPlan:         false,
+			HasLLM:          s.llmGen() != nil,
+			Tab:             tab,
+			List:            listView,
+			PlanTabURL:      planTabHref,
+			ListTabURL:      listTabHref,
+			WeekNavPrevURL:  weekNav.prev,
+			WeekNavNextURL:  weekNav.next,
+			WeekNavTodayURL: weekNav.today,
+			WeekNavTitle:    weekNav.title,
+		})
 		return
+	}
+
+	// Priced once per plan and split across meals below - a query per meal
+	// would mean up to 21 identical lookups for one calendar page.
+	var shoppingLines []*db.ShoppingListItem
+	if p != nil {
+		shoppingLines, _ = s.store.ListShoppingListItems(ctx, p.ID)
 	}
 
 	// Build a map keyed by "date|slot" for fast calendar lookup.
 	mealMap := make(map[string]calendarSlot, len(meals))
 	for _, m := range meals {
 		key := m.Day + "|" + m.Slot
+		cost := ""
+		if len(shoppingLines) > 0 {
+			ings, _ := s.store.ListIngredientsByMeal(ctx, m.ID)
+			if cents := mealCostCentsFromLines(shoppingLines, ings); cents > 0 {
+				cost = fmt.Sprintf("$%.2f", float64(cents)/100)
+			}
+		}
 		mealMap[key] = calendarSlot{
 			MealID:     m.ID,
 			Title:      m.Title,
 			Effort:     m.Effort,
 			Servings:   m.Servings,
+			Cost:       cost,
 			Locked:     m.Locked,
 			IsLeftover: m.IsLeftover,
 			Status:     m.Status,
@@ -387,6 +494,12 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		Status:            status,
 		Tab:               tab,
 		List:              listView,
+		PlanTabURL:        planTabHref,
+		ListTabURL:        listTabHref,
+		WeekNavPrevURL:    weekNav.prev,
+		WeekNavNextURL:    weekNav.next,
+		WeekNavTodayURL:   weekNav.today,
+		WeekNavTitle:      weekNav.title,
 	})
 }
 

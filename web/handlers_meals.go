@@ -20,6 +20,7 @@ type mealPageData struct {
 	WeekStart   string
 	Feedback    int    // -1, 0, or 1 for current user's rating
 	ImageURL    string // "" when no matching recipe photo - see handleMealCard's own note
+	CatalogID   int64  // matching catalog recipe id, 0 if none - lets the page link/upload to it
 }
 
 func (s *Server) handleMealDetail(w http.ResponseWriter, r *http.Request) {
@@ -55,13 +56,18 @@ func (s *Server) handleMealDetail(w http.ResponseWriter, r *http.Request) {
 		weekStart = plan.WeekStart
 	}
 
-	// A meal has no image of its own, but every generated meal is saved to the
-	// recipe catalog under the same title, and that row can have a photo. Same
-	// loose title match handleMealCard uses for the hover preview.
+	// A meal has no image or catalog page of its own, but every generated meal
+	// is saved to the recipe catalog under the same title, and that row can
+	// have a photo and a "View recipe" destination. Same loose title match
+	// handleMealCard uses for the hover preview.
 	imageURL := ""
+	var catalogID int64
 	if hh := middleware.HouseholdFromCtx(r); hh != nil {
-		if rc, _ := s.store.GetCatalogRecipeByTitle(ctx, hh.ID, meal.Title); rc != nil && rc.ImagePath != "" {
-			imageURL = "/recipe-images/" + rc.ImagePath
+		if rc, _ := s.store.GetCatalogRecipeByTitle(ctx, hh.ID, meal.Title); rc != nil {
+			catalogID = rc.ID
+			if rc.ImagePath != "" {
+				imageURL = "/recipe-images/" + rc.ImagePath
+			}
 		}
 	}
 
@@ -74,6 +80,7 @@ func (s *Server) handleMealDetail(w http.ResponseWriter, r *http.Request) {
 		PlanID:      meal.PlanID,
 		WeekStart:   weekStart,
 		ImageURL:    imageURL,
+		CatalogID:   catalogID,
 	})
 }
 

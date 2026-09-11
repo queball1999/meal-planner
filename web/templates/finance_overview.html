@@ -1,0 +1,106 @@
+{{define "title"}}Finance - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "history"}} Finance</h1>
+    <p class="page-subtitle">
+        What you've actually spent versus what the plan estimated, week over week.
+        "Actual" counts shopping-list lines checked off; "estimate" is the full list.
+    </p>
+</div>
+{{template "financeTabs" .}}
+
+<div class="page-stack">
+    {{/* ── Summary strip ─────────────────────────────────────────────── */}}
+    <div class="stats-strip">
+        <div class="stats-chip">
+            <span class="stats-chip__label">Actual spent</span>
+            <span class="stats-chip__value {{if .Data.OverBudget}}stats-chip__value--over{{else}}stats-chip__value--under{{end}}">
+                {{.Data.ActualLabel}}
+            </span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Estimated</span>
+            <span class="stats-chip__value">{{.Data.EstimateLabel}}</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Budget</span>
+            <span class="stats-chip__value">{{.Data.BudgetLabel}}</span>
+        </div>
+    </div>
+
+    {{/* ── Week over week ────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="wow-title">
+        <h2 class="form-section__title" id="wow-title">{{icon "history"}} Week over week</h2>
+        {{if .Data.Weeks}}
+        {{$max := maxWeek .Data.Weeks}}
+        <div class="fin-chart" role="img" aria-label="Actual versus estimated spend per week">
+            {{range .Data.Weeks}}
+            <div class="fin-chart__col">
+                <div class="fin-chart__bars">
+                    <div class="fin-chart__bar fin-chart__bar--actual"
+                         style="height: {{pct .ActualCents $max}}%"
+                         title="Actual {{.ActualLabel}}"></div>
+                    <div class="fin-chart__bar fin-chart__bar--estimate"
+                         style="height: {{pct .EstimateCents $max}}%"
+                         title="Estimated {{.EstimateLabel}}"></div>
+                </div>
+                <span class="fin-chart__label">{{.Label}}</span>
+            </div>
+            {{end}}
+        </div>
+        <div class="fin-legend">
+            <span class="fin-legend__item"><span class="fin-legend__swatch fin-legend__swatch--actual"></span> Actual</span>
+            <span class="fin-legend__item"><span class="fin-legend__swatch fin-legend__swatch--estimate"></span> Estimated</span>
+        </div>
+        {{else}}
+        <p class="empty-note">No spend recorded in this range yet.</p>
+        {{end}}
+    </section>
+
+    {{/* ── Top items ─────────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="top-title">
+        <h2 class="form-section__title" id="top-title">{{icon "cart"}} Top items by spend</h2>
+        {{if .Data.TopItems}}
+        <table class="data-table" aria-label="Top items by spend">
+            <thead>
+                <tr><th>Item</th><th>Actual</th><th>Estimated</th></tr>
+            </thead>
+            <tbody>
+                {{range .Data.TopItems}}
+                <tr>
+                    <td data-label="Item">{{.Name}}</td>
+                    <td data-label="Actual">{{.ActualLabel}}</td>
+                    <td data-label="Estimated">{{.EstimateLabel}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">No items to rank yet.</p>
+        {{end}}
+    </section>
+
+    {{/* ── By store ──────────────────────────────────────────────────── */}}
+    <section class="card" aria-labelledby="store-title">
+        <h2 class="form-section__title" id="store-title">{{icon "store"}} Spend by store</h2>
+        {{if .Data.StoreSpend}}
+        <table class="data-table" aria-label="Spend by store">
+            <thead>
+                <tr><th>Store</th><th>Actual</th><th>Estimated</th></tr>
+            </thead>
+            <tbody>
+                {{range .Data.StoreSpend}}
+                <tr>
+                    <td data-label="Store">{{.Name}}</td>
+                    <td data-label="Actual">{{.ActualLabel}}</td>
+                    <td data-label="Estimated">{{.EstimateLabel}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">No store-level spend yet.</p>
+        {{end}}
+    </section>
+</div>
+{{end}}

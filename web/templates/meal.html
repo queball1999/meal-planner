@@ -1,26 +1,68 @@
 {{define "title"}}{{.Data.Meal.Title}} - {{.AppName}}{{end}}
 {{define "content"}}
-<div class="page-header">
-    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-        <a href="/plan" class="btn btn-ghost btn-sm">{{icon "arrow-left"}} Plan</a>
-        <h1 class="page-title" style="margin:0">{{.Data.Meal.Title}}</h1>
-        {{if .Data.Meal.IsLeftover}}
-        <span class="badge badge-muted">{{icon "recycle"}} Leftovers</span>
-        {{end}}
-        {{if .Data.Meal.Locked}}
-        <span class="badge badge-accent">{{icon "lock"}} Locked</span>
-        {{end}}
+<div class="page-header page-header--actions">
+    <div>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <a href="/plan" class="btn btn-ghost btn-sm">{{icon "arrow-left"}} Plan</a>
+            <h1 class="page-title" style="margin:0">{{.Data.Meal.Title}}</h1>
+            {{if .Data.Meal.IsLeftover}}
+            <span class="badge badge-muted">{{icon "recycle"}} Leftovers</span>
+            {{end}}
+            {{if .Data.Meal.Locked}}
+            <span class="badge badge-accent">{{icon "lock"}} Locked</span>
+            {{end}}
+        </div>
+        <p class="page-subtitle">
+            {{.Data.Meal.Slot}} · {{.Data.Meal.Day}}
+            {{if .Data.WeekStart}} · Week of {{.Data.WeekStart}}{{end}}
+            · {{.Data.Meal.Effort}} · {{.Data.Meal.Servings}} servings
+            {{if gt .Data.Meal.CookedPortions .Data.Meal.Servings}}({{.Data.Meal.CookedPortions}} portions cooked){{end}}
+        </p>
     </div>
-    <p class="page-subtitle">
-        {{.Data.Meal.Slot}} · {{.Data.Meal.Day}}
-        {{if .Data.WeekStart}} · Week of {{.Data.WeekStart}}{{end}}
-        · {{.Data.Meal.Effort}} · {{.Data.Meal.Servings}} servings
-        {{if gt .Data.Meal.CookedPortions .Data.Meal.Servings}}({{.Data.Meal.CookedPortions}} portions cooked){{end}}
-    </p>
+    {{if .Data.CatalogID}}
+    <div class="page-header__actions">
+        <a href="/recipes/{{.Data.CatalogID}}" class="btn btn-secondary btn-sm">{{icon "book"}} View recipe</a>
+    </div>
+    {{end}}
 </div>
 
 {{if .Data.ImageURL}}
 <img src="{{.Data.ImageURL}}" alt="" class="meal-detail__image" loading="lazy">
+{{end}}
+
+{{if .Data.CatalogID}}
+<section class="card form-section" aria-labelledby="photo-heading" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title" id="photo-heading">{{icon "image"}} Photo</h2>
+    <p class="form-section__desc">
+        {{if .Data.ImageURL}}Also saved to this meal's recipe.{{else}}Saved to this meal's recipe, so it shows up there too.{{end}}
+    </p>
+    <form method="POST" action="/recipes/{{.Data.CatalogID}}/image" enctype="multipart/form-data" class="pref-form">
+        {{.CSRFField}}
+        <input type="hidden" name="redirect_to" value="/meals/{{.Data.Meal.ID}}">
+        <div class="field">
+            <label class="field-label" for="m-file">Upload a file</label>
+            <input class="field-input" id="m-file" name="image_file" type="file"
+                   accept="image/jpeg,image/png,image/webp,image/gif">
+        </div>
+        <div class="field">
+            <label class="field-label" for="m-imgurl">…or paste an image URL</label>
+            <input class="field-input" id="m-imgurl" name="image_url" type="url"
+                   placeholder="https://example.com/photo.jpg">
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{{icon "check"}} {{if .Data.ImageURL}}Replace photo{{else}}Add photo{{end}}</button>
+        </div>
+    </form>
+    {{if .Data.ImageURL}}
+    <form method="POST" action="/recipes/{{.Data.CatalogID}}/image" style="margin-top:var(--sp-3)"
+          data-confirm="Remove this photo?" data-confirm-title="Remove photo" data-confirm-label="Remove" data-confirm-danger>
+        {{.CSRFField}}
+        <input type="hidden" name="redirect_to" value="/meals/{{.Data.Meal.ID}}">
+        <input type="hidden" name="remove" value="1">
+        <button type="submit" class="btn btn-ghost btn-danger btn-sm">{{icon "delete"}} Remove photo</button>
+    </form>
+    {{end}}
+</section>
 {{end}}
 
 {{if .Data.Meal.IsLeftover}}

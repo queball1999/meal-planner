@@ -276,7 +276,6 @@ func (s *Server) handleRecipeImageReplace(w http.ResponseWriter, r *http.Request
 		return
 	}
 	ctx := r.Context()
-	dest := fmt.Sprintf("/recipes/%d", id)
 
 	cr, err := s.store.GetCatalogRecipe(ctx, id)
 	if err != nil || cr == nil {
@@ -285,6 +284,13 @@ func (s *Server) handleRecipeImageReplace(w http.ResponseWriter, r *http.Request
 	}
 	if err := r.ParseMultipartForm(8 << 20); err != nil && r.MultipartForm == nil {
 		_ = r.ParseForm()
+	}
+
+	// A caller off the catalog page returns there; a meal page attaching a
+	// photo to its matching catalog recipe wants to land back on itself.
+	dest := fmt.Sprintf("/recipes/%d", id)
+	if rt := r.FormValue("redirect_to"); rt != "" {
+		dest = rt
 	}
 
 	// "remove" wins over any supplied source.

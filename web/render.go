@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,6 +59,30 @@ func formatDurationMs(ms float64) string {
 		return fmt.Sprintf("%.0fms", ms)
 	default:
 		return fmt.Sprintf("%.1fms", ms)
+	}
+}
+
+// toFloat coerces a numeric template value (int, int64, float64, or a
+// numeric string) to float64 so the pct helper can compare values of mixed
+// types without the caller casting. Non-numeric input yields 0.
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case string:
+		f, err := strconv.ParseFloat(n, 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	default:
+		return 0
 	}
 }
 
@@ -114,7 +139,49 @@ func templateFuncs() template.FuncMap {
 		"join":       strings.Join,
 		"divf":       func(a int64, b float64) float64 { return float64(a) / b },
 		"sub64":      func(a, b int64) int64 { return a - b },
-		"dur":        formatDurationMs,
+		// pct returns value/max as a 0-100 percentage for bar widths; a
+		// non-positive max yields 0 so a zero total can't divide by zero.
+		// Accepts any numeric type (int or int64) so callers need no casting.
+		"pct": func(value, max any) int {
+			v := toFloat(value)
+			m := toFloat(max)
+			if m <= 0 {
+				return 0
+			}
+			p := int(v / m * 100)
+			if p < 0 {
+				p = 0
+			}
+			if p > 100 {
+				p = 100
+			}
+			return p
+		},
+		// maxWeek returns the largest of any week's actual/estimate cents, so a
+		// bar chart can scale every bar against one shared axis.
+		"maxWeek": func(weeks []financeWeekRow) int64 {
+			var max int64
+			for _, w := range weeks {
+				if w.ActualCents > max {
+					max = w.ActualCents
+				}
+				if w.EstimateCents > max {
+					max = w.EstimateCents
+				}
+			}
+			return max
+		},
+		// maxDaily returns the largest daily run count, for the AI trend chart.
+		"maxDaily": func(days []financeDailyRow) int64 {
+			var max int64
+			for _, d := range days {
+				if int64(d.RunCount) > max {
+					max = int64(d.RunCount)
+				}
+			}
+			return max
+		},
+		"dur": formatDurationMs,
 		"truncate": func(s string, n int) string {
 			r := []rune(s)
 			if len(r) <= n {

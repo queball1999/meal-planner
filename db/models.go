@@ -182,6 +182,96 @@ type CreateAIRunParams struct {
 	Status           string
 }
 
+// ── Finance dashboard (§7.7, §10.1) ──────────────────────────────────────────
+
+// PricingReference is a reference price for one (provider, model) pair, stored
+// per-million tokens (00029_pricing_reference.sql). It is a *reference* - what
+// the usage would have cost on a third-party provider - not a bill.
+type PricingReference struct {
+	ID                    int64
+	Provider              string
+	ReferenceModel        string
+	InputPricePerMillion  float64
+	OutputPricePerMillion float64
+	EffectiveDate         string // YYYY-MM-DD
+	Notes                 string
+	UpdatedAt             time.Time
+}
+
+// ModelCostMapping maps a local model/purpose label to a pricing reference.
+type ModelCostMapping struct {
+	LocalModel         string
+	PricingReferenceID int64
+	Provider           string // denormalized for display
+	ReferenceModel     string // denormalized for display
+	UpdatedAt          time.Time
+}
+
+// UpsertPricingReferenceParams bundles inputs for upserting a reference price.
+type UpsertPricingReferenceParams struct {
+	Provider              string
+	ReferenceModel        string
+	InputPricePerMillion  float64
+	OutputPricePerMillion float64
+	EffectiveDate         string
+	Notes                 string
+}
+
+// AIRunTotals aggregates AI usage and cost over a date range.
+type AIRunTotals struct {
+	RunCount         int
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+	EstCostCents     int64
+	ErrorCount       int
+}
+
+// AIRunByPurpose is one purpose's usage/cost rollup (the "by purpose" table).
+type AIRunByPurpose struct {
+	Purpose          string
+	RunCount         int
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+	EstCostCents     int64
+}
+
+// AIRunByModel is one model's usage/cost rollup (the "by model" table).
+type AIRunByModel struct {
+	Provider         string
+	Model            string
+	RunCount         int
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+	EstCostCents     int64
+}
+
+// AIRunDaily is one day's usage/cost (the trend chart series).
+type AIRunDaily struct {
+	Date         string // YYYY-MM-DD
+	RunCount     int
+	TotalTokens  int64
+	EstCostCents int64
+}
+
+// PriceTrackingRow is one item's current price across stores, with its most
+// recent history, for the finance "price tracking" table.
+type PriceTrackingRow struct {
+	ItemID           int64
+	ItemName         string
+	StoreID          int64
+	StoreName        string
+	PriceCents       int64
+	PurchaseUnit     string
+	AmountPerPackage float64
+	Preferred        bool
+	UpdatedAt        time.Time
+	// History is the item's recent price readings (oldest first) for a sparkline.
+	History []PriceHistoryEntry
+}
+
 // ── Phase 3 - Plans & meals (§5, §7, §10.1) ──────────────────────────────────
 
 // Plan is one week's meal plan (§10.1). Retained after the week passes (§5.5).

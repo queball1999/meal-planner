@@ -108,7 +108,7 @@
 <p class="dash-week-note">Showing {{$d.WeekNavLabel}} &middot; <a href="/">back to this week</a></p>
 {{end}}
 <div class="stats-strip" style="margin-bottom:1.5rem">
-    <div class="stats-chip">
+    <div class="stats-chip stats-chip--link">
         <span class="stats-chip__label">{{if and $d.IsCurrentWeek (not $d.PlanWeekAhead)}}This week spent{{else}}Spent{{end}}</span>
         {{if $d.StatsSpent}}
         <span class="stats-chip__value {{if $d.StatsOverBudget}}stats-chip__value--over{{else}}stats-chip__value--under{{end}}">
@@ -117,6 +117,9 @@
         {{else}}
         <span class="stats-chip__value"> - </span>
         {{end}}
+        <a href="/plan/list" class="stats-chip__go" title="Open the shopping list" aria-label="Open the shopping list">
+            {{icon "cart"}} <span class="stats-chip__go-label">List</span>
+        </a>
     </div>
     <div class="stats-chip">
         <span class="stats-chip__label">{{if $d.PlanWeekAhead}}Meals planned{{else}}Meals this week{{end}}</span>

@@ -85,6 +85,30 @@ type Store interface {
 	// ── AI runs (§7.7, §10.1) ─────────────────────────────────────────────
 
 	CreateAIRun(ctx context.Context, p CreateAIRunParams) (*AIRun, error)
+	GetAIRunTotals(ctx context.Context, householdID int64, from, to string) (*AIRunTotals, error)
+	ListAIRunsByPurpose(ctx context.Context, householdID int64, from, to string) ([]*AIRunByPurpose, error)
+	ListAIRunsByModel(ctx context.Context, householdID int64, from, to string) ([]*AIRunByModel, error)
+	ListAIRunsDaily(ctx context.Context, householdID int64, from, to string) ([]*AIRunDaily, error)
+	ListAIRuns(ctx context.Context, householdID int64, limit int) ([]*AIRun, error)
+
+	// ── Pricing references (§7.7, 00029) ────────────────────────────────────
+
+	ListPricingReferences(ctx context.Context) ([]*PricingReference, error)
+	UpsertPricingReference(ctx context.Context, p UpsertPricingReferenceParams) (*PricingReference, error)
+	GetPricingReference(ctx context.Context, id int64) (*PricingReference, error)
+	DeletePricingReference(ctx context.Context, id int64) error
+	ListModelCostMappings(ctx context.Context) ([]*ModelCostMapping, error)
+	SetModelCostMapping(ctx context.Context, localModel string, referenceID int64) error
+	DeleteModelCostMapping(ctx context.Context, localModel string) error
+	PricingForModels(ctx context.Context, models []string) (map[string]*PricingReference, error)
+
+	// ── Price tracking (finance dashboard) ──────────────────────────────────
+
+	ListPriceTracking(ctx context.Context, householdID int64) ([]*PriceTrackingRow, error)
+	GetWeeklySpend(ctx context.Context, householdID int64, from, to string) ([]*FinanceWeek, error)
+	GetTopSpentItems(ctx context.Context, householdID int64, from, to string, limit int) ([]*FinanceTopItem, error)
+	GetStoreSpend(ctx context.Context, householdID int64, from, to string) ([]*FinanceStoreSpend, error)
+	GetFinanceTotals(ctx context.Context, householdID int64, from, to string) (actual, estimate, budget int64, err error)
 
 	// ── Plans (§5, §7.3, §10.1) ──────────────────────────────────────────────
 

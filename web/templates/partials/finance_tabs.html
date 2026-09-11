@@ -1,0 +1,9 @@
+{{/* Sub-tab nav shared by the Finance section pages.
+     Highlighting keys off pageData.Page (the render template name). */}}
+{{define "financeTabs"}}
+<nav class="subtabs" aria-label="Finance sections">
+    <a href="/finance"        class="subtab{{if eq .Page "finance_overview"}} subtab--active{{end}}"{{if eq .Page "finance_overview"}} aria-current="page"{{end}}>{{icon "history"}} Overview</a>
+    <a href="/finance/ai"     class="subtab{{if eq .Page "finance_ai"}}     subtab--active{{end}}"{{if eq .Page "finance_ai"}} aria-current="page"{{end}}>{{icon "cpu"}} AI usage &amp; cost</a>
+    <a href="/finance/prices" class="subtab{{if eq .Page "finance_prices"}} subtab--active{{end}}"{{if eq .Page "finance_prices"}} aria-current="page"{{end}}>{{icon "tag"}} Price tracking</a>
+</nav>
+{{end}}

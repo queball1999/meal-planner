@@ -1,0 +1,63 @@
+{{define "title"}}Price tracking - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "tag"}} Price tracking</h1>
+    <p class="page-subtitle">
+        The household's item-to-store price map: what each item costs at each
+        store, which store is preferred, and how the price has moved. Prices come
+        from your catalog, manual entries, and scrapes.
+    </p>
+</div>
+{{template "financeTabs" .}}
+
+<div class="page-stack">
+    <section class="card" aria-labelledby="prices-title">
+        <h2 class="form-section__title" id="prices-title">{{icon "tag"}} Item prices by store</h2>
+        {{if .Data.Rows}}
+        <table class="data-table" aria-label="Item prices by store">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Store</th>
+                    <th>Price</th>
+                    <th>Unit</th>
+                    <th>Preferred</th>
+                    <th>Updated</th>
+                    <th>Trend</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Data.Rows}}
+                <tr>
+                    <td data-label="Item">{{.ItemName}}</td>
+                    <td data-label="Store">{{.StoreName}}</td>
+                    <td data-label="Price">{{.PriceLabel}}</td>
+                    <td data-label="Unit">{{.Unit}}</td>
+                    <td data-label="Preferred">
+                        {{if .Preferred}}<span class="badge badge-success">preferred</span>
+                        {{else}}<span class="text-muted">—</span>{{end}}
+                    </td>
+                    <td data-label="Updated">{{.UpdatedAt}}</td>
+                    <td data-label="Trend">
+                        {{if .SparkPoints}}
+                        <svg class="fin-spark" viewBox="0 0 100 28" preserveAspectRatio="none"
+                             role="img" aria-label="{{.SparkCount}} price points">
+                            <polyline class="fin-spark__line" points="{{.SparkPoints}}"></polyline>
+                        </svg>
+                        {{else}}
+                        <span class="text-muted">—</span>
+                        {{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-note">
+            No item prices recorded yet. Add prices from the item pages or a
+            store scrape and they'll show up here.
+        </p>
+        {{end}}
+    </section>
+</div>
+{{end}}

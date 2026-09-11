@@ -247,10 +247,27 @@ window.goeat = window.goeat || {};
         setTimeout(function () { cell.classList.remove('is-flash'); }, FLASH_MS);
     }
 
+    // The action buttons (like/dislike/lock, eating-out, skip) are controls,
+    // not the meal - hovering them must not pop the preview.
+    function overControls(el) {
+        return el.closest('.meal-card__actions, [data-meal-status-btn]');
+    }
+
+    // A title link wrapped by its own [data-meal-id] container (the plan
+    // page's meal-card) is covered by that container's hover - the link
+    // itself doesn't need a separate trigger. A bare link with no such
+    // wrapper (the dashboard widget, shopping-list badges) IS the trigger.
+    function overNestedLink(el) {
+        const link = el.closest('a[data-meal-id]');
+        if (!link) return false;
+        return !!(link.parentElement && link.parentElement.closest('[data-meal-id]'));
+    }
+
     // Delegated, so meals added to the DOM after load are covered too.
     document.addEventListener('mouseover', function (e) {
         if (pinned) return;
         if (!(e.target instanceof Element)) return;
+        if (overControls(e.target) || overNestedLink(e.target)) return;
         const trigger = e.target.closest('[data-meal-id]:not([data-meal-status-btn])');
         if (!trigger || trigger === currentTrigger) return;
         clearTimeout(closeTimer);
@@ -261,20 +278,25 @@ window.goeat = window.goeat || {};
     document.addEventListener('mouseout', function (e) {
         if (pinned) return;
         if (!(e.target instanceof Element)) return;
+        if (overControls(e.target) || overNestedLink(e.target)) return;
         if (!e.target.closest('[data-meal-id]:not([data-meal-status-btn])')) return;
         scheduleHide();
     });
 
-    // Left-click on a meal pins the card instead of following the link; the
-    // recipe is one click further in, on the card's own eye button. Modified
-    // clicks (new tab, etc.) and non-primary buttons are left alone.
+    // Left-click on a meal's title link follows it to the recipe; a left-click
+    // on the card body (not a link, not a control) pins the card open. The
+    // action buttons handle their own clicks. Modified clicks (new tab, etc.)
+    // and non-primary buttons are left alone.
     document.addEventListener('click', function (e) {
         if (!(e.target instanceof Element)) return;
         if (card && card.contains(e.target)) return;
+        if (overControls(e.target)) return;
 
         const trigger = e.target.closest('[data-meal-id]:not([data-meal-status-btn])');
         if (trigger) {
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+            // A real link (the meal title) navigates to the recipe - don't pin.
+            if (trigger.tagName === 'A' && trigger.getAttribute('href')) return;
             e.preventDefault();
             clearTimeout(openTimer);
             clearTimeout(closeTimer);
