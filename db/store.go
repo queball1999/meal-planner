@@ -153,6 +153,7 @@ type Store interface {
 	DeleteShoppingListItem(ctx context.Context, id int64) error
 	DeleteShoppingListItems(ctx context.Context, planID int64) error
 	DeleteAllShoppingListItemsForHousehold(ctx context.Context, householdID int64) error
+	GetShoppingListSpend(ctx context.Context, planID int64) (*ShoppingSpend, error)
 
 	// ── Plan total (§6.4) ─────────────────────────────────────────────────────
 

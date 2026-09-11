@@ -89,9 +89,12 @@
 <div class="shopping-summary{{if .OverBudget}} shopping-summary--over{{end}}">
     <span class="shopping-summary__total">
         {{if .OverBudget}}{{icon "alert"}}{{end}}
-        {{.TotalLabel}} estimated total
+        {{.EstimatedLabel}} estimated total
     </span>
     <span class="shopping-summary__budget">of {{.BudgetLabel}} budget</span>
+    <span class="shopping-summary__actual" id="shopping-actual">
+        {{icon "check"}} <span id="shopping-actual-value">{{.ActualLabel}}</span> spent
+    </span>
 </div>
 
 {{range .Groups}}
@@ -104,7 +107,7 @@
     </div>
     <ul class="shopping-list" role="list">
         {{range .Items}}
-        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}{{if .Pending}} shopping-item--pending{{end}}" data-id="{{.ID}}">
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}{{if .Pending}} shopping-item--pending{{end}}" data-id="{{.ID}}" data-total="{{.TotalCents}}">
             <label class="shopping-item__check">
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
@@ -191,7 +194,7 @@
     </div>
     <ul class="shopping-list" role="list">
         {{range .UnassignedItems}}
-        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}{{if .Pending}} shopping-item--pending{{end}}" data-id="{{.ID}}">
+        <li class="shopping-item{{if .Checked}} shopping-item--checked{{end}}{{if .InPantry}} shopping-item--have{{end}}{{if .Pending}} shopping-item--pending{{end}}" data-id="{{.ID}}" data-total="{{.TotalCents}}">
             <label class="shopping-item__check">
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
@@ -307,6 +310,24 @@
         var note = btn && btn.parentElement;
         if (note) note.hidden = true;
     }
+    // Recompute "X spent" from the lines currently checked off. A line counts
+    // toward actual spend only when it is checked (bought), not marked
+    // "already in the pantry" (not being bought), and not still pricing (no
+    // price yet). Mirrors the server's GetShoppingListSpend / buildShoppingListView.
+    function recomputeActualSpend() {
+        var el = document.getElementById('shopping-actual-value');
+        if (!el) return;
+        var cents = 0;
+        document.querySelectorAll('.shopping-item').forEach(function (li) {
+            if (li.classList.contains('shopping-item--checked') &&
+                !li.classList.contains('shopping-item--have') &&
+                !li.classList.contains('shopping-item--pending')) {
+                cents += parseInt(li.dataset.total || '0', 10);
+            }
+        });
+        el.textContent = '$' + (cents / 100).toFixed(2);
+    }
+
     window.toggleCheck = function(cb) {
         var id = cb.dataset.id;
         var checked = cb.checked ? '1' : '0';
@@ -317,6 +338,7 @@
         });
         var li = cb.closest('li');
         if (li) li.classList.toggle('shopping-item--checked', cb.checked);
+        recomputeActualSpend();
     };
 
     // ── Stop pricing ─────────────────────────────────────────────────────
@@ -522,6 +544,7 @@
         btn.title = on ? 'Already in the pantry - not being bought' : 'I already have this';
         var li = btn.closest('li');
         if (li) li.classList.toggle('shopping-item--have', on);
+        recomputeActualSpend();
     }
 
     function postHave(btn, on, quantity) {

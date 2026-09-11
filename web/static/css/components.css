@@ -1267,6 +1267,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 }
 .shopping-summary__total { font-weight: var(--weight-bold); font-size: var(--text-lg); }
 .shopping-summary__budget { color: var(--text-muted); }
+.shopping-summary__actual { color: var(--success); font-weight: var(--weight-medium); }
 .shopping-summary--over .shopping-summary__total { color: var(--danger); }
 
 .shopping-group {
@@ -1581,7 +1582,8 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     gap: var(--sp-1);
 }
 .stats-chip__label { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
-.stats-chip__value { font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.stats-chip__value { font-size: var(--text-lg); font-weight: var(--weight-bold); display: inline-flex; align-items: baseline; gap: .35em; }
+.stats-chip__sub   { font-size: var(--text-xs); font-weight: var(--weight-normal); color: var(--text-muted); }
 .stats-chip__hint  { font-size: var(--text-xs); color: var(--text-muted); }
 
 /* Generic muted-text utility (About page's background-process table, etc). */

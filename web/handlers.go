@@ -39,13 +39,17 @@ type dashPageData struct {
 	TotalLabel      string // "$47.20" or ""
 	BudgetLabel     string // "$120"
 	OverBudget      bool
-	StatsSpent      string // "$47.20 / $120" or ""
+	// StatsSpent is what has actually been bought so far: the sum of the
+	// shopping-list lines checked off. This is the "This week spent" number -
+	// real money out the door, not the plan's estimate.
+	StatsSpent      string // "$47.20" or ""
+	StatsBudget     string // "$120" or ""
 	StatsOverBudget bool
 	StatsMeals      int64
 	StatsPlans      int
-	RecentPlans     []*db.Plan // up to 8 for the history strip
-	HasLLM          bool
-	Calendar        dashCalendar
+	RecentPlans []*db.Plan // up to 8 for the history strip
+	HasLLM      bool
+	Calendar    dashCalendar
 
 	// The plan card and the spend stats track whichever week the calendar
 	// widget is showing (?calref, week mode only). IsCurrentWeek is false when
@@ -246,13 +250,21 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if st, _ := s.store.GetSpendStats(ctx, hh.ID, from, to); st != nil {
-		if st.TotalCents > 0 || st.BudgetCents > 0 {
-			data.StatsSpent = fmt.Sprintf("$%.2f / $%.0f",
-				float64(st.TotalCents)/100, float64(st.BudgetCents)/100)
-			data.StatsOverBudget = st.TotalCents > st.BudgetCents
-		}
 		data.StatsMeals = st.MealCount
 		data.StatsPlans = st.PlanCount
+	}
+
+	// "This week spent" is what has actually been bought: the sum of the
+	// shopping-list lines checked off. The plan's estimated total and budget
+	// give the "of $X budget" context and the over-budget flag.
+	if p != nil {
+		if spend, err := s.store.GetShoppingListSpend(ctx, p.ID); err == nil && spend != nil {
+			data.StatsSpent = fmt.Sprintf("$%.2f", float64(spend.ActualCents)/100)
+			if p.BudgetCents > 0 {
+				data.StatsBudget = fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100)
+			}
+			data.StatsOverBudget = spend.ActualCents > p.BudgetCents && p.BudgetCents > 0
+		}
 	}
 
 	if all, _ := s.store.ListPlans(ctx, hh.ID); len(all) > 0 {

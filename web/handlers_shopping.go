@@ -32,6 +32,7 @@ type shoppingLineItem struct {
 	BuyLabel    string // "2 lb" | "3 each"
 	PriceLabel  string // "$2.49 / lb"
 	TotalLabel  string // "$4.98"
+	TotalCents  int64  // raw line total, for client-side spend recalculation
 	BadgeClass  string // "badge-live" | "badge-cached" | "badge-manual" | "badge-estimate"
 	BadgeText   string // "Live" | "Cached" | "Manual" | "Estimated"
 	Checked     bool
@@ -92,13 +93,21 @@ type shoppingListPageData struct {
 	HasPlan         bool
 	PlanID          int64
 	WeekStart       string
-	TotalLabel      string
+	TotalLabel      string // estimated total
 	BudgetLabel     string
 	OverBudget      bool
 	Groups          []shoppingStoreGroup
 	UnassignedItems []shoppingLineItem
 	HALastSync      string // "5m ago" etc, from the ha_sync_map timestamps; "" if never
 	ReadOnly        bool   // viewing a past/other week via ?week= or ?plan_id= - no editing
+
+	// ActualLabel is the dollar amount of checked (bought) items. Shown
+	// alongside TotalLabel so the user can see "estimated vs actual" on the
+	// shopping list page itself.
+	ActualLabel string
+	// EstimatedLabel is the full estimated total (same as TotalLabel, kept
+	// for clarity in the template).
+	EstimatedLabel string
 
 	// Pricing is true while any line is still a pending skeleton row - plan
 	// generation marks the plan ready and returns before pricing (a live
@@ -225,11 +234,21 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 		_ = g
 	}
 
+	// Compute actual spending from checked items.
+	actualCents := int64(0)
+	for _, item := range rawItems {
+		if item.Checked && !item.InPantry && !item.Pending {
+			actualCents += item.LineTotalCents
+		}
+	}
+
 	return shoppingListPageData{
 		HasPlan:         true,
 		PlanID:          p.ID,
 		WeekStart:       p.WeekStart,
 		TotalLabel:      fmt.Sprintf("$%.2f", float64(total)/100),
+		EstimatedLabel:  fmt.Sprintf("$%.2f", float64(total)/100),
+		ActualLabel:     fmt.Sprintf("$%.2f", float64(actualCents)/100),
 		BudgetLabel:     fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100),
 		OverBudget:      total > p.BudgetCents && total > 0,
 		Groups:          groups,
@@ -302,6 +321,7 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]db
 		BuyLabel:          buyLabel,
 		PriceLabel:        priceLabel,
 		TotalLabel:        totalLabel,
+		TotalCents:        item.LineTotalCents,
 		BadgeClass:        badgeClass,
 		BadgeText:         badgeText,
 		Checked:           item.Checked,

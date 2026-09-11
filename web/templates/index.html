@@ -112,7 +112,7 @@
         <span class="stats-chip__label">{{if and $d.IsCurrentWeek (not $d.PlanWeekAhead)}}This week spent{{else}}Spent{{end}}</span>
         {{if $d.StatsSpent}}
         <span class="stats-chip__value {{if $d.StatsOverBudget}}stats-chip__value--over{{else}}stats-chip__value--under{{end}}">
-            {{$d.StatsSpent}}
+            {{$d.StatsSpent}}{{if $d.StatsBudget}} <span class="stats-chip__sub">of {{$d.StatsBudget}}</span>{{end}}
         </span>
         {{else}}
         <span class="stats-chip__value"> - </span>
