@@ -192,20 +192,28 @@
         </thead>
         <tbody>
             {{range $d.RecentPlans}}
-            <tr>
+            <tr class="data-table__row-link" data-history-detail="{{.ID}}" tabindex="0" role="button"
+                aria-label="Details for the plan for {{fmtWeekRange .WeekStart .WeekEnd}}">
                 <td>{{fmtWeekRange .WeekStart .WeekEnd}}</td>
                 <td>
-                    {{if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
+                    {{if .Canceled}}<span class="badge badge-muted" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled</span>
+                    {{else if eq .Status "ready"}}<span class="badge badge--success">Ready</span>
                     {{else if eq .Status "generating"}}<span class="badge badge-muted">Generating</span>
-                    {{else}}<span class="badge badge-muted">{{.Status}}</span>{{end}}
+                    {{else}}<span class="badge badge--danger">{{.Status}}</span>{{end}}
                 </td>
                 <td>{{if gt .TotalCents 0}}${{printf "%.2f" (divf .TotalCents 100.0)}}{{else}} - {{end}}</td>
                 <td>${{printf "%.0f" (divf .BudgetCents 100.0)}}</td>
-                <td class="data-table__actions">
-                    {{if eq .Status "generating"}}
+                <td class="data-table__actions" data-row-click-ignore>
+                    {{if and (eq .Status "generating") (not .Canceled)}}
                     <a href="/plan/generate" class="btn-icon" title="View generation progress" aria-label="View generation progress">{{icon "autorenew"}}</a>
                     {{else if eq .Status "ready"}}
                     <a href="/plan?week={{.WeekStart}}" class="btn-icon" title="View plan" aria-label="View plan">{{icon "calendar"}}</a>
+                    {{else if and .CanRegenerate $d.HasLLM}}
+                    <button type="button" class="btn-icon" data-modal-open="must-include-modal"
+                            data-week="{{.WeekStart}}" data-mid-week="{{.TodayMidWeek}}"
+                            data-generate-confirm-title="Retry plan"
+                            data-generate-confirm="Retry generating the plan for {{fmtWeekRange .WeekStart .WeekEnd}}? This replaces the failed attempt."
+                            title="Retry generating this plan" aria-label="Retry generating this plan">{{icon "autorenew"}}</button>
                     {{else}}
                     <span class="btn-icon is-disabled" title="This plan didn't finish generating">{{icon "alert"}}</span>
                     {{end}}
@@ -227,4 +235,5 @@
     {{end}}
 </div>
 {{if $d.HasLLM}}{{template "partials/must_include_modal.html" .}}{{end}}
+{{template "partials/history_detail_modal.html" .}}
 {{end}}

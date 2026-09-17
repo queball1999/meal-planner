@@ -2918,3 +2918,29 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     font-size: var(--text-sm);
     color: var(--text-muted);
 }
+
+/* ── Plan history: click-a-row "quick details" modal ─────────────────────── */
+.data-table__row-link { cursor: pointer; }
+.data-table__row-link:hover td { background: var(--accent-bg); color: var(--accent-text); }
+.data-table__row-link:hover td .text-muted { color: inherit; }
+.data-table__row-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.history-detail__summary {
+    font-size: var(--text-lg);
+    margin-bottom: var(--sp-2);
+}
+
+.history-detail__days {
+    margin-top: var(--sp-4);
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--sp-1) var(--sp-4);
+}
+.history-detail__days dt {
+    font-weight: var(--weight-semi);
+    white-space: nowrap;
+}
+.history-detail__days dd {
+    margin: 0;
+    color: var(--text-muted);
+}

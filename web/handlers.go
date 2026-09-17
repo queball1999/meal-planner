@@ -47,7 +47,7 @@ type dashPageData struct {
 	StatsOverBudget bool
 	StatsMeals      int64
 	StatsPlans      int
-	RecentPlans     []*db.Plan // up to 8 for the history strip
+	RecentPlans     []historyPlanRow // up to 8 for the history strip
 	HasLLM          bool
 	Calendar        dashCalendar
 
@@ -291,7 +291,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		if len(all) > 8 {
 			all = all[:8]
 		}
-		data.RecentPlans = all
+		rows := make([]historyPlanRow, len(all))
+		for i, p := range all {
+			canRegen := canRegeneratePlan(p, curStart)
+			rows[i] = historyPlanRow{
+				Plan:          p,
+				CanRegenerate: canRegen,
+				TodayMidWeek:  canRegen && planIsMidWeekRetry(p, curStart, data.TodayMidWeek),
+			}
+		}
+		data.RecentPlans = rows
 	}
 
 	data.Calendar = buildDashCalendar(r, s.store, hh.ID, s.cfg.WeekStartDay, now, calRef)

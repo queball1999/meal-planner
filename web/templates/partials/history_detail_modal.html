@@ -1,0 +1,138 @@
+{{/* Row-click "quick details" modal for a table of plans - the /plan/history
+     table and the dashboard's plan-history card both use it. One shared
+     modal instance, filled from GET /plan/history/{id}/detail
+     (handlePlanHistoryDetail) on click rather than one modal per row, which
+     would mean fetching and rendering every plan's full meal list up front
+     just in case it's clicked.
+
+     Usage: include this once per page, then mark each row
+     data-history-detail="{{.ID}}" tabindex="0" role="button", and its
+     actions cell data-row-click-ignore (so a click on a link/button inside
+     it doesn't also open the modal). Delegated from document, not a
+     specific table id, so it works for however many such tables a page
+     has. */}}
+{{define "partials/history_detail_modal.html"}}
+{{template "partials/modal_open.html" dict "ID" "history-detail-modal" "Title" "Plan details" "Large" true}}
+  <div id="history-detail-body">
+    <p class="text-muted">Loading…</p>
+  </div>
+  <div class="modal-dialog__footer" id="history-detail-actions"></div>
+{{template "partials/modal_close.html" .}}
+
+<script>
+(function () {
+    var modal = document.getElementById('history-detail-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+
+    var body = document.getElementById('history-detail-body');
+    var actions = document.getElementById('history-detail-actions');
+
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderDetail(d) {
+        var html = '<div class="history-detail__summary">' +
+            '<strong>' + esc(d.week_label) + '</strong> - ' +
+            (d.canceled ? 'Canceled' : esc(d.status)) +
+            '</div>';
+
+        if (d.total_label || d.budget_label) {
+            html += '<p class="text-muted">';
+            html += d.total_label ? esc(d.total_label) + ' spent' : 'Not yet priced';
+            if (d.budget_label) html += ' of ' + esc(d.budget_label) + ' budget';
+            html += '</p>';
+        }
+        if (d.confidence) html += '<p class="text-muted">' + esc(d.confidence) + '</p>';
+
+        if (d.days && d.days.length) {
+            html += '<dl class="history-detail__days">';
+            d.days.forEach(function (day) {
+                html += '<dt>' + esc(day.date_label) + '</dt><dd>';
+                html += (day.meals || []).map(function (m) {
+                    return esc(m.slot) + ': ' + esc(m.title);
+                }).join('<br>');
+                html += '</dd>';
+            });
+            html += '</dl>';
+        } else {
+            html += '<p class="text-muted">This plan has no saved meals.</p>';
+        }
+        body.innerHTML = html;
+
+        actions.innerHTML = '';
+        if (d.can_view) {
+            var viewLink = document.createElement('a');
+            viewLink.href = '/plan?plan_id=' + d.plan_id;
+            viewLink.className = 'btn btn-primary';
+            viewLink.textContent = 'View plan';
+            actions.appendChild(viewLink);
+        }
+        // Rather than posting to /plan/generate directly, this is a real
+        // data-modal-open="must-include-modal" trigger - the same element
+        // shape as the retry icon on the history/dashboard rows - so a click
+        // here goes through modal.js and must_include_modal.html's own
+        // delegated document click listeners exactly like every other
+        // regenerate action, picking up the recipe picker and the
+        // whole-week/remaining-days confirm dialog instead of firing blind.
+        if (d.can_regenerate && d.has_llm) {
+            var retryBtn = document.createElement('button');
+            retryBtn.type = 'button';
+            retryBtn.className = 'btn btn-secondary';
+            retryBtn.textContent = 'Retry generating';
+            retryBtn.setAttribute('data-modal-open', 'must-include-modal');
+            retryBtn.setAttribute('data-week', d.week_start || '');
+            retryBtn.setAttribute('data-mid-week', d.mid_week ? 'true' : 'false');
+            retryBtn.setAttribute('data-generate-confirm-title', 'Retry plan');
+            retryBtn.setAttribute('data-generate-confirm',
+                'Retry generating the plan for ' + (d.week_label || 'this week') + '? This replaces the failed attempt.');
+            // This modal has to get out of the way first, or the two stack.
+            retryBtn.addEventListener('click', function () {
+                window.goeat.closeModal('history-detail-modal');
+            });
+            actions.appendChild(retryBtn);
+        }
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'btn btn-ghost';
+        closeBtn.setAttribute('data-modal-close', '');
+        closeBtn.textContent = 'Close';
+        actions.appendChild(closeBtn);
+    }
+
+    function openDetail(id) {
+        body.innerHTML = '<p class="text-muted">Loading…</p>';
+        actions.innerHTML = '';
+        window.goeat.openModal('history-detail-modal');
+        fetch('/plan/history/' + id + '/detail', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || !d.ok) throw new Error('bad response');
+                renderDetail(d);
+            })
+            .catch(function () {
+                body.innerHTML = '<p class="text-muted">Couldn\'t load this plan\'s details.</p>';
+            });
+    }
+
+    document.addEventListener('click', function (e) {
+        if (!(e.target instanceof Element)) return;
+        if (e.target.closest('[data-row-click-ignore]')) return;
+        var row = e.target.closest('[data-history-detail]');
+        if (!row) return;
+        openDetail(row.getAttribute('data-history-detail'));
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (!(e.target instanceof Element)) return;
+        if (e.target.closest('[data-row-click-ignore]')) return;
+        var row = e.target.closest('[data-history-detail]');
+        if (!row) return;
+        e.preventDefault();
+        openDetail(row.getAttribute('data-history-detail'));
+    });
+})();
+</script>
+{{end}}

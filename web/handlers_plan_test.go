@@ -20,6 +20,62 @@ import (
 // "ready" - otherwise two "ready" plans stack up for one week and
 // GetLatestPlan/GetPlanByWeekStart's "one active plan per week" invariant
 // breaks.
+// TestCanRegeneratePlan covers the gate behind /plan/history's retry button:
+// it must line up exactly with what handlePlanGenerate itself would accept,
+// or the button would either offer a retry that then gets refused, or hide
+// one that would have worked.
+func TestCanRegeneratePlan(t *testing.T) {
+	curStart := time.Date(2026, 1, 12, 0, 0, 0, 0, time.UTC) // a Monday, "today"'s week
+
+	cases := []struct {
+		name string
+		p    *db.Plan
+		want bool
+	}{
+		{"failed current week", &db.Plan{Status: "error", WeekStart: "2026-01-12"}, true},
+		{"failed future week", &db.Plan{Status: "error", WeekStart: "2026-01-19"}, true},
+		{"failed past week - can't regenerate", &db.Plan{Status: "error", WeekStart: "2026-01-05"}, false},
+		{"failed but superseded/canceled", &db.Plan{Status: "error", WeekStart: "2026-01-12", Canceled: true}, false},
+		{"ready plan - nothing to retry", &db.Plan{Status: "ready", WeekStart: "2026-01-12"}, false},
+		{"still generating", &db.Plan{Status: "generating", WeekStart: "2026-01-12"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := canRegeneratePlan(c.p, curStart); got != c.want {
+				t.Errorf("canRegeneratePlan() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestPlanIsMidWeekRetry covers the gate behind offering the must-include
+// modal's "whole week or just the remaining days" choice on a retry: it must
+// only fire for the live week, and only when today isn't that week's first
+// day - a future week's retry (nothing has happened yet) or a "today is the
+// first day" retry (nothing to skip) should just replan normally.
+func TestPlanIsMidWeekRetry(t *testing.T) {
+	curStart := time.Date(2026, 1, 12, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name         string
+		weekStart    string
+		todayMidWeek bool
+		want         bool
+	}{
+		{"live week, mid-week", "2026-01-12", true, true},
+		{"live week, but today is the first day", "2026-01-12", false, false},
+		{"future week - never mid-week", "2026-01-19", true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := &db.Plan{WeekStart: c.weekStart}
+			if got := planIsMidWeekRetry(p, curStart, c.todayMidWeek); got != c.want {
+				t.Errorf("planIsMidWeekRetry() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestReconcilePlanStatus_CancelsOtherPlansForWeek(t *testing.T) {
 	ctx := context.Background()
 	store, err := db.Open(":memory:")

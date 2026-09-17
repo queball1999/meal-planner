@@ -107,6 +107,39 @@ func TestDashboardMealsCarryHoverTrigger(t *testing.T) {
 	}
 }
 
+// The dashboard's plan-history card shares the same row-click detail modal
+// and retry-on-failure button as the full /plan/history page - this must not
+// silently regress back to a plain, non-clickable table.
+func TestDashboardPlanHistoryCardHasDetailAndRetry(t *testing.T) {
+	out := renderPage(t, "index", pageData{
+		AppName: "Go Eat",
+		Page:    "index",
+		User:    &db.User{Username: "sam"},
+		Data: dashPageData{
+			HasLLM: true,
+			RecentPlans: []historyPlanRow{
+				{Plan: &db.Plan{ID: 9, WeekStart: "2026-01-12", WeekEnd: "2026-01-18", Status: "error", BudgetCents: 10000}, CanRegenerate: true},
+			},
+		},
+	})
+
+	if !strings.Contains(out, `data-history-detail="9"`) {
+		t.Error("dashboard plan-history row is not wired for the detail modal")
+	}
+	if !strings.Contains(out, "Retry generating this plan") {
+		t.Error("dashboard plan-history row does not offer a retry for a regeneratable failed plan")
+	}
+	// The retry action must go through must-include-modal (same picker and
+	// confirm dialog as every other regenerate button), not post straight to
+	// /plan/generate.
+	if !strings.Contains(out, `data-modal-open="must-include-modal"`) {
+		t.Error("dashboard retry button does not open the must-include-modal picker/confirm flow")
+	}
+	if !strings.Contains(out, `id="history-detail-modal"`) {
+		t.Error("dashboard is missing the shared history-detail modal")
+	}
+}
+
 // costStub answers the one query mealCostLabel makes. db.Store is embedded as
 // a nil interface rather than implemented: the interface has well over a
 // hundred methods, and a stub that spells out all of them would need editing

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -554,6 +555,39 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// historyPlanRow pairs a plan with whether /plan/history (or the dashboard's
+// plan-history card) should offer a Regenerate action for it - see
+// canRegeneratePlan - and, when it does, whether that retry is for the live
+// week on a day other than its first (TodayMidWeek) - the must-include
+// modal's "whole week or just the remaining days" choice only makes sense
+// then, same as everywhere else it's offered (dashPageData/
+// planPageData.TodayMidWeek).
+type historyPlanRow struct {
+	*db.Plan
+	CanRegenerate bool
+	TodayMidWeek  bool
+}
+
+// canRegeneratePlan reports whether a retry from /plan/history would
+// actually be accepted by handlePlanGenerate: the plan's own week is current
+// or future (past weeks are refused there - see its comment), and the plan
+// is the active, failed attempt for that week rather than one already
+// superseded by a later regenerate (canceled) or one that finished fine
+// (ready).
+func canRegeneratePlan(p *db.Plan, curStart time.Time) bool {
+	if p.Status != "error" || p.Canceled {
+		return false
+	}
+	ws, err := time.Parse("2006-01-02", p.WeekStart)
+	return err == nil && !ws.Before(curStart)
+}
+
+// planIsMidWeekRetry reports whether a regeneratable plan's own week is the
+// live week on a day other than its first - see historyPlanRow.TodayMidWeek.
+func planIsMidWeekRetry(p *db.Plan, curStart time.Time, todayMidWeek bool) bool {
+	return todayMidWeek && p.WeekStart == curStart.Format("2006-01-02")
+}
+
 // handlePlanHistory lists all past plans with optional date-range filtering.
 // Accepts ?from=YYYY-MM-DD&to=YYYY-MM-DD; params are URL-reflected.
 func (s *Server) handlePlanHistory(w http.ResponseWriter, r *http.Request) {
@@ -573,14 +607,104 @@ func (s *Server) handlePlanHistory(w http.ResponseWriter, r *http.Request) {
 		plans, _ = s.store.ListPlans(ctx, hh.ID)
 	}
 
-	type historyPageData struct {
-		Plans []*db.Plan
-		From  string
-		To    string
-		Page  Pagination
+	now := time.Now()
+	curStart, _ := plan.WeekBounds(now, s.cfg.WeekStartDay)
+	todayMidWeek := !now.Truncate(24 * time.Hour).Equal(curStart)
+	rows := make([]historyPlanRow, len(plans))
+	for i, p := range plans {
+		canRegen := canRegeneratePlan(p, curStart)
+		rows[i] = historyPlanRow{
+			Plan:          p,
+			CanRegenerate: canRegen,
+			TodayMidWeek:  canRegen && planIsMidWeekRetry(p, curStart, todayMidWeek),
+		}
 	}
-	plans, page := paginate(r, plans)
-	s.render(w, r, "history", historyPageData{Plans: plans, From: from, To: to, Page: page})
+
+	type historyPageData struct {
+		Plans  []historyPlanRow
+		From   string
+		To     string
+		Page   Pagination
+		HasLLM bool
+	}
+	rows, page := paginate(r, rows)
+	s.render(w, r, "history", historyPageData{Plans: rows, From: from, To: to, Page: page, HasLLM: s.llmGen() != nil})
+}
+
+// handlePlanHistoryDetail serves the JSON the history page's row-click modal
+// renders - week/status/budget summary plus every meal grouped by day, so
+// the household can see what a past (or failed) plan actually contained
+// without leaving /plan/history to open the full calendar.
+//
+//	GET /plan/history/{id}/detail
+func (s *Server) handlePlanHistoryDetail(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad id"})
+		return
+	}
+	ctx := r.Context()
+	p, err := s.store.GetPlanByID(ctx, id)
+	if err != nil || p == nil || p.HouseholdID != hh.ID {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "plan not found"})
+		return
+	}
+
+	meals, _ := s.store.ListMealsByPlan(ctx, p.ID)
+	byDay := make(map[string][]map[string]any)
+	var dayOrder []string
+	for _, m := range meals {
+		if _, seen := byDay[m.Day]; !seen {
+			dayOrder = append(dayOrder, m.Day)
+		}
+		byDay[m.Day] = append(byDay[m.Day], map[string]any{
+			"slot":  m.Slot,
+			"title": m.Title,
+		})
+	}
+	sort.Strings(dayOrder)
+	days := make([]map[string]any, 0, len(dayOrder))
+	for _, d := range dayOrder {
+		days = append(days, map[string]any{
+			"date_label": dayLabel(d),
+			"meals":      byDay[d],
+		})
+	}
+
+	totalLabel, budgetLabel := "", ""
+	if p.TotalCents > 0 {
+		totalLabel = fmt.Sprintf("$%.2f", float64(p.TotalCents)/100)
+	}
+	if p.BudgetCents > 0 {
+		budgetLabel = fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100)
+	}
+
+	now := time.Now()
+	curStart, _ := plan.WeekBounds(now, s.cfg.WeekStartDay)
+	todayMidWeek := !now.Truncate(24 * time.Hour).Equal(curStart)
+	canRegen := canRegeneratePlan(p, curStart)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":             true,
+		"plan_id":        p.ID,
+		"week_start":     p.WeekStart,
+		"week_label":     fmtMonthDay(p.WeekStart) + " - " + fmtMonthDay(p.WeekEnd),
+		"status":         p.Status,
+		"canceled":       p.Canceled,
+		"total_label":    totalLabel,
+		"budget_label":   budgetLabel,
+		"confidence":     p.ConfidenceSummary,
+		"meal_count":     len(meals),
+		"days":           days,
+		"can_view":       p.Status == "ready",
+		"can_regenerate": canRegen,
+		"mid_week":       canRegen && planIsMidWeekRetry(p, curStart, todayMidWeek),
+		"has_llm":        s.llmGen() != nil,
+	})
 }
 
 // handlePlanDelete removes a plan (and its meals/recipes/ingredients via
