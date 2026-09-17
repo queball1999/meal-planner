@@ -2045,7 +2045,17 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     cursor: pointer;
 }
 
-.people-picker__option:hover { background: var(--accent-bg); }
+/* --accent-text, not the row's default --text: --accent-bg is a light pink
+ * that --text (tuned for the page background) can wash out against - see
+ * .recipe-picker__btn:hover above for the same gotcha. Its .text-muted
+ * children (e.g. must_include_modal.html's "(recommended - ...)" hint) carry
+ * their own muted color, so it needs the override repeated. */
+.people-picker__option:hover {
+    background: var(--accent-bg);
+    color: var(--accent-text);
+}
+
+.people-picker__option:hover .text-muted { color: var(--accent-text); }
 
 /* The name takes the slack so every portion multiplier lines up on the right. */
 .people-picker__option > span:first-of-type { flex: 1; }
@@ -2084,13 +2094,55 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     cursor: pointer;
 }
 
-.recipe-picker__btn:hover { background: var(--accent-bg); }
+/* --accent-text, not the row's default --text: --accent-bg is a light pink
+ * that --text (tuned for the page background) can wash out against - see the
+ * .cal-cell--today comment below for the same gotcha. .recipe-picker__meta
+ * carries its own .text-muted color, so it needs the override repeated. */
+.recipe-picker__btn:hover,
+.recipe-picker__btn.is-selected {
+    background: var(--accent-bg);
+    color: var(--accent-text);
+}
 
 .recipe-picker__title { font-weight: var(--weight-medium); }
 
 .recipe-picker__meta {
     font-size: var(--text-xs);
     white-space: nowrap;
+}
+
+.recipe-picker__btn:hover .recipe-picker__meta,
+.recipe-picker__btn.is-selected .recipe-picker__meta {
+    color: var(--accent-text);
+}
+
+/* Selected-recipe chips (must-include picker on the generate form). */
+.chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--radius-full, 999px);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+    font-size: var(--text-sm);
+}
+
+.chip__remove {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: var(--text-base);
+    line-height: 1;
+    padding: 0 0 0 var(--sp-1);
 }
 
 /* Sits under "No meal" on an empty slot, so the card is an invitation rather

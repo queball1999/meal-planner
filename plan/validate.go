@@ -19,10 +19,22 @@ var validEfforts = map[string]bool{
 }
 
 // Validate checks the generated plan for schema validity, allergy violations,
-// and diet tag compliance (§7.5). All 21 day×slot combinations must be present.
-func Validate(gp GeneratedPlan, profile *PreferenceProfile) error {
-	if len(gp.Meals) != 21 {
-		return fmt.Errorf("plan has %d meals, want 21", len(gp.Meals))
+// and diet tag compliance (§7.5). Every day×slot combination in days must be
+// present, and no meal may land on a day outside it. days is lowercase day
+// names ("sunday", ...); nil/empty means the full week (all 7 days, the
+// original 21-meal check) - a mid-week generation that asked the LLM for only
+// the remaining days passes just those here instead.
+func Validate(gp GeneratedPlan, profile *PreferenceProfile, days []string) error {
+	wantDays := validDays
+	if len(days) > 0 {
+		wantDays = make(map[string]bool, len(days))
+		for _, d := range days {
+			wantDays[strings.ToLower(d)] = true
+		}
+	}
+	wantMeals := len(wantDays) * len(validSlots)
+	if len(gp.Meals) != wantMeals {
+		return fmt.Errorf("plan has %d meals, want %d", len(gp.Meals), wantMeals)
 	}
 
 	// Build lowercase allergy and disliked-food sets for ingredient scanning.
@@ -37,6 +49,9 @@ func Validate(gp GeneratedPlan, profile *PreferenceProfile) error {
 
 		if !validDays[day] {
 			return fmt.Errorf("meal %d: invalid day %q", i, m.Day)
+		}
+		if !wantDays[day] {
+			return fmt.Errorf("meal %d (%s %s): day not in the requested range", i, day, slot)
 		}
 		if !validSlots[slot] {
 			return fmt.Errorf("meal %d: invalid slot %q", i, m.Slot)
@@ -100,8 +115,8 @@ func Validate(gp GeneratedPlan, profile *PreferenceProfile) error {
 		}
 	}
 
-	// Ensure all 21 combinations are present.
-	for day := range validDays {
+	// Ensure every requested day×slot combination is present.
+	for day := range wantDays {
 		for slot := range validSlots {
 			if !seen[day+"|"+slot] {
 				return fmt.Errorf("missing meal for %s %s", day, slot)

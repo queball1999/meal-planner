@@ -61,13 +61,11 @@
     </div>
     {{end}}
     {{if and .Data.HasLLM (not .Data.ReadOnly)}}
-    <form method="POST" action="/plan/generate"
-          data-confirm="This replaces your current plan for {{.Data.WeekStart}} - {{.Data.WeekEnd}} with a new one. The current plan will be canceled but kept in Plan History for reference." data-confirm-title="Regenerate plan" data-confirm-label="Regenerate">
-        {{.CSRFField}}
-        <button type="submit" class="btn btn-secondary btn-sm">
-            {{icon "autorenew"}} Regenerate plan
-        </button>
-    </form>
+    <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal"
+            data-week="" data-mid-week="{{.Data.TodayMidWeek}}" data-generate-confirm-title="Regenerate plan"
+            data-generate-confirm="This replaces your current plan for {{.Data.WeekStart}} - {{.Data.WeekEnd}} with a new one. The current plan will be canceled but kept in Plan History for reference.">
+        {{icon "autorenew"}} Regenerate plan
+    </button>
     {{end}}
 </div>
 
@@ -493,12 +491,9 @@
         allergies, budget, and meal slot hints.
     </p>
     {{if .Data.HasLLM}}
-    <form method="POST" action="/plan/generate">
-        {{.CSRFField}}
-        <button type="submit" class="btn btn-primary">
-            {{icon "chef-hat"}} Generate this week's plan
-        </button>
-    </form>
+    <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-week="" data-mid-week="{{.Data.TodayMidWeek}}">
+        {{icon "chef-hat"}} Generate this week's plan
+    </button>
     {{else}}
     <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
     {{end}}
@@ -506,4 +501,5 @@
 {{end}}
 
 {{end}}{{/* end tab branch */}}
+{{if .Data.HasLLM}}{{template "partials/must_include_modal.html" .}}{{end}}
 {{end}}

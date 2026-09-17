@@ -50,6 +50,7 @@ func (s *Server) handleRecipeOptions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't load recipes"})
 		return
 	}
+	recipes = excludeLeftoverRecipes(recipes)
 
 	// Capped: the picker is a short list to scan, not a browsable catalog -
 	// /recipes is that. A household past the cap searches instead.
@@ -131,7 +132,9 @@ func (s *Server) handleMealFill(w http.ResponseWriter, r *http.Request) {
 		log.Printf("meal fill: reset day status %s: %v", date, err)
 	}
 
-	s.repriceInBackground(p.ID, hh)
+	// Not quantity-only: this adds new meal content (a picked/generated
+	// recipe), so its ingredients need a real price the same as generation.
+	s.repriceInBackground(p.ID, hh, false)
 	s.setNotify(w, NotifySuccess, mealFillMessage(res, slot, date))
 	http.Redirect(w, r, "/plan", http.StatusSeeOther)
 }

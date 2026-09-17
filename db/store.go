@@ -173,6 +173,7 @@ type Store interface {
 	ListShoppingListItems(ctx context.Context, planID int64) ([]*ShoppingListItem, error)
 	GetShoppingListItem(ctx context.Context, id int64) (*ShoppingListItem, error)
 	UpdateShoppingListItemPrice(ctx context.Context, p UpdateShoppingListItemPriceParams) error
+	UpdateShoppingListItemQuantity(ctx context.Context, id int64, buyQuantity, packSize float64, lineTotalCents int64, pantryQtyUsed float64, inPantry bool) error
 	CheckShoppingListItem(ctx context.Context, id int64, checked bool) error
 	DeleteShoppingListItem(ctx context.Context, id int64) error
 	DeleteShoppingListItems(ctx context.Context, planID int64) error

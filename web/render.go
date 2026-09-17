@@ -30,6 +30,15 @@ type pageData struct {
 	NotifyKind string        // "success" | "info" | "warning" | "danger"
 	Data       any           // page-specific data
 
+	// WeekParam is the week the current request is explicitly viewing -
+	// ?week= on /plan and /plan/list, ?calref= on the dashboard - carried
+	// into the top nav (partials/nav_items.html) so switching between
+	// Dashboard/Plan/Shopping List while looking at a non-default week keeps
+	// showing that same week instead of snapping back to today/latest.
+	// Empty whenever the request itself landed on a page with no such param,
+	// so the nav links stay bare and still resolve to "today" by default.
+	WeekParam string
+
 	// Footer timing (§ middleware.Timing). PageLoadMs is wall-clock from the
 	// top of the middleware chain to the start of template work; TemplateMs
 	// is ParseFS + execute, timed by rendering once to io.Discard before the
@@ -197,6 +206,20 @@ func templateFuncs() template.FuncMap {
 	}
 }
 
+// requestWeekParam reads the week a request explicitly asked to view -
+// /plan and /plan/list's ?week=, or the dashboard's ?calref= - so the top
+// nav (partials/nav_items.html) can carry it into the Dashboard/Plan/
+// Shopping List links. Only an explicit param counts: a bare "/plan" with
+// neither means the request itself fell back to today/latest, and the nav
+// should keep offering that same bare, always-current link rather than
+// pinning to whatever week that fallback happened to resolve to.
+func requestWeekParam(r *http.Request) string {
+	if v := r.URL.Query().Get("week"); v != "" {
+		return v
+	}
+	return r.URL.Query().Get("calref")
+}
+
 // render parses layout.html + the named page template and executes them.
 // Page templates live at web/templates/<name>.html and must define a
 // "content" block consumed by layout.html.
@@ -217,6 +240,7 @@ func (s *Server) renderWithPage(w http.ResponseWriter, r *http.Request, name, pa
 		CSRFField: csrf.TemplateField(r),
 		CSRFToken: csrf.Token(r),
 		Data:      data,
+		WeekParam: requestWeekParam(r),
 	}
 	pd.NotifyKind, pd.Notify = s.popNotify(w, r)
 	if start, ok := middleware.RequestStart(r); ok {

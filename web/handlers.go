@@ -67,6 +67,13 @@ type dashPageData struct {
 	// through). The stats strip and calendar then follow that plan's week so
 	// its meals and budget render instead of a blank current week.
 	PlanWeekAhead bool
+
+	// TodayMidWeek is true when today isn't the live week's first day - only
+	// meaningful together with IsCurrentWeek. The must-include modal's
+	// "whole week or just the remaining days" choice only makes sense then;
+	// asking it for a future week (nothing has happened yet) or a past one
+	// (not generatable at all) would be a no-op either way.
+	TodayMidWeek bool
 }
 
 // dashCalendar is the dashboard's schedule widget: a week (default) or month
@@ -206,6 +213,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		IsCurrentWeek: isCurrentWeek,
 		IsPastWeek:    weekStart.Before(curStart),
 		WeekParam:     from,
+		TodayMidWeek:  !now.Truncate(24 * time.Hour).Equal(curStart),
 	}
 	if !isCurrentWeek {
 		data.WeekNavLabel = weekStart.Format("Jan 2") + " – " + weekEnd.Format("Jan 2")
@@ -218,6 +226,18 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	var p *db.Plan
 	if isCurrentWeek {
 		p, _ = s.store.GetLatestPlan(ctx, hh.ID)
+		// GetLatestPlan is "most recently created", not "current or later" -
+		// if nothing has been generated for the current week yet but an old
+		// plan from a past week still exists (e.g. it was never regenerated,
+		// or the newest plan got deleted), that stale plan is still the
+		// "latest" one and must not be mislabeled "This week". Only follow
+		// it forward (current/future); otherwise fall back to whatever plan
+		// actually belongs to the current week, which may be none.
+		if p != nil {
+			if ws, err := time.Parse("2006-01-02", p.WeekStart); err == nil && ws.UTC().Before(curStart) {
+				p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, from)
+			}
+		}
 	} else {
 		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, from)
 	}

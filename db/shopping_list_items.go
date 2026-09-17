@@ -56,7 +56,8 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
-		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending
+		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending,
+		       pack_amount, pack_unit
 		FROM shopping_list_items
 		WHERE plan_id = ?
 		ORDER BY store_id, display_name`, planID)
@@ -75,6 +76,7 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 			&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 			&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
 			&checked, &inPantry, &item.PantryQtyUsed, &pending,
+			&item.PackAmount, &item.PackUnit,
 		); err != nil {
 			return nil, err
 		}
@@ -92,7 +94,8 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
-		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending
+		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending,
+		       pack_amount, pack_unit
 		FROM shopping_list_items
 		WHERE id = ?`, id)
 
@@ -104,6 +107,7 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 		&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 		&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
 		&checked, &inPantry, &item.PantryQtyUsed, &pending,
+		&item.PackAmount, &item.PackUnit,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -137,11 +141,26 @@ func (s *store) UpdateShoppingListItemPrice(ctx context.Context, p UpdateShoppin
 		UPDATE shopping_list_items
 		SET store_id = ?, item_id = ?, buy_quantity = ?, pack_size = ?, purchase_unit = ?,
 		    unit_price_cents = ?, line_total_cents = ?, price_source = ?, confidence = ?,
-		    pantry_qty_used = ?, in_pantry = ?, pending = 0
+		    pantry_qty_used = ?, in_pantry = ?, pending = 0, pack_amount = ?, pack_unit = ?
 		WHERE id = ?`,
 		storeID, itemID, p.BuyQuantity, p.PackSize, p.PurchaseUnit,
 		p.UnitPriceCents, p.LineTotalCents, p.PriceSource, p.Confidence,
-		p.PantryQtyUsed, boolInt(p.InPantry), p.ID)
+		p.PantryQtyUsed, boolInt(p.InPantry), p.PackAmount, p.PackUnit, p.ID)
+	return err
+}
+
+// UpdateShoppingListItemQuantity rescales an already-priced line for a new
+// required quantity (guest count or meal-skip change) without touching its
+// resolved price/source/confidence/store - see
+// pricing.RescaleShoppingList, which is the only caller. Unlike
+// UpdateShoppingListItemPrice this never asked a provider for anything.
+func (s *store) UpdateShoppingListItemQuantity(ctx context.Context, id int64, buyQuantity, packSize float64, lineTotalCents int64, pantryQtyUsed float64, inPantry bool) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE shopping_list_items
+		SET buy_quantity = ?, pack_size = ?, line_total_cents = ?,
+		    pantry_qty_used = ?, in_pantry = ?
+		WHERE id = ?`,
+		buyQuantity, packSize, lineTotalCents, pantryQtyUsed, boolInt(inPantry), id)
 	return err
 }
 

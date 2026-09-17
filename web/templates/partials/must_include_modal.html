@@ -1,0 +1,223 @@
+{{/* Shared "meals you want to include" step in front of plan generation.
+     One instance per page (index.html, plan.html) - opened instead of
+     submitting the generate form directly, so the household gets a chance to
+     say "make sure X is in there" before the LLM runs.
+
+     Usage: a trigger button carries data-modal-open="must-include-modal",
+     data-week (may be "", meaning "the current week"), data-mid-week
+     ("true" when today isn't that week's first day - see dashPageData/
+     planPageData.TodayMidWeek), and, for a regenerate that should confirm
+     before replacing a plan, data-generate-confirm / data-generate-confirm-
+     title matching what the old direct-submit form used. Deliberately not
+     data-confirm/data-confirm-title on the trigger itself: modal.js
+     intercepts and confirms *any* click on a data-confirm element outside a
+     form, which would pop the dialog before this picker even opened. This
+     script copies them onto the form instead, so modal.js's normal
+     submit-time interception fires once "Generate plan" is clicked - after
+     the picker, not before it.
+
+     The modal's own form always posts to /plan/generate. */}}
+{{define "partials/must_include_modal.html"}}
+{{template "partials/modal_open.html" dict "ID" "must-include-modal" "Title" "Anything you want to eat this week?" "Form" true}}
+  <p class="text-muted">
+    Pick from your saved recipes, or just describe something - the plan will
+    build the rest of the week around it. Leave both blank to let it decide
+    everything.
+  </p>
+  <form method="POST" action="/plan/generate" id="must-include-form">
+    {{.CSRFField}}
+    <input type="hidden" name="week" id="must-include-week" value="">
+    <input type="hidden" name="scope" id="must-include-scope" value="full">
+
+    <div class="field" id="must-include-scope-field" hidden>
+      <span class="field-label">This week is already underway - what should it plan?</span>
+      <label class="people-picker__option">
+        <input type="radio" name="scope-choice" value="remaining" checked>
+        <span>Just the remaining days <span class="text-muted">(recommended - skips days that already happened)</span></span>
+      </label>
+      <label class="people-picker__option">
+        <input type="radio" name="scope-choice" value="full">
+        <span>The whole week <span class="text-muted">(replans every day, including ones already past)</span></span>
+      </label>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="must-include-q">Search your saved recipes</label>
+      <input class="field-input" id="must-include-q" type="search" autocomplete="off"
+             placeholder="Type to filter…">
+    </div>
+    <ul class="recipe-picker" id="must-include-list" role="listbox" aria-multiselectable="true"
+        aria-label="Saved recipes"></ul>
+    <p class="field-hint" id="must-include-empty" hidden>
+      No saved recipes match. Import or write one on the
+      <a href="/recipes">Recipes</a> page, or just type it below instead.
+    </p>
+    <div id="must-include-selected" class="chip-row" aria-live="polite"></div>
+
+    <div class="field">
+      <label class="field-label" for="must-include-text">Or type meals you want (one per line)</label>
+      <textarea class="field-input" id="must-include-text" name="must_include_text" rows="3"
+                placeholder="e.g. something with salmon on Friday"></textarea>
+    </div>
+
+    <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "chef-hat"}} Generate plan</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
+
+<script>
+(function () {
+    var modal = document.getElementById('must-include-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+
+    var form = document.getElementById('must-include-form');
+    var weekInput = document.getElementById('must-include-week');
+    var scopeInput = document.getElementById('must-include-scope');
+    var scopeField = document.getElementById('must-include-scope-field');
+    var scopeChoices = form.querySelectorAll('input[name="scope-choice"]');
+    var q = document.getElementById('must-include-q');
+    var list = document.getElementById('must-include-list');
+    var empty = document.getElementById('must-include-empty');
+    var selectedRow = document.getElementById('must-include-selected');
+    var selected = {}; // id -> title
+
+    scopeChoices.forEach(function (r) {
+        r.addEventListener('change', function () {
+            scopeInput.value = r.value;
+        });
+    });
+
+    function renderSelected() {
+        selectedRow.innerHTML = '';
+        Object.keys(selected).forEach(function (id) {
+            var chip = document.createElement('span');
+            chip.className = 'chip';
+            chip.textContent = selected[id];
+
+            var hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'recipe_ids';
+            hidden.value = id;
+            chip.appendChild(hidden);
+
+            var rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'chip__remove';
+            rm.setAttribute('aria-label', 'Remove ' + selected[id]);
+            rm.textContent = '×';
+            rm.addEventListener('click', function () {
+                delete selected[id];
+                renderSelected();
+                renderList(lastRows);
+            });
+            chip.appendChild(rm);
+
+            selectedRow.appendChild(chip);
+        });
+    }
+
+    var lastRows = [];
+    function renderList(rows) {
+        lastRows = rows;
+        list.innerHTML = '';
+        empty.hidden = rows.length > 0;
+        rows.forEach(function (rc) {
+            var li = document.createElement('li');
+            li.className = 'recipe-picker__row';
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'recipe-picker__btn';
+            var isSelected = Object.prototype.hasOwnProperty.call(selected, String(rc.id));
+            btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+            if (isSelected) btn.classList.add('is-selected');
+
+            var title = document.createElement('span');
+            title.className = 'recipe-picker__title';
+            title.textContent = (isSelected ? '✓ ' : '') + rc.title;
+            var meta = document.createElement('span');
+            meta.className = 'recipe-picker__meta text-muted';
+            var bits = [];
+            if (rc.servings) bits.push(rc.servings + ' srv');
+            if (rc.minutes) bits.push(rc.minutes + ' min');
+            if (rc.source) bits.push(rc.source);
+            meta.textContent = bits.join(' · ');
+
+            btn.appendChild(title);
+            btn.appendChild(meta);
+            btn.addEventListener('click', function () {
+                var id = String(rc.id);
+                if (selected[id]) {
+                    delete selected[id];
+                } else {
+                    selected[id] = rc.title;
+                }
+                renderSelected();
+                renderList(lastRows);
+            });
+            li.appendChild(btn);
+            list.appendChild(li);
+        });
+    }
+
+    var searchTimer;
+    function loadRecipes(query) {
+        fetch('/plan/recipe-options' + (query ? '?q=' + encodeURIComponent(query) : ''), {
+            headers: { 'Accept': 'application/json' },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { renderList((d && d.recipes) || []); })
+            .catch(function () { renderList([]); });
+    }
+
+    q.addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        var val = q.value;
+        searchTimer = setTimeout(function () { loadRecipes(val); }, 200);
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!(e.target instanceof Element)) return;
+        var trigger = e.target.closest('[data-modal-open="must-include-modal"]');
+        if (!trigger) return;
+        weekInput.value = trigger.getAttribute('data-week') || '';
+        // Only offer "whole week or just the remaining days" when the trigger
+        // says today is mid-week (see dashPageData/planPageData.TodayMidWeek) -
+        // a future week hasn't started yet and a past one can't be generated
+        // at all, so the choice would be a no-op either way. Default to
+        // "remaining" (the LLM-call-saving option) whenever it's offered;
+        // otherwise the hidden field stays "full", the only sensible value.
+        var midWeek = trigger.getAttribute('data-mid-week') === 'true';
+        scopeField.hidden = !midWeek;
+        if (midWeek) {
+            scopeChoices.forEach(function (r) { r.checked = r.value === 'remaining'; });
+            scopeInput.value = 'remaining';
+        } else {
+            scopeInput.value = 'full';
+        }
+        // The trigger's own confirm text/title live under data-generate-confirm*,
+        // not data-confirm: modal.js treats any data-confirm element outside a
+        // form as something to intercept and confirm on click, which would pop
+        // the "this replaces your plan" dialog before the picker even opens.
+        // It belongs on this form instead, so it fires at submit time - after
+        // "Generate plan" is clicked, not before the picker shows.
+        var confirmMsg = trigger.getAttribute('data-generate-confirm') || '';
+        if (confirmMsg) {
+            form.setAttribute('data-confirm', confirmMsg);
+            form.setAttribute('data-confirm-title', trigger.getAttribute('data-generate-confirm-title') || 'Generate plan');
+        } else {
+            form.removeAttribute('data-confirm');
+            form.removeAttribute('data-confirm-title');
+        }
+        selected = {};
+        renderSelected();
+        q.value = '';
+        document.getElementById('must-include-text').value = '';
+        loadRecipes('');
+    });
+})();
+</script>
+{{end}}

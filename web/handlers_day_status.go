@@ -167,8 +167,9 @@ func (s *Server) handleDayStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The shopping list is built from cooking days only, so any status change
-	// moves it - as does dropping meals.
-	s.repriceInBackground(p.ID, hh)
+	// moves it - as does dropping meals. Quantity-only: this never adds new
+	// meal content, only drops or restores what was already planned.
+	s.repriceInBackground(p.ID, hh, true)
 
 	s.setNotify(w, NotifySuccess, dayStatusMessage(date, status, resolved, resolution))
 

@@ -34,7 +34,7 @@
             <span class="nav-toggle__bar"></span>
         </button>
         <nav class="site-nav" id="site-nav" aria-label="Main navigation">
-            {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav"}}
+            {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav" "WeekParam" .WeekParam}}
         </nav>
         {{end}}
 
@@ -67,7 +67,7 @@
     {{if .User}}
     <div class="popover" id="navMenu" data-popover-panel hidden>
         <nav class="popover__list" aria-label="Site menu">
-            {{template "partials/nav_items.html" dict "Page" .Page "Style" "popover"}}
+            {{template "partials/nav_items.html" dict "Page" .Page "Style" "popover" "WeekParam" .WeekParam}}
             <span class="popover__divider"></span>
             <a href="/account" class="popover__item{{if eq .Page "account"}} popover__item--active{{end}}">
                 {{icon "account"}} <span>Account &amp; data</span>

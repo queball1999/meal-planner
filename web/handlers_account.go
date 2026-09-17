@@ -42,7 +42,7 @@ func (s *Server) handleAccountPage(w http.ResponseWriter, r *http.Request) {
 		data.PlanCount = len(plans)
 	}
 	if recipes, err := s.store.ListCatalogRecipes(ctx, hh.ID); err == nil {
-		data.RecipeCount = len(recipes)
+		data.RecipeCount = len(excludeLeftoverRecipes(recipes))
 	}
 	if pantry, err := s.store.ListPantryItems(ctx, hh.ID); err == nil {
 		data.PantryCount = len(pantry)

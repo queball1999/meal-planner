@@ -29,6 +29,27 @@ var dayOffset = map[string]int{
 	"saturday":  6,
 }
 
+var dayNameByOffset = [7]string{"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"}
+
+// daysFrom returns the lowercase day names from fromDate (inclusive) through
+// the end of weekStart's week (6 days after weekStart), so a mid-week
+// generation can ask the LLM/Validate for only the days that haven't
+// happened yet instead of the full 7. fromDate is clamped into
+// [weekStart, weekStart+6]; a fromDate on or before weekStart (the normal,
+// non-mid-week case) yields all 7 days.
+func daysFrom(weekStart, fromDate time.Time) []string {
+	weekStart = weekStart.Truncate(24 * time.Hour)
+	fromDate = fromDate.Truncate(24 * time.Hour)
+	offset := int(fromDate.Sub(weekStart).Hours() / 24)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > 6 {
+		offset = 6
+	}
+	return append([]string(nil), dayNameByOffset[offset:]...)
+}
+
 // Pricer is called after meals are persisted to price the full plan (§6.4).
 // Passing nil skips costing (useful in tests).
 type Pricer func(ctx context.Context, planID int64, hh *db.Household) error
@@ -49,7 +70,7 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return 0, fmt.Errorf("household not configured")
 	}
 	weekStart := nextSunday(time.Now().In(mustLocation(hh.Timezone)))
-	return generate(ctx, store, gen, householdID, weekStart, pricer, checker, j)
+	return generate(ctx, store, gen, householdID, weekStart, weekStart, pricer, checker, j, nil)
 }
 
 // GenerateForWeek is Generate for one specific week rather than "whichever
@@ -58,8 +79,18 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 // the current one. weekStart need not be a Sunday; it is used exactly as
 // given (the caller - handlePlanGenerate - is expected to pass a real week
 // boundary from plan.WeekBounds, the same helper the calendar itself uses).
-func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, checker PriceChecker, j *Job) (int64, error) {
-	return generate(ctx, store, gen, householdID, weekStart, pricer, checker, j)
+// fromDate restricts generation to fromDate through the end of that week -
+// the "just the remaining days" choice offered when regenerating mid-week, so
+// a day that has already happened is never asked of the LLM (and never
+// billed for). Pass weekStart itself (or any date on/before it) for the
+// normal full-week case. requested carries this week's specific "make sure
+// to include" asks - each entry either a picked recipe (rendered with its
+// full ingredients/steps so the LLM reproduces it rather than reinventing
+// it) or free text the household typed - collected fresh by the caller
+// (handlePlanGenerate) rather than pulled from standing preferences. nil for
+// the auto-plan scheduler and any other caller with nothing to ask.
+func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested []string) (int64, error) {
+	return generate(ctx, store, gen, householdID, weekStart, fromDate, pricer, checker, j, requested)
 }
 
 // generate is the shared implementation behind Generate and GenerateForWeek:
@@ -68,8 +99,9 @@ func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, hou
 // progress sink (nil is fine, e.g. in tests) - it emits a status update at
 // each real stage so the progress screen reflects what's actually happening
 // instead of sitting on "asking the AI" through pricing and budget repair,
-// which can run long after the LLM has already answered.
-func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart time.Time, pricer Pricer, checker PriceChecker, j *Job) (int64, error) {
+// which can run long after the LLM has already answered. See GenerateForWeek
+// for fromDate.
+func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested []string) (int64, error) {
 	hh, err := store.GetHousehold(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
@@ -89,8 +121,9 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	}
 
 	weekEnd := weekStart.AddDate(0, 0, 6)
+	days := daysFrom(weekStart, fromDate)
 
-	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd)
+	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd, requested, days)
 
 	aiRun, err := store.CreateAIRun(ctx, db.CreateAIRunParams{
 		HouseholdID: householdID,
@@ -144,7 +177,7 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return plan.ID, fmt.Errorf("parse llm response: %w", err)
 	}
 
-	if err := Validate(gp, profile); err != nil {
+	if err := Validate(gp, profile, days); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
 		return plan.ID, fmt.Errorf("validate plan: %w", err)
 	}

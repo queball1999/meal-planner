@@ -13,7 +13,7 @@ func promptFor(t *testing.T, size int, members []*db.HouseholdMember) string {
 	hh := &db.Household{HouseholdSize: size, WeeklyBudgetCents: 15000}
 	profile := &PreferenceProfile{Members: members}
 	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
-	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6))
+	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil, nil)
 	return user
 }
 
@@ -72,6 +72,67 @@ func TestPromptFallsBackToHouseholdSize(t *testing.T) {
 	}
 }
 
+// A picked recipe or typed request has to actually reach the prompt, and
+// take priority language over soft preferences, or "make sure X is in
+// there" silently does nothing.
+func TestPromptIncludesRequestedMeals(t *testing.T) {
+	hh := &db.Household{HouseholdSize: 2, WeeklyBudgetCents: 15000}
+	profile := &PreferenceProfile{}
+	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
+	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), []string{
+		"Grandma's Lasagna (an existing recipe the household picked - use it as specified rather than inventing a substitute)",
+		"something with salmon on Friday",
+	}, nil)
+
+	if !strings.Contains(user, "Grandma's Lasagna") {
+		t.Errorf("requested recipe missing from prompt:\n%s", user)
+	}
+	if !strings.Contains(user, "something with salmon on Friday") {
+		t.Errorf("free-typed request missing from prompt:\n%s", user)
+	}
+	if !strings.Contains(user, "specifically requested") {
+		t.Errorf("prompt does not flag these as the household's own request:\n%s", user)
+	}
+}
+
+// No request made this week must not add an empty section.
+func TestPromptOmitsRequestedMealsSectionWhenEmpty(t *testing.T) {
+	out := promptFor(t, 2, nil)
+	if strings.Contains(out, "specifically requested") {
+		t.Errorf("empty requested-meals section rendered with nothing requested:\n%s", out)
+	}
+}
+
+// A mid-week regenerate restricted to a day subset must tell the LLM plainly
+// which days to plan (and how many meals to return) - without this, the LLM
+// has no way to know some days already happened and shouldn't be replanned.
+func TestPromptFlagsMidWeekDayRestriction(t *testing.T) {
+	hh := &db.Household{HouseholdSize: 2, WeeklyBudgetCents: 15000}
+	profile := &PreferenceProfile{}
+	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
+	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil,
+		[]string{"wednesday", "thursday", "friday", "saturday"})
+
+	if !strings.Contains(user, "MID-WEEK") {
+		t.Errorf("prompt does not flag a restricted day range as mid-week:\n%s", user)
+	}
+	if !strings.Contains(user, "wednesday, thursday, friday, saturday") {
+		t.Errorf("prompt does not list the restricted days:\n%s", user)
+	}
+	if !strings.Contains(user, "12 meals") {
+		t.Errorf("prompt does not ask for the right meal count (4 days x 3 slots):\n%s", user)
+	}
+}
+
+// The normal full-week case (nil/all-7 days) must not mention any
+// restriction - regressing this would confuse every ordinary generation.
+func TestPromptOmitsMidWeekFlagForFullWeek(t *testing.T) {
+	out := promptFor(t, 2, nil)
+	if strings.Contains(out, "MID-WEEK") {
+		t.Errorf("full-week prompt should not flag a mid-week restriction:\n%s", out)
+	}
+}
+
 func TestTotalPortionsRounds(t *testing.T) {
 	cases := []struct {
 		members []*db.HouseholdMember
@@ -97,7 +158,7 @@ func TestTotalPortionsRounds(t *testing.T) {
 func TestSystemPromptAsksForRecipeMetadata(t *testing.T) {
 	sys, _ := BuildPrompt(&db.Household{HouseholdSize: 2}, &PreferenceProfile{}, nil,
 		time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC))
+		time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC), nil, nil)
 
 	for _, want := range []string{
 		`"prep_minutes"`,

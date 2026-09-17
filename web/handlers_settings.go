@@ -220,11 +220,21 @@ func providerConfigured(info llm.ProviderInfo, pv aiProviderView, stored func(st
 // model dropdown reflects the account rather than a hard-coded list. On any
 // failure it falls back to the curated catalog and reports why.
 //
-//	POST /settings/ai/models  {"provider":"openai"}
+//	POST /settings/ai/models  {"provider":"openai","base_url":"…","api_key":"…"}
 //	→ {"ok":true,"models":[...],"source":"live"|"catalog","error":"…"}
 func (s *Server) handleAIModels(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Provider string `json:"provider"`
+		// BaseURL/APIKey are whatever is currently typed into the form, sent
+		// straight from the browser - not read back from the server. Refresh
+		// used to always read the saved values instead, which raced the
+		// autosave debounce: editing the URL and immediately clicking
+		// "Refresh list" (before the 700ms debounce, or its blur-flush,
+		// finished) silently listed models from the *previous* URL. Only
+		// override the saved value when the field isn't blank, since a
+		// password field reads blank once its secret is already saved.
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "invalid request"})
@@ -236,14 +246,18 @@ func (s *Server) handleAIModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the saved credentials rather than anything posted: the page
-	// autosaves on blur, and a secret is never sent back to the browser.
 	cfg := *s.cfg
 	if err := settings.Apply(r.Context(), s.store, &cfg, func(string, ...any) {}); err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "failed to read settings"})
 		return
 	}
 	apiKey, baseURL, _ := llm.ProviderCreds(&cfg, info.ID)
+	if v := strings.TrimSpace(body.BaseURL); v != "" {
+		baseURL = v
+	}
+	if v := strings.TrimSpace(body.APIKey); v != "" {
+		apiKey = v
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()

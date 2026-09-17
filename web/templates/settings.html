@@ -127,7 +127,7 @@
                 {{.Label}}
                 {{if eq .Source "admin"}}<span class="badge badge-accent">edited</span>{{end}}
             </label>
-            <input class="field-input" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+            <input class="field-input ai-provider-url" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
             {{if .Help}}<span class="field-hint">{{.Help}}</span>{{end}}
         </div>
         {{end}}{{end}}
@@ -556,10 +556,23 @@
             btn.classList.add('is-loading');
             if (status) status.textContent = 'Asking the provider\u2026';
 
+            // Send whatever is currently typed for the URL/key, not the last
+            // saved value: autosave only persists after a debounce pause (or
+            // leaving the field), so refreshing right after editing the URL
+            // used to silently query the *previous* one. A blank password
+            // field means "keep the saved secret", so it's left out.
+            var panel = btn.closest('[data-provider-panel]');
+            var urlInput = panel ? panel.querySelector('.ai-provider-url') : null;
+            var keyInput = panel ? panel.querySelector('input[type="password"][data-setting-key]') : null;
+
             fetch('/settings/ai/models', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-                body: JSON.stringify({ provider: btn.dataset.provider })
+                body: JSON.stringify({
+                    provider: btn.dataset.provider,
+                    base_url: urlInput ? urlInput.value.trim() : '',
+                    api_key: keyInput ? keyInput.value.trim() : '',
+                })
             })
             .then(function (r) { return r.json(); })
             .then(function (d) {
@@ -569,13 +582,14 @@
                 }
                 var current = box ? box.value : '';
                 var models  = d.models || [];
+                var liveCount = models.length;
                 if (current && models.indexOf(current) === -1) models.unshift(current);
                 sel.innerHTML = models.map(function (m) {
                     return '<option value="' + m + '"' + (m === current ? ' selected' : '') + '>' + m + '</option>';
                 }).join('') + '<option value="__custom__">Custom\u2026</option>';
                 if (status) {
                     status.textContent = d.source === 'live'
-                        ? models.length + ' models from the provider.'
+                        ? liveCount + ' models from the provider.'
                         : 'Using the built-in list: ' + (d.error || 'provider unreachable');
                 }
             })

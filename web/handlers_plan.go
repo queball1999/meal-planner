@@ -83,6 +83,13 @@ type planPageData struct {
 	WeekNavNextURL  string
 	WeekNavTodayURL string
 	WeekNavTitle    string // "Sep 6 – Sep 12"
+
+	// TodayMidWeek is true when today isn't the live week's first day. The
+	// must-include modal's regenerate button (shown only when !ReadOnly, i.e.
+	// always the live week here) uses it to offer "whole week or just the
+	// remaining days" - see dashPageData.TodayMidWeek for the same flag on
+	// the dashboard.
+	TodayMidWeek bool
 }
 
 // weekNav holds the plan page's week-switcher links, computed once so the
@@ -97,12 +104,19 @@ type weekNav struct {
 // calendar. The links carry ?week=<start> so resolvePlanForRequest resolves
 // that week's plan; a week with no plan renders the empty state, which is the
 // right answer.
-func buildWeekNav(weekStart time.Time, basePath string) weekNav {
+//
+// today must carry its own explicit ?week=<todayWeekStart> rather than just
+// linking to the bare basePath: with no ?week= param at all, the page falls
+// back to whichever plan GetLatestPlan resolves to (the most recently
+// *generated* plan, not necessarily the current week's), so a bare link back
+// to basePath could silently re-land on the same stale week instead of
+// actually navigating to today.
+func buildWeekNav(weekStart, todayWeekStart time.Time, basePath string) weekNav {
 	weekEnd := weekStart.AddDate(0, 0, 6)
 	return weekNav{
 		prev:  basePath + "?week=" + weekStart.AddDate(0, 0, -7).Format("2006-01-02"),
 		next:  basePath + "?week=" + weekStart.AddDate(0, 0, 7).Format("2006-01-02"),
-		today: basePath,
+		today: basePath + "?week=" + todayWeekStart.Format("2006-01-02"),
 		title: weekStart.Format("Jan 2") + " – " + weekEnd.Format("Jan 2"),
 	}
 }
@@ -165,6 +179,29 @@ func buildPricer(store db.Store, chain *pricing.Chain) plan.Pricer {
 			return err
 		}
 		_, err = pricing.CostPlan(ctx, store, chain, planID, hh, stores)
+		return err
+	}
+}
+
+// buildRescalePricer is buildPricer for a quantity-only change - guests added
+// to a day, or a meal skipped/marked eating-out - where what changed is how
+// much of each ingredient is needed, not what the plan contains. It rescales
+// already-priced lines in place instead of CostPlan's delete-and-reprice-
+// everything, so an adjustment like this never re-asks a provider for a line
+// that was already priced (see pricing.RescaleShoppingList).
+func buildRescalePricer(store db.Store, chain *pricing.Chain) plan.Pricer {
+	if chain == nil {
+		return nil
+	}
+	return func(ctx context.Context, planID int64, hh *db.Household) error {
+		if err := catalog.LinkPlanIngredients(ctx, store, hh.ID, planID); err != nil {
+			return err
+		}
+		stores, err := store.ListStores(ctx, hh.ID)
+		if err != nil {
+			return err
+		}
+		_, err = pricing.RescaleShoppingList(ctx, store, chain, planID, hh, stores)
 		return err
 	}
 }
@@ -253,12 +290,22 @@ func (s *Server) resolvePlanForRequest(ctx context.Context, hh *db.Household, r 
 		}
 		return p, true
 	}
+	liveWeekStart, _ := plan.WeekBounds(time.Now().UTC(), s.cfg.WeekStartDay)
 	if week := r.URL.Query().Get("week"); week != "" {
 		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, week)
-		liveWeekStart, _ := plan.WeekBounds(time.Now().UTC(), s.cfg.WeekStartDay)
 		return p, week != liveWeekStart.Format("2006-01-02")
 	}
 	p, _ = s.store.GetLatestPlan(ctx, hh.ID)
+	// GetLatestPlan is "most recently created", not "current or later" - a
+	// stale plan from a past week (nothing generated yet for this week, or
+	// the newest plan got deleted) must not be shown as if it's the live
+	// week's plan. Fall back to whatever plan actually belongs to the live
+	// week, which may be none.
+	if p != nil {
+		if ws, err := time.Parse("2006-01-02", p.WeekStart); err == nil && ws.UTC().Before(liveWeekStart) {
+			p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, liveWeekStart.Format("2006-01-02"))
+		}
+	}
 	return p, false
 }
 
@@ -335,7 +382,9 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	// Week the toolbar is anchored to: the ?week= param when navigating, else
 	// the resolved plan's week, else the live week. Computed once so the
 	// empty-state and full render paths stay in sync.
-	viewedWeekStart, _ := plan.WeekBounds(time.Now().UTC(), s.cfg.WeekStartDay)
+	todayWeekStart, _ := plan.WeekBounds(time.Now().UTC(), s.cfg.WeekStartDay)
+	todayMidWeek := !time.Now().UTC().Truncate(24 * time.Hour).Equal(todayWeekStart)
+	viewedWeekStart := todayWeekStart
 	if week := r.URL.Query().Get("week"); week != "" {
 		if t, err := time.Parse("2006-01-02", week); err == nil {
 			viewedWeekStart = t
@@ -345,7 +394,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 			viewedWeekStart = t
 		}
 	}
-	weekNav := buildWeekNav(viewedWeekStart, planBasePath(tab))
+	weekNav := buildWeekNav(viewedWeekStart, todayWeekStart, planBasePath(tab))
 	planTabHref := planTabURL(r, "/plan")
 	listTabHref := planTabURL(r, "/plan/list")
 
@@ -374,6 +423,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 			WeekNavNextURL:  weekNav.next,
 			WeekNavTodayURL: weekNav.today,
 			WeekNavTitle:    weekNav.title,
+			TodayMidWeek:    todayMidWeek,
 		})
 		return
 	}
@@ -500,6 +550,7 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		WeekNavNextURL:    weekNav.next,
 		WeekNavTodayURL:   weekNav.today,
 		WeekNavTitle:      weekNav.title,
+		TodayMidWeek:      todayMidWeek,
 	})
 }
 
@@ -605,11 +656,14 @@ func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 // startPlanGenerationForWeek is startPlanGeneration for one specific week -
 // the dashboard's manual generate/regenerate action after navigating the
 // calendar widget to a future week. See handlePlanGenerate for why past weeks
-// never reach this.
-func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart time.Time) (job *plan.Job, started bool) {
+// never reach this. requested is the household's "make sure to include this
+// week" list gathered on the generate form; nil when they asked for nothing
+// specific. fromDate is plan.GenerateForWeek's "start here, not at weekStart"
+// - pass weekStart itself for the normal full-week case.
+func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart, fromDate time.Time, requested []string) (job *plan.Job, started bool) {
 	store, gen := s.store, s.llmGen()
 	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
-		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, pricer, checker, j)
+		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, fromDate, pricer, checker, j, requested)
 	})
 }
 
@@ -639,6 +693,19 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	requested := s.buildRequestedMeals(r, hh.ID)
+	// "scope=remaining" is the generate form's "just the remaining days"
+	// choice, offered only when regenerating the live week mid-week (see
+	// must_include_modal.html) - skip the days that have already happened
+	// instead of asking (and paying) the LLM for meals nobody will eat.
+	// Harmless if sent for a future week: fromDate (today) then falls before
+	// that week's start, and plan.GenerateForWeek/daysFrom clamps that back
+	// to the normal full week.
+	fromDate := time.Time{}
+	if r.FormValue("scope") == "remaining" {
+		fromDate = time.Now()
+	}
+
 	if raw := strings.TrimSpace(r.FormValue("week")); raw != "" {
 		asked, err := time.Parse("2006-01-02", raw)
 		if err != nil {
@@ -653,7 +720,10 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/?cal=week&calref="+weekStart.Format("2006-01-02"), http.StatusSeeOther)
 			return
 		}
-		s.startPlanGenerationForWeek(hh.ID, weekStart)
+		if fromDate.IsZero() {
+			fromDate = weekStart
+		}
+		s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested)
 		http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 		return
 	}
@@ -662,8 +732,52 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	// WEEK_START_DAY), not the next one. Same week the dashboard and calendar
 	// treat as current.
 	weekStart, _ := plan.WeekBounds(time.Now(), s.cfg.WeekStartDay)
-	s.startPlanGenerationForWeek(hh.ID, weekStart)
+	if fromDate.IsZero() {
+		fromDate = weekStart
+	}
+	s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested)
 	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
+}
+
+// buildRequestedMeals reads the generate form's "meals you want to eat this
+// week" inputs - recipe_ids (checked from the picker) and must_include_text
+// (one free-typed request per line) - and turns them into prompt-ready
+// strings for plan.GenerateForWeek's requested param. A recipe is rendered
+// with its full ingredient list so the LLM reproduces it rather than
+// reinventing something similar; a bad/foreign recipe_id is silently
+// skipped rather than failing the whole generation.
+func (s *Server) buildRequestedMeals(r *http.Request, householdID int64) []string {
+	ctx := r.Context()
+	_ = r.ParseForm()
+
+	var out []string
+	for _, idStr := range r.Form["recipe_ids"] {
+		id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
+		if err != nil {
+			continue
+		}
+		rec, err := s.store.GetCatalogRecipe(ctx, id)
+		if err != nil || rec == nil || rec.HouseholdID != householdID {
+			continue
+		}
+		desc := rec.Title
+		if ings, ierr := s.store.ListCatalogRecipeIngredients(ctx, rec.ID); ierr == nil && len(ings) > 0 {
+			parts := make([]string, 0, len(ings))
+			for _, ing := range ings {
+				parts = append(parts, strings.TrimSpace(strings.Join([]string{ing.Quantity, ing.Unit, ing.Name}, " ")))
+			}
+			desc += " - ingredients: " + strings.Join(parts, ", ")
+		}
+		out = append(out, desc+" (an existing recipe the household picked - use it as specified rather than inventing a substitute)")
+	}
+
+	for _, line := range strings.Split(r.FormValue("must_include_text"), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 func (s *Server) handlePlanGeneratePage(w http.ResponseWriter, r *http.Request) {
@@ -829,7 +943,9 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.repriceInBackground(p.ID, hh)
+	// Quantity-only: a headcount change rescales existing meals, it never
+	// adds new ones.
+	s.repriceInBackground(p.ID, hh, true)
 	s.setNotify(w, NotifySuccess, fmt.Sprintf(
 		"%s now serves %d%s - rescaled %d meals. The shopping list is updating.",
 		date, in.Headcount, guestNote(in.Guests, in.GuestSlots), scaled.MealsScaled))
@@ -878,8 +994,19 @@ func guestNote(guests int, slots []string) string {
 // Costing can make a live lookup per ingredient and run for minutes, which is
 // far too long to hold a form POST open, so the user gets an immediate redirect
 // and the list catches up. At most one rebuild per plan runs at a time.
-func (s *Server) repriceInBackground(planID int64, hh *db.Household) {
-	pricer := buildPricer(s.store, s.priceChain())
+//
+// quantityOnly selects buildRescalePricer over buildPricer: true for a change
+// that only alters how much of each ingredient is needed (guests added,
+// meal skipped) so already-priced lines are rescaled rather than re-resolved
+// from scratch. Anything that can change *what* the plan contains (a
+// regenerate, a meal swap) must pass false.
+func (s *Server) repriceInBackground(planID int64, hh *db.Household, quantityOnly bool) {
+	var pricer plan.Pricer
+	if quantityOnly {
+		pricer = buildRescalePricer(s.store, s.priceChain())
+	} else {
+		pricer = buildPricer(s.store, s.priceChain())
+	}
 
 	s.repriceMu.Lock()
 	if s.repricingPlans[planID] {

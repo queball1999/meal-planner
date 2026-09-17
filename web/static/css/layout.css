@@ -325,8 +325,18 @@
     border-bottom: none;
 }
 
+/* Row text defaults to --text/--text-muted, tuned for the card background -
+ * not guaranteed readable against --accent-bg (pink-dark pairs a light pink
+ * accent-bg with light theme text, which is unreadable). --accent-text is
+ * the token already meant to sit on --accent-bg, so use it here too. */
 .data-table tr:hover td {
     background: var(--accent-bg);
+    color: var(--accent-text);
+}
+
+.data-table tr:hover td .text-muted,
+.data-table tr:hover td .badge-muted {
+    color: var(--accent-text);
 }
 
 /* Mark the one column (usually the name) that should absorb the table's slack

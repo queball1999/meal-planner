@@ -113,9 +113,18 @@ func SeedShoppingList(ctx context.Context, store db.Store, planID int64, househo
 		log.Printf("costing: pantry deduction: %v", perr)
 	}
 
+	return seedItems(ctx, store, planID, items, deducted)
+}
+
+// seedItems is SeedShoppingList's per-item write loop, factored out so
+// RescaleShoppingList can seed just the lines that actually need a fresh
+// price (a new or previously-unpriced ingredient) without touching the lines
+// it has already rescaled in place. items and deductions must be the same
+// length and index-aligned (as AggregateByItem/ApplyPantry produce them).
+func seedItems(ctx context.Context, store db.Store, planID int64, items []AggItem, deductions map[int]PantryDeduction) ([]seededItem, error) {
 	seeded := make([]seededItem, 0, len(items))
 	for idx, item := range items {
-		ded := deducted[idx]
+		ded := deductions[idx]
 		refsJSON, _ := json.Marshal(item.IngredientIDs)
 		row, cerr := store.CreateShoppingListItem(ctx, db.CreateShoppingListItemParams{
 			PlanID:             planID,
@@ -300,6 +309,8 @@ func ResolvePricing(
 
 		var buyQuantity, packSize float64
 		var lineTotal int64
+		var rawPackAmount float64
+		var rawPackUnit string
 		purchaseUnit := item.Unit
 		if ls.priced {
 			packs, bq, ps, reconciled := reconcilePack(item.TotalQuantity, ls.packAmount, ls.packUnit, item.Unit, conv)
@@ -307,6 +318,11 @@ func ResolvePricing(
 			if reconciled {
 				lineTotal = ls.priceCents * int64(packs)
 				purchaseUnit = ls.packUnit
+				// Kept so a later guest/skip-meal change can redo just this
+				// pack math (pricing.RescaleShoppingList) instead of asking a
+				// provider again - see pack_amount/pack_unit (00030).
+				rawPackAmount = ls.packAmount
+				rawPackUnit = ls.packUnit
 			} else {
 				// packUnit and the stock unit don't connect on the conversion
 				// graph, so how many packs cover the need is unknowable - and
@@ -356,6 +372,8 @@ func ResolvePricing(
 			Confidence:     ls.confidence,
 			PantryQtyUsed:  ded.Used,
 			InPantry:       ded.Covered,
+			PackAmount:     rawPackAmount,
+			PackUnit:       rawPackUnit,
 		}); uerr != nil {
 			log.Printf("costing: price shopping list item %q: %v", item.DisplayName, uerr)
 		}

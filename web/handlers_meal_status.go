@@ -141,7 +141,9 @@ func (s *Server) handleMealStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.repriceInBackground(plan.ID, hh)
+	// Quantity-only: skipping/restoring a meal never adds new meal content,
+	// only drops or restores ingredients the list is already pricing.
+	s.repriceInBackground(plan.ID, hh, true)
 
 	mealLabel := dayLabel(meal.Day) + " " + meal.Slot
 	s.setNotify(w, NotifySuccess, mealStatusMessage(mealLabel, status, resolved, resolution))

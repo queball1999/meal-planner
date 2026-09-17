@@ -66,7 +66,7 @@ func Repair(
 
 		weekStart := weekStartFromMeals(meals)
 		weekEnd := weekStart.AddDate(0, 0, 6)
-		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd)
+		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd, nil, nil)
 		userPmt := buildRepairPrompt(hh, profile, targets, plan.BudgetCents, plan.TotalCents)
 
 		j.EmitStatus(fmt.Sprintf(

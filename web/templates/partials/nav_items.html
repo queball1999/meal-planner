@@ -2,10 +2,19 @@
      class sets: the desktop header bar (Style "nav") and the mobile popover
      menu (Style "popover"). Call with:
 
-       {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav"}}
+       {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav" "WeekParam" .WeekParam}}
 
      so the active-page highlight stays in one place instead of being kept in
-     sync across two copies of six links. */}}
+     sync across two copies of six links.
+
+     WeekParam is the week the *current* request explicitly asked to view
+     (pageData.WeekParam - see requestWeekParam in render.go): only set when
+     the URL that produced this page itself carried ?week= or ?calref=, never
+     just because a plan happened to resolve to some other week. Carrying it
+     into the Dashboard/Plan/Shopping List links keeps that same week in view
+     across a tab switch instead of snapping back to today/latest; with no
+     such param these stay the plain "/", "/plan", "/plan/list" links, which
+     each page resolves to today/latest on its own. */}}
 {{define "partials/nav_items.html"}}
 {{- $page := .Page -}}
 {{- $link := "nav-link" -}}
@@ -13,13 +22,22 @@
 {{- if eq .Style "popover" -}}{{- $link = "popover__item" -}}{{- $active = "popover__item--active" -}}{{- end -}}
 {{- $pantrySection := or (eq $page "pantry") (eq $page "items") (eq $page "item_detail") -}}
 {{- $financeSection := or (eq $page "finance_overview") (eq $page "finance_ai") (eq $page "finance_prices") -}}
-<a href="/" class="{{$link}}{{if eq $page "index"}} {{$active}}{{end}}"{{if eq $page "index"}} aria-current="page"{{end}}>
+{{- $week := .WeekParam -}}
+{{- $dashHref := "/" -}}
+{{- $planHref := "/plan" -}}
+{{- $listHref := "/plan/list" -}}
+{{- if $week -}}
+    {{- $dashHref = printf "/?calref=%s" $week -}}
+    {{- $planHref = printf "/plan?week=%s" $week -}}
+    {{- $listHref = printf "/plan/list?week=%s" $week -}}
+{{- end -}}
+<a href="{{$dashHref}}" class="{{$link}}{{if eq $page "index"}} {{$active}}{{end}}"{{if eq $page "index"}} aria-current="page"{{end}}>
     {{icon "home"}} <span>Dashboard</span>
 </a>
-<a href="/plan" class="{{$link}}{{if eq $page "plan"}} {{$active}}{{end}}"{{if eq $page "plan"}} aria-current="page"{{end}}>
+<a href="{{$planHref}}" class="{{$link}}{{if eq $page "plan"}} {{$active}}{{end}}"{{if eq $page "plan"}} aria-current="page"{{end}}>
     {{icon "calendar"}} <span>Plan</span>
 </a>
-<a href="/plan/list" class="{{$link}}{{if eq $page "list"}} {{$active}}{{end}}"{{if eq $page "list"}} aria-current="page"{{end}}>
+<a href="{{$listHref}}" class="{{$link}}{{if eq $page "list"}} {{$active}}{{end}}"{{if eq $page "list"}} aria-current="page"{{end}}>
     {{icon "cart"}} <span>Shopping List</span>
 </a>
 <a href="/pantry" class="{{$link}}{{if $pantrySection}} {{$active}}{{end}}"{{if $pantrySection}} aria-current="page"{{end}}>

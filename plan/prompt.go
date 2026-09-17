@@ -100,8 +100,16 @@ func storeNames(stores []*db.GroceryStore) (names []string, hasWarehouse bool) {
 	return names, hasWarehouse
 }
 
-// BuildPrompt assembles the system and user prompts for plan generation (§7.3, §7.4).
-func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time) (system, user string) {
+// BuildPrompt assembles the system and user prompts for plan generation
+// (§7.3, §7.4). requested is this week's specific ask from the user - "make
+// sure X shows up" - collected fresh at generation time rather than pulled
+// from standing preferences; nil/empty when the household made no request.
+// days restricts which day(s) the LLM should plan for - lowercase day names
+// ("sunday", ...); nil/empty means the full week, matching systemPrompt's
+// "7 days (sunday through saturday)" as written. A mid-week regenerate that
+// only wants the remaining days passes a subset here instead of asking (and
+// paying) for meals on days that have already happened.
+func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time, requested, days []string) (system, user string) {
 	var b strings.Builder
 
 	// Servings come from what the household eats, not from how many people it
@@ -125,6 +133,12 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 	}
 	fmt.Fprintf(&b, "Weekly budget: $%.0f\n", float64(hh.WeeklyBudgetCents)/100)
 	fmt.Fprintf(&b, "Week: %s through %s\n", weekStart.Format("2006-01-02 (Monday)"), weekEnd.Format("2006-01-02 (Monday)"))
+	if len(days) > 0 && len(days) < 7 {
+		fmt.Fprintf(&b, "\nThis is a MID-WEEK plan: some days already happened, and the household only wants the rest. "+
+			"Only plan breakfast, lunch, and dinner for these %d day(s), in this exact order: %s. "+
+			"Do NOT include any other day - return exactly %d meals total (breakfast, lunch, dinner for each of these days), not 21.\n",
+			len(days), strings.Join(days, ", "), len(days)*3)
+	}
 
 	// Selected stores (§10.1 GroceryStore): steers ingredient choices toward
 	// what the household can actually buy, rather than assuming a generic
@@ -158,7 +172,12 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 			strings.Join(profile.Dislikes, ", "))
 	}
 	if profile.LeftoverTolerance {
-		b.WriteString("\nLeftover tolerance: ON - you may plan batch-cook meals that cover a later slot as leftovers. Set cooked_portions higher than servings and note in the title when a meal is intentional leftovers. The week's first day (Sunday) must be a fresh, non-leftover meal at every slot - nothing earlier in the week exists yet to batch-cook from.\n")
+		firstDay := "The week's first day (Sunday)"
+		if len(days) > 0 && len(days) < 7 {
+			firstDay = "The first day of this range (" + strings.Title(days[0]) + ")" //nolint:staticcheck
+		}
+		fmt.Fprintf(&b, "\nLeftover tolerance: ON - you may plan batch-cook meals that cover a later slot as leftovers. Set cooked_portions higher than servings and note in the title when a meal is intentional leftovers. %s must be a fresh, non-leftover meal at every slot - nothing earlier exists yet to batch-cook from.\n",
+			firstDay)
 	}
 
 	// Per-slot hints
@@ -173,6 +192,17 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 	writeSlotHint("breakfast", profile.EffortBreakfast, profile.HintsBreakfast)
 	writeSlotHint("lunch", profile.EffortLunch, profile.HintsLunch)
 	writeSlotHint("dinner", profile.EffortDinner, profile.HintsDinner)
+
+	// Meals the household specifically asked for this week - a recipe they
+	// picked (given here with its full ingredient list and steps so it is
+	// reproduced, not reinvented) or something they typed free-hand. These
+	// override soft preferences like cuisine/dislikes where they conflict.
+	if len(requested) > 0 {
+		b.WriteString("\nMeals the household specifically requested this week - make sure each one appears exactly once, assigned to whatever day/slot fits best, and takes priority over the soft preferences above where they conflict:\n")
+		for _, rq := range requested {
+			fmt.Fprintf(&b, "- %s\n", rq)
+		}
+	}
 
 	// Feedback digest
 	if len(profile.FeedbackLiked) > 0 {

@@ -462,6 +462,15 @@ type ShoppingListItem struct {
 	// Pending marks a skeleton row CostPlan seeded but has not yet priced
 	// (00027) - the shopping list tab renders these as loading placeholders.
 	Pending bool
+	// PackAmount/PackUnit are this line's raw "amount per package" and its
+	// unit, before pricing.reconcilePack converts it into the ingredient's own
+	// stock unit for PackSize/BuyQuantity (00030). Zero/empty means this line
+	// was never resolved against a real discrete package - a flat guess for
+	// exactly the quantity it was priced at. pricing.RescaleShoppingList reads
+	// these to adjust an already-priced line for a new required quantity
+	// (guest count, meal skip) without asking a provider again.
+	PackAmount float64
+	PackUnit   string
 }
 
 // UpdateShoppingListItemPriceParams rewrites one shopping-list line's price and
@@ -479,6 +488,10 @@ type UpdateShoppingListItemPriceParams struct {
 	Confidence     string
 	PantryQtyUsed  float64
 	InPantry       bool
+	// PackAmount/PackUnit: see ShoppingListItem. Zero/"" for a manual edit or
+	// any other write that has no real package behind it.
+	PackAmount float64
+	PackUnit   string
 }
 
 // UpsertPriceCacheParams bundles inputs for writing a price to the cache.

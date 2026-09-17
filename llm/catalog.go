@@ -188,20 +188,39 @@ func ListModels(ctx context.Context, id, apiKey, baseURL string) ([]string, erro
 		return nil, fmt.Errorf("%s returned %d: %s", url, resp.StatusCode, snippet(string(body)))
 	}
 
-	// Both the OpenAI and Anthropic shapes are {"data":[{"id":"..."}]}.
+	// OpenAI and Anthropic are {"data":[{"id":"..."}]}. Some self-hosted
+	// OpenAI-compatible servers (llama.cpp, Ollama's compat shim) send that
+	// alongside - or instead of - their own {"models":[{"name":"..."}]}
+	// shape, so both are read and merged rather than only trusting "data".
 	var parsed struct {
 		Data []struct {
 			ID string `json:"id"`
 		} `json:"data"`
+		Models []struct {
+			Name  string `json:"name"`
+			Model string `json:"model"`
+		} `json:"models"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("unexpected response from %s: %s", url, snippet(string(body)))
 	}
 
-	out := make([]string, 0, len(parsed.Data))
+	seen := map[string]bool{}
+	out := make([]string, 0, len(parsed.Data)+len(parsed.Models))
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
 	for _, m := range parsed.Data {
-		if m.ID != "" {
-			out = append(out, m.ID)
+		add(m.ID)
+	}
+	for _, m := range parsed.Models {
+		if m.Name != "" {
+			add(m.Name)
+		} else {
+			add(m.Model)
 		}
 	}
 	if len(out) == 0 {
