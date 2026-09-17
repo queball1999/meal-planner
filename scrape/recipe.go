@@ -56,10 +56,29 @@ func ParseRecipe(htmlBody, sourceURL string) (*Recipe, error) {
 		parseMicrodata(htmlBody, r)
 	}
 
+	r.Title = cleanTitle(r.Title)
+
 	if r.Title == "" && len(r.Ingredients) == 0 {
 		return nil, NoRecipeFound
 	}
 	return r, nil
+}
+
+var trailingParenRE = regexp.MustCompile(`\s*\([^()]*\)\s*$`)
+
+// cleanTitle strips trailing parenthetical annotations from a recipe title,
+// e.g. "Spaghetti Bolognese (batch-cooked for tomorrow)" -> "Spaghetti
+// Bolognese". Sites append these as meal-plan notes rather than part of the
+// recipe's actual name, so they'd otherwise leak into saved recipes.
+func cleanTitle(title string) string {
+	for {
+		stripped := trailingParenRE.ReplaceAllString(title, "")
+		if stripped == title {
+			break
+		}
+		title = strings.TrimSpace(stripped)
+	}
+	return title
 }
 
 // NoRecipeFound is returned when no parsers extracted anything useful.
