@@ -177,6 +177,8 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return plan.ID, fmt.Errorf("parse llm response: %w", err)
 	}
 
+	CleanMealTitles(gp)
+
 	if err := Validate(gp, profile, days); err != nil {
 		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
 		return plan.ID, fmt.Errorf("validate plan: %w", err)

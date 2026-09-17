@@ -24,6 +24,15 @@ type GenerateRequest struct {
 	// Honoured only by backends that expose the switch; on the rest it is a
 	// no-op and the larger token budget is what saves the call.
 	SuppressReasoning bool
+
+	// OnDelta, when set, asks the backend to stream the reply and invokes this
+	// callback with each incremental chunk of text as it arrives, in addition
+	// to returning the assembled GenerateResponse as usual once the call
+	// finishes. nil (the default) makes an ordinary blocking call - callers
+	// that have nowhere to show a live reply (pricing estimates, the free-text
+	// parser) leave it unset. Called from whatever goroutine is doing the
+	// generation; it must not block or it stalls the stream.
+	OnDelta func(chunk string)
 }
 
 // GenerateResponse is the output from Generator.Generate.

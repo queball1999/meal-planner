@@ -75,10 +75,12 @@ func Repair(
 
 		// Reasoning stays on here - swapping a meal is a judgement call, not a
 		// lookup - so the budget has to cover the thinking as well as the JSON.
+		j.EmitLLMStart()
 		resp, err := gen.Generate(ctx, llm.GenerateRequest{
 			System:    sysPmt,
 			Prompt:    userPmt,
 			MaxTokens: 8192,
+			OnDelta:   j.EmitDelta,
 		})
 		if err != nil {
 			fmt.Printf("repair iter %d: generate: %v\n", iter+1, err)
@@ -93,6 +95,7 @@ func Repair(
 			fmt.Printf("repair iter %d: parse: %v\n", iter+1, err)
 			break
 		}
+		CleanMealTitles(GeneratedPlan{Meals: partial.Meals})
 
 		for _, gm := range partial.Meals {
 			if err := validateSingleMeal(gm, profile); err != nil {

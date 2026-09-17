@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,7 +21,7 @@ const (
 
 // JobEvent is one SSE event emitted during plan generation.
 type JobEvent struct {
-	Type    string // "status" | "done" | "error"
+	Type    string // "status" | "llm_start" | "llm_delta" | "done" | "error"
 	Message string
 	PlanID  int64 // set on "done" events
 }
@@ -66,6 +67,29 @@ func (j *Job) EmitStatus(message string) {
 		return
 	}
 	j.Emit(JobEvent{Type: "status", Message: message})
+}
+
+// EmitLLMStart is a nil-safe shorthand for Emit(JobEvent{Type: "llm_start"}) -
+// marks the beginning of a new model call so the generation page's debug
+// panel starts a fresh live entry instead of appending onto the previous
+// call's text (see EmitDelta).
+func (j *Job) EmitLLMStart() {
+	if j == nil {
+		return
+	}
+	j.Emit(JobEvent{Type: "llm_start"})
+}
+
+// EmitDelta is a nil-safe shorthand for Emit(JobEvent{Type: "llm_delta", ...})
+// - appends one streamed chunk of an in-flight model call's reply to the
+// generation page's debug panel in real time, the same way slack-llm-proxy
+// streams a chat reply to its browser. Generate and Repair pass this as
+// llm.GenerateRequest.OnDelta wherever j is in scope.
+func (j *Job) EmitDelta(chunk string) {
+	if j == nil || chunk == "" {
+		return
+	}
+	j.Emit(JobEvent{Type: "llm_delta", Message: chunk})
 }
 
 // Subscribe returns all events emitted so far, then blocks until new ones
@@ -121,7 +145,14 @@ func (j *Job) Subscribe(w http.ResponseWriter) {
 func writeSSE(w http.ResponseWriter, e JobEvent) {
 	fmt.Fprintf(w, "event: %s\n", e.Type)
 	if e.Message != "" {
-		fmt.Fprintf(w, "data: %s\n", e.Message)
+		// One "data:" line per line of the message, per the SSE spec - a
+		// single "data:" line would drop everything after the first newline,
+		// which an llm_delta chunk (a token boundary can land anywhere,
+		// including mid-line) will eventually contain. The browser rejoins
+		// multiple data lines with "\n", reproducing the original text.
+		for _, line := range strings.Split(e.Message, "\n") {
+			fmt.Fprintf(w, "data: %s\n", line)
+		}
 	}
 	if e.PlanID != 0 {
 		fmt.Fprintf(w, "data: plan_id=%d\n", e.PlanID)

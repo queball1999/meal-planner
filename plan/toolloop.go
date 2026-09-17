@@ -119,10 +119,12 @@ func runGenerationLoop(ctx context.Context, gen llm.Generator, systemPrompt, use
 			prompt += "\n\nYou are nearly out of lookups. Reply with the final plan now."
 		}
 
+		j.EmitLLMStart()
 		resp, err := gen.Generate(ctx, llm.GenerateRequest{
 			System:    system,
 			Prompt:    prompt,
 			MaxTokens: planGenMaxTokens,
+			OnDelta:   j.EmitDelta,
 		})
 		if err != nil {
 			return "", fmt.Errorf("llm generate: %w", err)

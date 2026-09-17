@@ -341,6 +341,18 @@
             <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe all plans</button>
         </form>
     </div>
+
+    <div class="danger-zone__row" style="border-top:2px solid var(--color-danger, #ef4444);margin-top:var(--sp-2);padding-top:var(--sp-4)">
+        <div>
+            <strong>Everything</strong>
+            <p class="field-hint">Runs every wipe above at once: recipes, pantry, shopping lists, and meal plans (with all history). This is the whole household's data, gone.</p>
+        </div>
+        <form method="POST" action="/settings/danger/all"
+              data-confirm="Permanently delete EVERYTHING for this household - every recipe, pantry item, shopping list, and meal plan (including all history)? This cannot be undone." data-confirm-title="Wipe everything" data-confirm-label="Wipe everything" data-confirm-danger>
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Wipe everything</button>
+        </form>
+    </div>
 </div>
 
 <script>

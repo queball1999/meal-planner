@@ -59,9 +59,54 @@ func (c *anthropicClient) Generate(ctx context.Context, req GenerateRequest) (Ge
 		params.System = []anthropic.TextBlockParam{{Text: req.System}}
 	}
 
+	if req.OnDelta != nil {
+		return c.generateStreaming(ctx, params, req.OnDelta)
+	}
+
 	msg, err := c.client.Messages.New(ctx, params)
 	if err != nil {
 		return GenerateResponse{}, fmt.Errorf("anthropic: %w", err)
+	}
+
+	var text string
+	for _, block := range msg.Content {
+		if block.Type == "text" {
+			text = block.Text
+			break
+		}
+	}
+
+	return GenerateResponse{
+		Content:      text,
+		InputTokens:  int(msg.Usage.InputTokens),
+		OutputTokens: int(msg.Usage.OutputTokens),
+		ProviderName: "anthropic",
+		ModelName:    msg.Model,
+	}, nil
+}
+
+// generateStreaming is Generate's streaming path: the SDK's own message
+// accumulator (anthropic.Message.Accumulate) reassembles the full message
+// from the event stream exactly as the non-streaming call would have
+// returned it, so onDelta is purely an extra tap on the text as it arrives -
+// every other field below reads from the accumulated message, unchanged from
+// the blocking path.
+func (c *anthropicClient) generateStreaming(ctx context.Context, params anthropic.MessageNewParams, onDelta func(string)) (GenerateResponse, error) {
+	stream := c.client.Messages.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	var msg anthropic.Message
+	for stream.Next() {
+		event := stream.Current()
+		if err := msg.Accumulate(event); err != nil {
+			return GenerateResponse{}, fmt.Errorf("anthropic: accumulate stream: %w", err)
+		}
+		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
+			onDelta(event.Delta.Text)
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return GenerateResponse{}, fmt.Errorf("anthropic: stream: %w", err)
 	}
 
 	var text string

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"regexp"
+	"strings"
 
 	"goeat/pricing"
 )
@@ -89,4 +91,28 @@ func ClampQuantities(gp GeneratedPlan) []string {
 		}
 	}
 	return notes
+}
+
+var trailingParenRE = regexp.MustCompile(`\s*\([^()]*\)\s*$`)
+
+// CleanMealTitles strips trailing parenthetical annotations the model
+// sometimes tacks onto a meal title - "Spaghetti Bolognese (batch-cooked for
+// tomorrow)", "Beef Tacos (Batch-cooked)" - which are planning notes about
+// *this week*, not part of the recipe's actual name. Left in, they leak into
+// the calendar, the recipe catalog, and every future week that reuses the
+// saved recipe, which by then has nothing to do with "tomorrow". In place,
+// like ClampQuantities.
+func CleanMealTitles(gp GeneratedPlan) {
+	for mi := range gp.Meals {
+		m := &gp.Meals[mi]
+		title := m.Title
+		for {
+			stripped := strings.TrimSpace(trailingParenRE.ReplaceAllString(title, ""))
+			if stripped == title || stripped == "" {
+				break
+			}
+			title = stripped
+		}
+		m.Title = title
+	}
 }

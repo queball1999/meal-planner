@@ -52,8 +52,13 @@ func (s *store) ListMealsByPlan(ctx context.Context, planID int64) ([]*Meal, err
 }
 
 // ListMealsByHouseholdRange returns every meal scheduled between from and to
-// (inclusive, YYYY-MM-DD) across all of the household's plans. Used by the
+// (inclusive, YYYY-MM-DD) across the household's active plans. Used by the
 // dashboard calendar, which spans weeks/months rather than a single plan.
+//
+// ⚠️ Excludes canceled plans. A regenerate creates a new plan row for the
+// same week and cancels the old one (CancelOtherPlansForWeek) rather than
+// deleting its meals, so without this filter the calendar widget showed both
+// the old and the new plan's meals stacked on the same days.
 func (s *store) ListMealsByHouseholdRange(ctx context.Context, householdID int64, from, to string) ([]*Meal, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.plan_id, m.day, m.slot, m.title, m.effort, m.servings,
@@ -62,7 +67,7 @@ func (s *store) ListMealsByHouseholdRange(ctx context.Context, householdID int64
 		       m.locked, m.ai_run_id, m.status
 		FROM meals m
 		JOIN plans p ON p.id = m.plan_id
-		WHERE p.household_id = ? AND m.day >= ? AND m.day <= ?
+		WHERE p.household_id = ? AND p.canceled = 0 AND m.day >= ? AND m.day <= ?
 		ORDER BY m.day, CASE m.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END`,
 		householdID, from, to)
 	if err != nil {

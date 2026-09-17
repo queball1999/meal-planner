@@ -36,6 +36,18 @@
 
 <details class="card form-section" id="gen-debug" style="margin:0 auto">
     <summary style="cursor:pointer;font-weight:var(--weight-semi)">{{icon "robot"}} Debug: AI activity</summary>
+    <div id="genDebugLive" hidden style="margin-top:var(--sp-4)">
+        <div class="llm-debug-entry" style="border-left-color:var(--accent)">
+            <div class="llm-debug-summary">
+                <span class="badge badge-accent">streaming…</span>
+                <span class="llm-debug-snippet">Model is replying live</span>
+            </div>
+            <div class="llm-debug-row">
+                <span class="llm-debug-label">Response</span>
+                <pre class="llm-debug-pre" id="genDebugLiveText"></pre>
+            </div>
+        </div>
+    </div>
     <div id="genDebugLog" style="margin-top:var(--sp-4)">
         <p style="color:var(--text-muted);font-size:var(--text-sm)">Waiting for AI activity…</p>
     </div>
@@ -119,6 +131,7 @@
         settled = true;
         es.close();
         stopDebugPoll();
+        if (liveWrap) liveWrap.hidden = true;
         refreshDebugLog();
         finishSteps();
         icon.classList.remove('icon-spin');
@@ -139,6 +152,7 @@
         settled = true;
         es.close();
         stopDebugPoll();
+        if (liveWrap) liveWrap.hidden = true;
         refreshDebugLog();
         markStepError();
         icon.classList.remove('icon-spin');
@@ -154,6 +168,31 @@
 
     /* ── Debug: AI activity ─────────────────────────────────────────── */
     var debugLog = document.getElementById('genDebugLog');
+
+    /* Live token-by-token streaming, same idea as slack-llm-proxy's chat
+     * stream: the backend (plan.Job.EmitLLMStart/EmitDelta) pushes each
+     * chunk of the model's reply over this same SSE connection as it is
+     * generated, rather than the browser only finding out once the whole
+     * call has finished and the next /admin/llm-debug poll picks it up. */
+    var liveWrap = document.getElementById('genDebugLive');
+    var liveText = document.getElementById('genDebugLiveText');
+    var liveBuffer = '';
+
+    es.addEventListener('llm_start', function () {
+        liveBuffer = '';
+        if (liveText) liveText.textContent = '';
+        if (liveWrap) liveWrap.hidden = false;
+        var debugDetails = document.getElementById('gen-debug');
+        if (debugDetails) debugDetails.open = true;
+    });
+
+    es.addEventListener('llm_delta', function (e) {
+        liveBuffer += e.data;
+        if (liveText) {
+            liveText.textContent = liveBuffer;
+            liveText.scrollTop = liveText.scrollHeight;
+        }
+    });
 
     function esc(s) {
         return String(s)
