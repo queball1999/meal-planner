@@ -138,6 +138,16 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/scrape/selector", requireAuth(http.HandlerFunc(s.handleScrapeSelector)))
 	mux.Handle("POST /admin/scrape/ai-extract", requireAuth(http.HandlerFunc(s.handleScrapeAIExtract)))
 	mux.Handle("POST /admin/scrape/autodetect", requireAuth(http.HandlerFunc(s.handleScrapeAutodetect)))
+	mux.Handle("POST /admin/scrape/{storeID}/pin-product", requireAuth(http.HandlerFunc(s.handleScrapePinProduct)))
+
+	// Hybrid CAPTCHA solve: a live CDP session the admin watches and clicks
+	// through, or pasting cookies solved elsewhere - see
+	// web/handlers_scrape_live.go.
+	mux.Handle("POST /admin/scrape/{storeID}/live/start", requireAuth(http.HandlerFunc(s.handleScrapeLiveStart)))
+	mux.Handle("GET /admin/scrape/live/{sessionID}/ws", requireAuth(http.HandlerFunc(s.handleScrapeLiveWS)))
+	mux.Handle("POST /admin/scrape/live/{sessionID}/finish", requireAuth(http.HandlerFunc(s.handleScrapeLiveFinish)))
+	mux.Handle("POST /admin/scrape/live/{sessionID}/cancel", requireAuth(http.HandlerFunc(s.handleScrapeLiveCancel)))
+	mux.Handle("POST /admin/scrape/{storeID}/clearance/manual", requireAuth(http.HandlerFunc(s.handleScrapeClearanceManual)))
 
 	mux.Handle("GET /settings", requireAuth(http.HandlerFunc(s.handleSettingsPage)))
 	mux.Handle("POST /settings/danger/{target}", requireAuth(http.HandlerFunc(s.handleDangerWipe)))

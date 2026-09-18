@@ -198,6 +198,21 @@ func (s *Server) buildBackgroundProcesses(ctx context.Context, householdID int64
 		})
 	}
 
+	switch {
+	case s.itemImageDir == "":
+		procs = append(procs, backgroundProcess{
+			Name: "Pantry photo backfill", Description: "Slowly discovers and downloads photos for catalog items that don't have one yet.",
+			Status: "off", StatusLabel: "Not configured", Detail: "ITEM_IMAGE_DIR is not set",
+		})
+	default:
+		procs = append(procs, backgroundProcess{
+			Name: "Pantry photo backfill", Description: "Slowly discovers and downloads photos for catalog items that don't have one yet.",
+			Status: "ok", StatusLabel: "Running",
+			Detail: fmt.Sprintf("every %d min, one item at a time - %s",
+				int(imageBackfillInterval.Minutes()), lastRunDetail(s.lastImageBackfillCheck())),
+		})
+	}
+
 	renderCfg := settings.LiveRenderConfig(ctx, s.store, s.cfg)
 	if !renderCfg.Enabled() {
 		procs = append(procs, backgroundProcess{

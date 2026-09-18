@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 )
@@ -37,6 +38,11 @@ var GlobalDebugLog *debugLogger
 func NewDebugLogger(gen Generator) Generator {
 	dl := &debugLogger{inner: gen}
 	GlobalDebugLog = dl
+	// TEMPORARY diagnostic - remove once the missing-audit-log-entries bug is
+	// found. Confirms which debugLogger instance is live and when it was
+	// (re)built, so a reload replacing GlobalDebugLog mid-generation shows up
+	// in the container logs instead of just as an empty ring later.
+	log.Printf("[llm-debug] NewDebugLogger: wrapped provider=%s model=%s instance=%p", gen.ProviderName(), gen.ModelName(), dl)
 	return dl
 }
 
@@ -72,7 +78,13 @@ func (d *debugLogger) Generate(ctx context.Context, req GenerateRequest) (Genera
 	if len(d.ring) > maxDebugEntries {
 		d.ring = d.ring[len(d.ring)-maxDebugEntries:]
 	}
+	ringLen := len(d.ring)
 	d.mu.Unlock()
+
+	// TEMPORARY diagnostic - remove once the missing-audit-log-entries bug is
+	// found.
+	log.Printf("[llm-debug] Generate on instance=%p: provider=%s model=%s err=%v ring_len_after=%d global_is_this=%v",
+		d, d.inner.ProviderName(), d.inner.ModelName(), err, ringLen, GlobalDebugLog == d)
 
 	return resp, err
 }

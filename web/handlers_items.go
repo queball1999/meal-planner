@@ -19,6 +19,7 @@ import (
 	"goeat/items"
 	"goeat/middleware"
 	"goeat/pricing"
+	"goeat/scrape"
 )
 
 // itemImageURL is the <img src> for an item: the stored file, or the shared
@@ -72,11 +73,59 @@ const (
 	itemImageMinInterval = 2 * time.Second // spacing between lazy downloads
 )
 
-// lazyFetchItemImage kicks off a one-shot background download for an item that
-// has a source URL but no stored image yet. It returns immediately; the next
-// page load picks up the cached file. A fetch that fails is not retried for
-// itemImageRetryAfter.
-func (s *Server) lazyFetchItemImage(it *db.Item) {
+// lazyFetchItemImage is the reactive path: it fires whenever a page shows an
+// item directly (the items list, an item's own detail page, the pantry list -
+// see web/handlers_pantry.go), so a photo appears without anyone waiting on
+// the background backfill (web/scheduler_images.go) to eventually get there.
+//
+// If it has no ImageSourceURL yet, this first checks whatever the backfill
+// scheduler has already discovered (ensureItemImageSource) - a cache read,
+// never a freefoodphotos scrape of its own; that stays the scheduler's job
+// alone, run slowly and deliberately. It then kicks off a one-shot background
+// download for an item that has a source URL but no stored image yet, and
+// returns immediately - the next page load picks up the cached file. A fetch
+// that fails is not retried for itemImageRetryAfter.
+func (s *Server) lazyFetchItemImage(ctx context.Context, it *db.Item) {
+	if it == nil || s.itemImageDir == "" || it.ImagePath != "" {
+		return
+	}
+	if it.ImageSourceURL == "" {
+		s.ensureItemImageSource(ctx, it)
+		if it.ImageSourceURL == "" {
+			return
+		}
+	}
+	s.fetchAndStoreItemImage(it, s.renderConfig(ctx))
+}
+
+// ensureItemImageSource fills in it.ImageSourceURL/ImageAttribution (and
+// persists them) from whatever freefoodphotos match the background backfill
+// scheduler has already cached, if any - see warmFreefoodphotosIndexIfBuilt.
+// Never triggers a scrape itself: a cold or stale cache just means nothing to
+// offer yet, not a stall on a page view.
+func (s *Server) ensureItemImageSource(ctx context.Context, it *db.Item) {
+	idx := warmFreefoodphotosIndexIfBuilt()
+	if idx == nil {
+		return
+	}
+	p, ok := idx.Match(it.Name)
+	if !ok {
+		return
+	}
+	if err := s.store.SetItemImageSource(ctx, it.ID, p.ImageURL, p.Attribution); err != nil {
+		log.Printf("item image: save source %d: %v", it.ID, err)
+		return
+	}
+	it.ImageSourceURL = p.ImageURL
+	it.ImageAttribution = p.Attribution
+}
+
+// fetchAndStoreItemImage downloads it.ImageSourceURL and saves the result,
+// respecting the shared dedup/backoff/rate-limit state below - shared by the
+// reactive path (lazyFetchItemImage) and the background backfill scheduler
+// (web/scheduler_images.go) so neither one's downloads compete with or double
+// the other's pacing.
+func (s *Server) fetchAndStoreItemImage(it *db.Item, render scrape.RenderConfig) {
 	if it == nil || s.itemImageDir == "" || it.ImagePath != "" || it.ImageSourceURL == "" {
 		return
 	}
@@ -102,7 +151,7 @@ func (s *Server) lazyFetchItemImage(it *db.Item) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		name, err := items.DownloadImage(ctx, it.ImageSourceURL, s.itemImageDir)
+		name, err := items.DownloadImage(ctx, it.ImageSourceURL, s.itemImageDir, render)
 		if err != nil {
 			itemImageFailed.Store(it.ID, time.Now())
 			log.Printf("item image: fetch %d (%s): %v", it.ID, it.ImageSourceURL, err)
@@ -111,7 +160,9 @@ func (s *Server) lazyFetchItemImage(it *db.Item) {
 		itemImageFailed.Delete(it.ID)
 		if err := s.store.SetItemImage(ctx, it.ID, name, it.ImageAttribution); err != nil {
 			log.Printf("item image: save %d: %v", it.ID, err)
+			return
 		}
+		log.Printf("item image: fetched %d (%s) -> %s", it.ID, it.Name, name)
 	}(*it)
 }
 
@@ -190,10 +241,16 @@ func (s *Server) handleItemsPage(w http.ResponseWriter, r *http.Request) {
 	list, _ := s.store.FilterItems(ctx, hh.ID, db.ItemFilter{Q: q, Category: cat})
 	rows := make([]itemRow, 0, len(list))
 	for _, it := range list {
-		s.lazyFetchItemImage(it)
 		rows = append(rows, itemRow{Item: it, ImageURL: itemImageURL(it)})
 	}
 	rows, page := paginate(r, rows)
+	// Only the page actually being shown needs a fetch queued - queuing one for
+	// every filtered-but-unseen row (all of them, pre-pagination) would fan a
+	// single page view out into far more background downloads than what's on
+	// screen.
+	for _, row := range rows {
+		s.lazyFetchItemImage(ctx, row.Item)
+	}
 
 	s.render(w, r, "items", itemsPageData{
 		Items:      rows,
@@ -272,7 +329,7 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.lazyFetchItemImage(it)
+	s.lazyFetchItemImage(ctx, it)
 
 	// Backfill derived conversions on view, not just on save: an item created
 	// before this feature existed (or seeded straight into the DB) can reach
@@ -536,7 +593,7 @@ func (s *Server) handleItemImageReplace(w http.ResponseWriter, r *http.Request) 
 		}
 		newName, err = items.SaveImageBytes(s.itemImageDir, fh.Filename, data)
 	} else if raw := strings.TrimSpace(r.FormValue("image_url")); raw != "" {
-		newName, err = items.DownloadImage(ctx, raw, s.itemImageDir)
+		newName, err = items.DownloadImage(ctx, raw, s.itemImageDir, s.renderConfig(ctx))
 	} else {
 		s.setNotify(w, NotifyDanger, "Choose a file or paste an image URL.")
 		http.Redirect(w, r, dest, http.StatusSeeOther)

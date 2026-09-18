@@ -159,10 +159,13 @@ func hasBackend(rs []Renderer, b string) bool {
 	return false
 }
 
-// isBotWall reports whether a challenge reason describes an anti-bot
+// IsBotWall reports whether a challenge reason describes an anti-bot
 // interstitial (FlareSolverr's job) rather than a page that simply needs its
-// JavaScript run (Browserless's job).
-func isBotWall(reason string) bool {
+// JavaScript run (Browserless's job). Exported so pricing.ScraperProvider can
+// tell "genuinely bot-walled after the full automated chain" (needs a human)
+// apart from "empty JS shell" or "no products" (neither of which a human
+// solving a CAPTCHA would fix).
+func IsBotWall(reason string) bool {
 	r := strings.ToLower(reason)
 	if r == "" {
 		return false
@@ -217,21 +220,6 @@ func RenderViaWith(ctx context.Context, r Renderer, targetURL string, cl *Cleara
 // endpoint. Works with browserless/chromium, CloakBrowser wrappers, and any
 // service exposing the same contract: {"url": "..."} in, rendered HTML out.
 func fetchViaBrowserless(ctx context.Context, targetURL string, cfg Renderer, cl *Clearance) (*FetchResult, error) {
-	base := strings.TrimRight(strings.TrimSpace(cfg.URL), "/")
-
-	// stealth patches the automation tells (navigator.webdriver, the missing
-	// plugin and language arrays, the headless UA) that Imperva and friends
-	// fingerprint; blockAds cuts the third-party noise that keeps networkidle
-	// from ever firing on a retail page. Both are ignored by builds that do
-	// not know them, so an older Browserless still works.
-	q := url.Values{}
-	q.Set("stealth", "true")
-	q.Set("blockAds", "true")
-	if cfg.Token != "" {
-		q.Set("token", cfg.Token)
-	}
-	endpoint := base + "/content?" + q.Encode()
-
 	payload := map[string]any{
 		"url": targetURL,
 		// Wait for the network to settle so client-rendered prices exist by
@@ -270,6 +258,46 @@ func fetchViaBrowserless(ctx context.Context, targetURL string, cfg Renderer, cl
 			payload["userAgent"] = map[string]string{"userAgent": cl.UserAgent}
 		}
 	}
+	return postBrowserless(ctx, targetURL, cfg, payload)
+}
+
+// checkViaBrowserless is fetchViaBrowserless's payload without the
+// price-detection wait (waitForFunction + waitForTimeout) - used only by
+// CheckOneRenderer. Those waits are tuned for a real grocery search result
+// page and always burn their full ~24s against a trivial connectivity-check
+// page (example.com) that will never contain a price, turning a "is this
+// service reachable" check into a guaranteed 24+ second wait.
+func checkViaBrowserless(ctx context.Context, targetURL string, cfg Renderer) (*FetchResult, error) {
+	payload := map[string]any{
+		"url": targetURL,
+		"gotoOptions": map[string]any{
+			"waitUntil": "networkidle2",
+			"timeout":   15000,
+		},
+		"bestAttempt": true,
+	}
+	return postBrowserless(ctx, targetURL, cfg, payload)
+}
+
+// postBrowserless is the HTTP mechanics shared by fetchViaBrowserless and
+// checkViaBrowserless: only the payload (what to wait for) differs between a
+// real scrape and a bare connectivity check.
+func postBrowserless(ctx context.Context, targetURL string, cfg Renderer, payload map[string]any) (*FetchResult, error) {
+	base := strings.TrimRight(strings.TrimSpace(cfg.URL), "/")
+
+	// stealth patches the automation tells (navigator.webdriver, the missing
+	// plugin and language arrays, the headless UA) that Imperva and friends
+	// fingerprint; blockAds cuts the third-party noise that keeps networkidle
+	// from ever firing on a retail page. Both are ignored by builds that do
+	// not know them, so an older Browserless still works.
+	q := url.Values{}
+	q.Set("stealth", "true")
+	q.Set("blockAds", "true")
+	if cfg.Token != "" {
+		q.Set("token", cfg.Token)
+	}
+	endpoint := base + "/content?" + q.Encode()
+
 	body, _ := json.Marshal(payload)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -324,7 +352,13 @@ func CheckRenderer(ctx context.Context, cfg RenderConfig) error {
 
 // CheckOneRenderer verifies a single service end to end.
 func CheckOneRenderer(ctx context.Context, r Renderer) error {
-	res, err := RenderVia(ctx, r, "https://example.com")
+	var res *FetchResult
+	var err error
+	if r.Backend == RendererBrowserless {
+		res, err = checkViaBrowserless(ctx, "https://example.com", r)
+	} else {
+		res, err = RenderVia(ctx, r, "https://example.com")
+	}
 	if err != nil {
 		return err
 	}

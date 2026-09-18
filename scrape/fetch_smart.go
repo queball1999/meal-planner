@@ -182,6 +182,7 @@ var challengeMarkers = []struct{ needle, reason string }{
 	{"request unsuccessful. incapsula", "Incapsula block"},
 	{"pardon our interruption", "bot check"},
 	{"unusual traffic from your computer", "rate-limit block"},
+	{"you need to enable javascript to run this app", "site requires JavaScript (client-rendered app)"},
 }
 
 // ChallengeReason reports why a response looks like a bot wall or an empty

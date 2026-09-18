@@ -167,6 +167,19 @@ type Store interface {
 	ListScrapeConfigs(ctx context.Context) ([]*ScrapeConfig, error)
 	UpdateScrapeConfig(ctx context.Context, p UpdateScrapeConfigParams) error
 
+	// MarkScrapeConfigBlocked records that storeID's scraper hit a bot wall a
+	// human needs to clear; ClearScrapeConfigBlocked blanks that state once
+	// solved (see ScrapeConfig.Blocked).
+	MarkScrapeConfigBlocked(ctx context.Context, storeID int64, reason, blockedURL string) error
+	ClearScrapeConfigBlocked(ctx context.Context, storeID int64) error
+
+	// UpsertScrapeClearance saves the cookies an admin obtained for storeID
+	// (live-solve or pasted manually), replacing any earlier clearance.
+	// GetScrapeClearance returns nil, nil when none exists.
+	UpsertScrapeClearance(ctx context.Context, p ScrapeClearance) error
+	GetScrapeClearance(ctx context.Context, storeID int64) (*ScrapeClearance, error)
+	DeleteScrapeClearance(ctx context.Context, storeID int64) error
+
 	// ── Shopping list (§5.1, §6.4) ───────────────────────────────────────────
 
 	CreateShoppingListItem(ctx context.Context, p CreateShoppingListItemParams) (*ShoppingListItem, error)
@@ -272,6 +285,7 @@ type Store interface {
 	DeleteItem(ctx context.Context, id int64) error
 	SetItemImage(ctx context.Context, id int64, imagePath, attribution string) error
 	ClearItemImage(ctx context.Context, id int64) error
+	SetItemImageSource(ctx context.Context, id int64, sourceURL, attribution string) error
 
 	UpsertUnitConversion(ctx context.Context, p UpsertUnitConversionParams) error
 	ListGlobalConversions(ctx context.Context) ([]*UnitConversion, error)

@@ -6,6 +6,9 @@
 // image pipeline in package items then lazily downloads and caches each photo
 // on first view.
 //
+// The scrape/match logic itself lives in package freefoodphotos, shared with
+// the runtime background image backfill (web.RunImageBackfillScheduler).
+//
 // Photo captions are vague scene descriptions ("Bone-in thick juicy raw ribeye
 // beef steak"), so by default (-enrich-only) unmatched photos are dropped. Pass
 // -enrich-only=false to also append every unmatched caption as its own "each"
@@ -18,41 +21,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 
+	"goeat/freefoodphotos"
 	"goeat/pricing"
 )
-
-const base = "https://www.freefoodphotos.com/imagelibrary/"
-
-// category slug on freefoodphotos.com -> our display category.
-var categories = map[string]string{
-	"vegetables":    "Produce",
-	"fruit":         "Produce",
-	"herbs":         "Produce",
-	"meat":          "Meat & Seafood",
-	"seafood":       "Meat & Seafood",
-	"dairy":         "Dairy & Eggs",
-	"bread":         "Bakery",
-	"confectionery": "Snacks & Sweets",
-	"cooking":       "Pantry",
-	"seasonal":      "Pantry",
-}
-
-// <a href="slides/NAME.html" ...><img ... src="thumbs/NAME.jpg" ... alt="CAPTION" ...>
-var entryRE = regexp.MustCompile(
-	`href="slides/([a-z0-9_\-]+)\.html"[^>]*>\s*<img[^>]*alt="([^"]*)"`)
-
-var wsRE = regexp.MustCompile(`\s+`)
 
 type seedConversion struct {
 	From   string  `json:"from"`
@@ -83,14 +63,12 @@ func main() {
 	enrichOnly := flag.Bool("enrich-only", true, "only attach photos to curated items; never append photo captions as new items (photo-caption items are vague and not wanted in the seed)")
 	flag.Parse()
 
-	want := map[string]bool{}
+	var slugs []string
 	for _, c := range strings.Split(*catList, ",") {
 		if c = strings.TrimSpace(c); c != "" {
-			want[c] = true
+			slugs = append(slugs, c)
 		}
 	}
-
-	client := &http.Client{Timeout: 25 * time.Second}
 
 	// Curated entries first, indexed by normalized name so scraped photos can
 	// attach their image fields to the right row.
@@ -108,41 +86,29 @@ func main() {
 		fmt.Fprintf(os.Stderr, "curated: %d items\n", len(items))
 	}
 
-	slugs := make([]string, 0, len(categories))
-	for s := range categories {
-		slugs = append(slugs, s)
-	}
-	sort.Strings(slugs)
-
-	var all []photo
-	for _, slug := range slugs {
-		if len(want) > 0 && !want[slug] {
-			continue
-		}
-		photos, err := scrapeCategory(client, slug)
-		if err != nil {
-			fatal("scrape %s: %v", slug, err)
-		}
-		if *limit > 0 && len(photos) > *limit {
-			photos = photos[:*limit]
-		}
-		fmt.Fprintf(os.Stderr, "%-14s %d photos\n", slug, len(photos))
-		all = append(all, photos...)
-		time.Sleep(400 * time.Millisecond)
+	client := &http.Client{Timeout: 25 * time.Second}
+	idx, err := freefoodphotos.BuildIndex(context.Background(), freefoodphotos.DefaultFetcher(client), freefoodphotos.Options{
+		Slugs:            slugs,
+		LimitPerCategory: *limit,
+		Delay:            400 * time.Millisecond,
+		OnCategory: func(slug string, n int) {
+			fmt.Fprintf(os.Stderr, "%-14s %d photos\n", slug, n)
+		},
+	})
+	if err != nil {
+		fatal("%v", err)
 	}
 
 	// Pass 1: attach a photo to every curated item that lacks one, matching on
 	// shared significant words between the curated name and the photo caption.
-	used := map[string]bool{}
 	var enriched int
 	for i := range items {
 		if items[i].ImageSourceURL != "" {
 			continue
 		}
-		if p, ok := bestPhoto(items[i].Name, all, used); ok {
-			items[i].ImageSourceURL = p.imageURL
-			items[i].ImageAttribution = p.attribution
-			used[p.imageURL] = true
+		if p, ok := idx.Match(items[i].Name); ok {
+			items[i].ImageSourceURL = p.ImageURL
+			items[i].ImageAttribution = p.Attribution
 			enriched++
 		}
 	}
@@ -150,11 +116,11 @@ func main() {
 	// Pass 2 (full mirror): append every remaining photo as its own builtin item.
 	var added int
 	if !*enrichOnly {
-		for _, p := range all {
-			if used[p.imageURL] {
+		for _, p := range idx.Photos() {
+			if idx.IsUsed(p.ImageURL) {
 				continue
 			}
-			term := pricing.Normalize(p.name)
+			term := pricing.Normalize(p.Name)
 			if term == "" {
 				continue
 			}
@@ -163,12 +129,12 @@ func main() {
 			}
 			byTerm[term] = len(items)
 			items = append(items, seedItem{
-				Name:               p.name,
-				Category:           p.category,
+				Name:               p.Name,
+				Category:           p.Category,
 				StockUnit:          "each",
 				DefaultPurchaseQty: 1,
-				ImageSourceURL:     p.imageURL,
-				ImageAttribution:   p.attribution,
+				ImageSourceURL:     p.ImageURL,
+				ImageAttribution:   p.Attribution,
 			})
 			added++
 		}
@@ -190,132 +156,6 @@ func main() {
 	fmt.Fprintf(os.Stderr, "wrote %s: %d items (%d new, %d enriched)\n", *out, len(items), added, enriched)
 }
 
-type photo struct {
-	name, category, imageURL, attribution string
-	words                                 map[string]bool // significant words of name, normalized
-}
-
-func scrapeCategory(client *http.Client, slug string) ([]photo, error) {
-	body, err := get(client, base+slug+"/")
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]bool{}
-	var out []photo
-	for _, m := range entryRE.FindAllStringSubmatch(body, -1) {
-		file, caption := m[1], cleanCaption(m[2])
-		if file == "" || caption == "" || seen[file] || looksComposed(caption) {
-			continue
-		}
-		seen[file] = true
-		out = append(out, photo{
-			name:     caption,
-			category: categories[slug],
-			imageURL: base + slug + "/slides/" + file + ".jpg",
-			attribution: caption + " by freefoodphotos.com is licensed under a " +
-				"Creative Commons Attribution 3.0 Unported License",
-			words: sigWords(caption),
-		})
-	}
-	return out, nil
-}
-
-// stop words that carry no grocery-identity signal in a photo caption.
-var stop = map[string]bool{
-	"a": true, "an": true, "the": true, "of": true, "on": true, "in": true, "with": true,
-	"and": true, "for": true, "to": true, "fresh": true, "raw": true, "whole": true,
-	"isolated": true, "background": true, "closeup": true, "close": true, "up": true,
-	"white": true, "wooden": true, "board": true, "bowl": true, "plate": true, "table": true,
-	"photo": true, "image": true, "delicious": true, "tasty": true, "some": true,
-}
-
-func sigWords(s string) map[string]bool {
-	out := map[string]bool{}
-	for _, w := range strings.Fields(pricing.Normalize(s)) {
-		if !stop[w] && len(w) > 1 {
-			out[w] = true
-		}
-	}
-	return out
-}
-
-// bestPhoto picks the unused photo whose caption shares the most significant
-// words with the curated item name. It requires every word of a short (1-2
-// word) name to be present, or at least two shared words for longer names, so
-// "Salmon fillet" matches a salmon photo but "Yellow onion" never grabs
-// "Deep fried onion rings".
-func bestPhoto(name string, photos []photo, used map[string]bool) (photo, bool) {
-	want := sigWords(name)
-	if len(want) == 0 {
-		return photo{}, false
-	}
-	need := 2
-	if len(want) < 2 {
-		need = len(want)
-	}
-	var best photo
-	bestScore := 0
-	for _, p := range photos {
-		if used[p.imageURL] {
-			continue
-		}
-		score := 0
-		for w := range want {
-			if p.words[w] {
-				score++
-			}
-		}
-		if score < need || score <= bestScore {
-			continue
-		}
-		// prefer a tight caption: fewer extra words = more likely the subject.
-		if score == bestScore && len(p.words) >= len(best.words) {
-			continue
-		}
-		best, bestScore = p, score
-	}
-	return best, bestScore >= need
-}
-
-// composedRE flags captions that describe a scene, a prepared dish, or several
-// items at once rather than a single grocery item ("Beef patties and sausages
-// on a barbecue", "Assorted meat grilling over a BBQ fire").
-var composedRE = regexp.MustCompile(`(?i)\b(` +
-	`and|with|&|` +
-	`barbecue|barbeque|bbq|grill|grilling|grilled|` +
-	`cook|cooking|cooked|roast|roasting|roasted|frying|fried|baking|baked|` +
-	`saute|sauteed|steamed|boiled|poached|toasted|smoked|marinated|stuffed|` +
-	`platter|plate|plated|bowl|dish|meal|dinner|lunch|breakfast|brunch|buffet|` +
-	`spread|selection|assorted|assortment|various|mixed|collection|` +
-	`ingredients|recipe|served|serving|garnished|topped|drizzled|sprinkled|` +
-	`ready|preparing|preparation|homemade|leftover|` +
-	`pile|piled|heap|heaped|mound|mounded|scattered|strewn|handful|handfuls|` +
-	`bunch|bunches|bundle|bundles|cluster|clusters|stack|stacked|` +
-	`arrangement|arranged|display|displayed|market|stall|basket|crate|sack|` +
-	`salad|soup|stew|curry|casserole|sandwich|burger|pizza|sauce|` +
-	`over|on a|in a` +
-	`)\b`)
-
-func looksComposed(caption string) bool {
-	if composedRE.MatchString(caption) {
-		return true
-	}
-	return len(sigWords(caption)) > 4
-}
-
-func cleanCaption(s string) string {
-	s = wsRE.ReplaceAllString(strings.TrimSpace(html(s)), " ")
-	if len(s) > 70 {
-		s = strings.TrimSpace(s[:70])
-	}
-	return s
-}
-
-func html(s string) string {
-	r := strings.NewReplacer("&amp;", "&", "&#39;", "'", "&quot;", `"`, "&nbsp;", " ")
-	return r.Replace(s)
-}
-
 func loadCurated(path string) ([]seedItem, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -326,21 +166,6 @@ func loadCurated(path string) ([]seedItem, error) {
 		return nil, err
 	}
 	return sf.Items, nil
-}
-
-func get(client *http.Client, url string) (string, error) {
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", "goeat-build_catalog/1.0 (+https://www.freefoodphotos.com)")
-	res, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET %s: %s", url, res.Status)
-	}
-	b, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
-	return string(b), err
 }
 
 func fatal(format string, a ...any) {

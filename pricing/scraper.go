@@ -2,6 +2,7 @@ package pricing
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -41,6 +42,12 @@ type ScraperProvider struct {
 
 	mu      sync.Mutex
 	lastReq map[int64]time.Time // per-store rate limiter
+	// blockedLogged dedupes the "mark blocked + audit log" transition under
+	// concurrent lookups against the same freshly-blocked store (the parallel
+	// per-store fan-out in pricing.ResolvePricing can call Lookup for the same
+	// store from more than one item's goroutine before the first write lands).
+	// Either write alone is correct - this only avoids duplicate log rows.
+	blockedLogged map[int64]bool
 }
 
 // NewScraperProvider builds the scrape tier. render supplies the current
@@ -52,10 +59,11 @@ func NewScraperProvider(dbStore db.Store, render func(context.Context) scrape.Re
 		render = func(context.Context) scrape.RenderConfig { return scrape.RenderConfig{} }
 	}
 	return &ScraperProvider{
-		dbStore: dbStore,
-		render:  render,
-		gen:     gen,
-		lastReq: make(map[int64]time.Time),
+		dbStore:       dbStore,
+		render:        render,
+		gen:           gen,
+		lastReq:       make(map[int64]time.Time),
+		blockedLogged: make(map[int64]bool),
 	}
 }
 
@@ -90,24 +98,46 @@ func (sp *ScraperProvider) Lookup(ctx context.Context, term string, storeID int6
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// FetchSmart sends browser headers with a cookie jar and escalates to the
-	// configured headless browser when the store answers with a bot wall or a
-	// JavaScript shell. A store context (a selected store, kept in a cookie)
-	// switches it to a scripted session - some retailers show no prices at
-	// all until one is chosen.
-	smart, err := scrape.FetchSmartWithContext(ctx, searchURL, sp.render(ctx),
-		scrape.ParseStoreContext(cfg.ContextJSON))
+	render := sp.render(ctx)
+
+	// An admin-solved clearance (live CDP session or pasted cookies) beats
+	// running the whole automated chain again: one Browserless render call,
+	// no FlareSolverr round trip. Falls through to the ordinary chain below
+	// on any miss, and drops the clearance so a stale one doesn't slow down
+	// every future lookup for this store.
 	var result *scrape.FetchResult
-	if smart != nil {
-		result = smart.FetchResult
-		if smart.Challenge != "" {
-			log.Printf("scraper: store=%d %s", storeID, smart.Challenge)
-		}
+	if cleared, ok := sp.tryClearance(ctx, storeID, searchURL, render); ok {
+		result = cleared
 	}
-	if err != nil || result == nil {
-		log.Printf("scraper: fetch error store=%d: %v", storeID, err)
-		sp.markStatus(ctx, cfg, "degraded")
-		return nil, nil
+
+	if result == nil {
+		// FetchSmart sends browser headers with a cookie jar and escalates to
+		// the configured headless browser when the store answers with a bot
+		// wall or a JavaScript shell. A store context (a selected store, kept
+		// in a cookie) switches it to a scripted session - some retailers show
+		// no prices at all until one is chosen.
+		smart, err := scrape.FetchSmartWithContext(ctx, searchURL, render,
+			scrape.ParseStoreContext(cfg.ContextJSON))
+		if smart != nil {
+			result = smart.FetchResult
+			if smart.Challenge != "" {
+				log.Printf("scraper: store=%d %s", storeID, smart.Challenge)
+				// The full automated chain ran (both renderers, or whichever
+				// was configured) and still hit a genuine bot-wall signature -
+				// not just an empty JS shell or no products, either of which a
+				// human solving a CAPTCHA would do nothing about. Flag it once
+				// per block so an admin can solve it from the Scrape Config
+				// page; this run still fails soft below exactly as before.
+				if smart.ViaProxy && render.Enabled() && scrape.IsBotWall(smart.Challenge) {
+					sp.markBlocked(ctx, cfg, smart.Challenge, searchURL)
+				}
+			}
+		}
+		if err != nil || result == nil {
+			log.Printf("scraper: fetch error store=%d: %v", storeID, err)
+			sp.markStatus(ctx, cfg, "degraded")
+			return nil, nil
+		}
 	}
 
 	sels, _ := scrape.ParseSelectors(cfg.SelectorsJSON)
@@ -129,7 +159,15 @@ func (sp *ScraperProvider) Lookup(ctx context.Context, term string, storeID int6
 		return nil, nil
 	}
 
-	best := bestPriced(products)
+	// An admin may have picked the right product from among several on the
+	// search page (the scrape-config product picker, §6.7) - prefer it by
+	// name over whichever priced result happens to come first on the page.
+	var pinnedName string
+	if pinned, perr := sp.dbStore.GetItemProductMap(ctx, storeID, term); perr == nil && pinned != nil {
+		pinnedName = pinned.ChosenProduct
+	}
+
+	best := bestPriced(products, pinnedName)
 	if best == nil {
 		sp.markStatus(ctx, cfg, "degraded")
 		return nil, nil
@@ -143,6 +181,18 @@ func (sp *ScraperProvider) Lookup(ctx context.Context, term string, storeID int6
 		return nil, nil
 	}
 	sp.markStatus(ctx, cfg, "active")
+	if cfg.Blocked() {
+		// The site let a lookup through - via a saved clearance, or the
+		// automated chain succeeding on its own again - so whatever human
+		// solved it (or the wall lifting itself) fixed it; nothing left for
+		// an admin to do on the Scrape Config page.
+		if err := sp.dbStore.ClearScrapeConfigBlocked(ctx, storeID); err != nil {
+			log.Printf("scraper: clear blocked store=%d: %v", storeID, err)
+		}
+		sp.mu.Lock()
+		delete(sp.blockedLogged, storeID)
+		sp.mu.Unlock()
+	}
 
 	packSize, unit := parseSizeStr(best.PackSize)
 	return &PriceResult{
@@ -155,14 +205,103 @@ func (sp *ScraperProvider) Lookup(ctx context.Context, term string, storeID int6
 	}, nil
 }
 
-// bestPriced returns the first product carrying a usable price.
-func bestPriced(products []scrape.ExtractedProduct) *scrape.ExtractedProduct {
+// bestPriced returns the pinned product - the one an admin picked out of
+// several on the search page, by exact name - if it's still there and priced,
+// else the first product carrying a usable price at all.
+func bestPriced(products []scrape.ExtractedProduct, pinnedName string) *scrape.ExtractedProduct {
+	if pinnedName != "" {
+		for i := range products {
+			if products[i].Price > 0 && strings.EqualFold(strings.TrimSpace(products[i].Name), pinnedName) {
+				return &products[i]
+			}
+		}
+	}
 	for i := range products {
 		if products[i].Price > 0 {
 			return &products[i]
 		}
 	}
 	return nil
+}
+
+// tryClearance attempts searchURL through a saved admin-solved clearance
+// (scrape_clearances), if one exists, is unexpired, and a Browserless
+// renderer is configured. Reports ok only on a real, unchallenged page - any
+// miss (no clearance, expired, or the site still challenges it) deletes a
+// stale row and returns false so the caller falls through to the ordinary
+// FetchSmart chain.
+func (sp *ScraperProvider) tryClearance(ctx context.Context, storeID int64, searchURL string, render scrape.RenderConfig) (*scrape.FetchResult, bool) {
+	var browserless scrape.Renderer
+	for _, r := range render.Renderers() {
+		if r.Backend == scrape.RendererBrowserless {
+			browserless = r
+			break
+		}
+	}
+	if !browserless.Enabled() {
+		return nil, false
+	}
+
+	saved, err := sp.dbStore.GetScrapeClearance(ctx, storeID)
+	if err != nil {
+		log.Printf("scraper: load clearance store=%d: %v", storeID, err)
+		return nil, false
+	}
+	if saved == nil {
+		return nil, false
+	}
+	if time.Now().After(saved.ExpiresAt) {
+		if derr := sp.dbStore.DeleteScrapeClearance(ctx, storeID); derr != nil {
+			log.Printf("scraper: delete expired clearance store=%d: %v", storeID, derr)
+		}
+		return nil, false
+	}
+
+	var cookies []scrape.Cookie
+	if uerr := json.Unmarshal([]byte(saved.CookiesJSON), &cookies); uerr != nil {
+		log.Printf("scraper: unmarshal saved clearance store=%d: %v", storeID, uerr)
+		return nil, false
+	}
+
+	result, ok := scrape.FetchWithSavedClearance(ctx, searchURL, browserless,
+		&scrape.Clearance{Cookies: cookies, UserAgent: saved.UserAgent})
+	if !ok {
+		// Stale: the site no longer accepts it, or it expired server-side
+		// before our own TTL caught up. Drop it so future lookups don't keep
+		// paying for a Browserless call that's never going to work.
+		if derr := sp.dbStore.DeleteScrapeClearance(ctx, storeID); derr != nil {
+			log.Printf("scraper: delete stale clearance store=%d: %v", storeID, derr)
+		}
+		return nil, false
+	}
+	return result, true
+}
+
+// markBlocked flags cfg's store as waiting on a human to solve a bot wall,
+// once per block - a lookup that hits this every single ingredient while a
+// store stays blocked would otherwise write and log on every single call.
+// blockedLogged is cleared by ClearScrapeConfigBlocked's callers implicitly
+// on next process start; within a run it just needs to dedupe repeats.
+func (sp *ScraperProvider) markBlocked(ctx context.Context, cfg *db.ScrapeConfig, reason, blockedURL string) {
+	sp.mu.Lock()
+	if sp.blockedLogged[cfg.StoreID] {
+		sp.mu.Unlock()
+		return
+	}
+	sp.blockedLogged[cfg.StoreID] = true
+	sp.mu.Unlock()
+
+	if err := sp.dbStore.MarkScrapeConfigBlocked(ctx, cfg.StoreID, reason, blockedURL); err != nil {
+		log.Printf("scraper: mark blocked store=%d: %v", cfg.StoreID, err)
+		return
+	}
+	_ = sp.dbStore.LogEvent(ctx, db.AppEvent{
+		Action:     "scrape.blocked",
+		TargetType: "store",
+		TargetID:   fmt.Sprintf("%d", cfg.StoreID),
+		Metadata:   reason,
+		Status:     "error",
+	})
 }
 
 // markStatus records whether a store's scraper is still working, so the config
@@ -184,6 +323,14 @@ func (sp *ScraperProvider) markStatus(ctx context.Context, cfg *db.ScrapeConfig,
 	if err != nil {
 		log.Printf("scraper: status update store=%d: %v", cfg.StoreID, err)
 	}
+}
+
+// ParsePackSize parses a free-text pack size ("12 oz", "1.5 dozen") into a
+// quantity and unit, defaulting to "1 each" when it can't be read. Exported
+// for the scrape-config product picker (§6.7), which stores the admin's
+// chosen product the same way a lookup would.
+func ParsePackSize(s string) (float64, string) {
+	return parseSizeStr(s)
 }
 
 func parseSizeStr(s string) (float64, string) {

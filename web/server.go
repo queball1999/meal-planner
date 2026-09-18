@@ -50,6 +50,9 @@ type Server struct {
 	autoPlanMu        sync.Mutex
 	autoPlanCheckedAt time.Time // last RunAutoPlanScheduler tick, whether or not it fired
 
+	imageBackfillMu        sync.Mutex
+	imageBackfillCheckedAt time.Time // last RunImageBackfillScheduler tick, whether or not it fired
+
 	// repriceMu guards repricing, keyed by plan id. Rebuilding a shopping list
 	// can take minutes (a price lookup per ingredient), and a user nudging
 	// several days' headcounts in a row would otherwise start overlapping

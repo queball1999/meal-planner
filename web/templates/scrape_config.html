@@ -10,6 +10,181 @@
 
 {{template "settingsTabs" .}}
 
+<input type="hidden" id="csrf-token" value="{{.CSRFToken}}">
+
+{{/* ── Headless browser & anti-bot ──────────────────────────────────────
+     Moved here from Settings → General: this config exists purely to serve
+     the per-store scraping below, so it lives next to what it configures
+     rather than on the general settings page. */}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "code"}} Headless browser & anti-bot</h2>
+    <p class="field-hint" style="margin-top:0">
+        Most grocery sites block plain HTTP requests or render their prices in JavaScript.
+        Configure a headless browser and/or FlareSolverr below, and scraping escalates to
+        them automatically when a direct fetch comes back as a challenge page or an empty
+        shell. Changes save immediately - no restart needed.
+    </p>
+    <ul class="help-steps">
+        <li><strong>FlareSolverr</strong> - solves Cloudflare-style anti-bot challenges. Used as the second attempt whenever its URL is set, even alongside browserless. Use when a store returns 403 or "Just a moment".</li>
+        <li><strong>browserless</strong> - runs the page's JavaScript and returns the rendered HTML
+            (<code>browserless/chromium</code> or anything exposing <code>POST /content</code>).
+            Use when the page loads but has no prices in its markup.</li>
+    </ul>
+    <p class="field-hint">
+        <code>docker-compose.yml</code> already includes both services - comment out either
+        block if you don't need it, then set the URL to <code>http://browserless:3000</code>
+        (same Docker network) or <code>http://localhost:3900</code>.
+    </p>
+
+    {{range .Data.ScrapingFields}}
+    <div class="field settings-field">
+        <label class="field-label" for="set-{{.Key}}">
+            {{.Label}}
+            {{if eq .Source "admin"}}<span class="badge badge-accent" title="Overrides the .env value">edited</span>{{end}}
+        </label>
+
+        {{if eq .Kind "select"}}
+        <select class="field-input" id="set-{{.Key}}" data-setting-key="{{.Key}}">
+            {{$val := .Value}}
+            {{range .Options}}
+            <option value="{{.}}"{{if eq . $val}} selected{{end}}>{{.}}</option>
+            {{end}}
+        </select>
+
+        {{else if eq .Kind "secret"}}
+        <input class="field-input" type="password" id="set-{{.Key}}" data-setting-key="{{.Key}}"
+               autocomplete="off"
+               placeholder="{{if .IsSet}}A value is set - leave blank to keep it{{else}}Not set{{end}}">
+
+        {{else if eq .Kind "int"}}
+        <input class="field-input" type="number" step="1" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+
+        {{else if eq .Kind "float"}}
+        <input class="field-input" type="number" step="any" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+
+        {{else}}
+        <input class="field-input" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}">
+        {{end}}
+
+        {{if .Help}}<span class="field-hint">{{.Help}}</span>{{end}}
+    </div>
+    {{end}}
+
+    <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;margin-top:var(--sp-4);border-top:1px solid var(--border);padding-top:var(--sp-4)">
+        <button id="testRenderBtn" class="btn btn-ghost btn-sm" type="button">
+            {{icon "refresh"}} Test headless browser
+        </button>
+        <span id="testRenderStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
+    </div>
+</div>
+
+<script>
+(function () {
+    function csrfToken() {
+        var f = document.getElementById('csrf-token');
+        return f ? f.value : '';
+    }
+
+    /* ── Headless browser & anti-bot: settings autosave ─────────────────
+       Same debounced-save behaviour as the Settings page's own fields (see
+       settings.html) - only persists a field when its value actually
+       changed, and only after a pause. Runs regardless of whether any store
+       is configured yet, unlike the per-store scripts further down. */
+    var SETTINGS_DEBOUNCE_MS = 700;
+    document.querySelectorAll('[data-setting-key]').forEach(function (input) {
+        var baseline = input.value;
+        var timer = null;
+        var saving = false;
+
+        function save() {
+            timer = null;
+            if (saving) return;
+            var value = input.value;
+            if (value === baseline) return;
+            saving = true;
+            var key = input.dataset.settingKey;
+            var wrap = input.closest('.settings-field');
+            fetch('/settings/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify({ key: key, value: value })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.ok) {
+                    window.showToast && window.showToast('Saved - restart to apply', 'success');
+                    if (input.type === 'password') { input.value = ''; baseline = ''; }
+                    else { baseline = value; }
+                } else {
+                    window.showToast && window.showToast(d.error || 'Save failed', 'error');
+                    if (wrap) wrap.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    input.focus();
+                }
+            })
+            .catch(function () {
+                window.showToast && window.showToast('Save failed', 'error');
+            })
+            .finally(function () { saving = false; });
+        }
+
+        function schedule() {
+            clearTimeout(timer);
+            if (input.value === baseline) { timer = null; return; }
+            timer = setTimeout(save, SETTINGS_DEBOUNCE_MS);
+        }
+
+        if (input.tagName === 'SELECT') {
+            input.addEventListener('change', schedule);
+        } else {
+            input.addEventListener('input', schedule);
+        }
+        input.addEventListener('blur', function () {
+            if (timer) { clearTimeout(timer); save(); }
+        });
+    });
+
+    /* ── Test headless browser ───────────────────────────────────────── */
+    var btn = document.getElementById('testRenderBtn');
+    var status = document.getElementById('testRenderStatus');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.classList.add('is-loading');
+        status.style.color = 'var(--text-muted)';
+        status.textContent = 'Rendering a test page…';
+
+        fetch('/settings/test-render', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/json' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var checks = d.checks || [];
+            if (!checks.length) {
+                status.style.color = 'var(--color-danger, #ef4444)';
+                status.textContent = d.error || 'No headless browser configured.';
+                return;
+            }
+            status.style.color = d.ok ? 'var(--color-success, #22c55e)' : 'var(--color-danger, #ef4444)';
+            status.textContent = checks.map(function (c) {
+                return c.ok
+                    ? c.backend + ' at ' + c.url + ' rendered the test page in ' + c.duration_ms + ' ms.'
+                    : c.backend + ' at ' + c.url + ' failed: ' + c.error;
+            }).join('  ');
+        })
+        .catch(function (e) {
+            status.style.color = 'var(--color-danger, #ef4444)';
+            status.textContent = String(e);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.classList.remove('is-loading');
+        });
+    });
+})();
+</script>
+
 {{if not .Data.Stores}}
 <div class="skeleton-card">
     <div class="skeleton-card__icon" aria-hidden="true">{{icon "store"}}</div>
@@ -48,10 +223,25 @@
             {{.Config.Status}}
             {{if .Config.LastTestedAt}}&nbsp;· tested {{.Config.LastTestedAt}}{{end}}
         </span>
+        {{if .Config.Blocked}}
+        <span class="badge badge-danger" title="{{.Config.BlockReason}}">
+            {{icon "alert"}} blocked - needs a human{{if .Config.BlockedAt}}&nbsp;· since {{.Config.BlockedAt}}{{end}}
+        </span>
+        <button type="button" class="btn btn-danger btn-sm btn-solve-captcha" data-store="{{.Store.ID}}">
+            {{icon "key"}} Solve manually
+        </button>
+        {{end}}
         {{else}}
         <span class="badge badge-muted">not configured</span>
         {{end}}
     </div>
+    {{if and .Config .Config.Blocked}}
+    <p class="field-hint" style="color:var(--danger)">
+        The automated headless-browser chain hit a bot wall it couldn't get past on its own:
+        <em>{{.Config.BlockReason}}</em>. Click <strong>Test</strong> above to retry automatically
+        (the wall may have lifted), or <strong>Solve manually</strong> to clear it yourself.
+    </p>
+    {{end}}
 
     <form class="pref-form scrape-form" data-store="{{.Store.ID}}"
           action="/admin/scrape/{{.Store.ID}}/save" method="POST">
@@ -146,26 +336,38 @@
 
         <div class="field-row" style="margin-top:1rem;gap:.5rem;flex-wrap:wrap">
             <button type="submit" class="btn btn-primary">{{icon "check"}} Save config</button>
-            <button type="button" class="btn btn-secondary btn-autodetect" data-store="{{.Store.ID}}">
-                {{icon "cog"}} Auto-detect
+            <button type="button" class="btn btn-secondary btn-autodetect btn-mode-gated" data-store="{{.Store.ID}}"
+                    data-for-modes="auto auto_ai"
+                    title="Fetch the page now and work out reusable selectors to save - runs through the AI too when Mode is Auto + AI">
+                {{icon "cog"}} Detect selectors
             </button>
             {{if $.Data.HasLLM}}
-            <button type="button" class="btn btn-secondary btn-ai-read" data-store="{{.Store.ID}}"
-                    title="Have the model read prices off the page without selectors">
-                {{icon "cpu"}} Ask AI to read page
+            <button type="button" class="btn btn-secondary btn-ai-read btn-mode-gated" data-store="{{.Store.ID}}"
+                    data-for-modes="auto_ai"
+                    title="Preview what a real Auto + AI lookup would find right now, without saving any selectors">
+                {{icon "cpu"}} Preview AI read
             </button>
             {{end}}
-            <button type="button" class="btn btn-ghost btn-fetch" data-store="{{.Store.ID}}">
+            <button type="button" class="btn btn-ghost btn-fetch btn-mode-gated" data-store="{{.Store.ID}}"
+                    data-for-modes="assisted"
+                    title="Load the page and click the price/name text yourself to build selectors">
                 {{icon "eye"}} Fetch &amp; preview
             </button>
             {{if .Config}}
-            <button type="button" class="btn btn-ghost btn-test" data-store="{{.Store.ID}}">
-                {{icon "check"}} Test
+            <button type="button" class="btn btn-ghost btn-test" data-store="{{.Store.ID}}"
+                    title="Run the saved config exactly as a real price lookup would">
+                {{icon "check"}} Test saved config
             </button>
             {{end}}
             <input class="field-input test-term" data-store="{{.Store.ID}}" type="text"
                    value="eggs" aria-label="Test ingredient" style="max-width:140px">
         </div>
+        <p class="field-hint" style="margin-top:.35rem">
+            <strong>Detect selectors</strong> builds a reusable config to save.
+            <strong>Preview AI read</strong> (Auto + AI only) shows what the model finds live, with no selectors saved.
+            <strong>Fetch &amp; preview</strong> (Assisted only) is for picking selectors by hand.
+            <strong>Test saved config</strong> re-runs whatever is already saved.
+        </p>
     </form>
 
     <!-- Status line + results for every async action on this store -->
@@ -282,6 +484,47 @@
         return '<table class="data-table"><thead><tr><th>Product</th><th>Price</th><th>Pack</th></tr></thead><tbody>'
              + rows + '</tbody></table>';
     }
+    // When a page turns up more than one match (a "12ct sausage/egg/cheese
+    // sandwich" alongside plain eggs, say), let the operator pick the one
+    // that's actually right for the term - saved per store+term and used by
+    // every future lookup (see pricing.bestPriced).
+    function productPicker(products, term) {
+        if (!products || products.length < 2) return '';
+        var items = products.map(function (p, i) {
+            return '<button type="button" class="btn btn-ghost btn-sm btn-pick-product" data-idx="' + i + '">'
+                 + esc(p.Name || p.name || ('item ' + (i + 1))) + '</button>';
+        }).join(' ');
+        return '<div class="field-hint" style="margin-top:.5rem">'
+             + 'Found ' + products.length + ' matches for "' + esc(term) + '" - pick the right one: ' + items
+             + '</div>';
+    }
+
+    function wireProductPicker(container, products, storeID, term) {
+        container.querySelectorAll('.btn-pick-product').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var p = products[Number(btn.dataset.idx)];
+                var name = p.Name || p.name || '';
+                var fd = new FormData();
+                fd.append('term', term);
+                fd.append('name', name);
+                fd.append('pack_size', p.PackSize || p.pack_size || '');
+
+                post('/admin/scrape/' + storeID + '/pin-product', fd)
+                  .then(readJSON)
+                  .then(function (d) {
+                    if (d.error) { setStatus(storeID, 'Could not save pick: ' + d.error, 'error'); return; }
+                    container.querySelectorAll('.btn-pick-product').forEach(function (b) {
+                        b.classList.remove('btn-primary'); b.classList.add('btn-ghost');
+                    });
+                    btn.classList.remove('btn-ghost');
+                    btn.classList.add('btn-primary');
+                    setStatus(storeID, 'Pinned "' + name + '" for "' + term + '" - lookups will prefer it over other matches.', 'ok');
+                  })
+                  .catch(function (e) { setStatus(storeID, 'Could not save pick: ' + e.message, 'error'); });
+            });
+        });
+    }
+
     function confidenceBadge(c) {
         var cls = c === 'high' ? 'badge-success' : c === 'none' ? 'badge-muted' : 'badge-warning';
         return '<span class="badge ' + cls + '">confidence: ' + esc(c) + '</span>';
@@ -297,6 +540,24 @@
         btn.classList.remove('is-loading');
         if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
     }
+
+    /* ── Show only the buttons relevant to the selected Mode, so a store
+       config doesn't present four lookalike buttons at once. ─────────── */
+    document.querySelectorAll('.scrape-form').forEach(function (f) {
+        var storeID = f.dataset.store;
+        function applyModeGating() {
+            var checked = f.querySelector('input[name="mode"]:checked');
+            var mode = checked ? checked.value : 'assisted';
+            f.querySelectorAll('.btn-mode-gated').forEach(function (btn) {
+                var modes = (btn.dataset.forModes || '').split(' ');
+                btn.hidden = modes.indexOf(mode) === -1;
+            });
+        }
+        f.querySelectorAll('input[name="mode"]').forEach(function (r) {
+            r.addEventListener('change', applyModeGating);
+        });
+        applyModeGating();
+    });
 
     /* ── Auto-detect (with AI when the mode is Auto + AI) ─────────────── */
     document.querySelectorAll('.btn-autodetect').forEach(function (btn) {
@@ -331,6 +592,7 @@
                     + ' <span>' + esc(d.notes || '') + '</span></p>'
                     + (d.attempts ? '<p class="field-hint">AI attempts: ' + d.attempts + '</p>' : '')
                     + productTable(d.products)
+                    + productPicker(d.products, termFor(storeID))
                     + (proposed
                         ? '<pre class="llm-debug-pre" style="margin-top:.5rem">' + esc(d.selectors_json) + '</pre>'
                           + '<button type="button" class="btn btn-primary btn-sm" id="apply-' + storeID + '">Apply these selectors</button>'
@@ -344,6 +606,7 @@
                         setStatus(storeID, 'Selectors applied to the form. Click "Save config" to keep them.', 'ok');
                     });
                 }
+                wireProductPicker(out, d.products, storeID, termFor(storeID));
                 setStatus(storeID, found
                     ? 'Found ' + found + ' product(s) on the page.'
                     : 'No products extracted.', found ? 'ok' : 'error');
@@ -372,11 +635,15 @@
               .then(function (d) {
                 if (d.error) { setStatus(storeID, d.error, 'error'); return; }
                 var n = (d.products || []).length;
-                el('results', storeID).innerHTML =
+                var out = el('results', storeID);
+                out.innerHTML =
                     '<div class="card" style="padding:.75rem;margin-top:.5rem">'
                     + '<p style="margin:0 0 .5rem">Model-read prices for "' + esc(d.term) + '". '
                     + 'Save this store as <strong>Auto + AI</strong> to use this at lookup time.</p>'
-                    + productTable(d.products) + '</div>';
+                    + productTable(d.products)
+                    + productPicker(d.products, d.term)
+                    + '</div>';
+                wireProductPicker(out, d.products, storeID, d.term);
                 setStatus(storeID, n ? 'Model found ' + n + ' product(s).' : 'Model found no prices.', n ? 'ok' : 'error');
               })
               .catch(function (e) { setStatus(storeID, 'AI read failed: ' + e.message, 'error'); })
@@ -398,11 +665,15 @@
               .then(readJSON)
               .then(function (d) {
                 var ok = d.status === 'active';
-                el('results', storeID).innerHTML =
+                var out = el('results', storeID);
+                out.innerHTML =
                     '<div class="card" style="padding:.75rem;margin-top:.5rem">'
                     + '<p style="margin:0 0 .5rem"><span class="badge ' + (ok ? 'badge-success' : 'badge-warning') + '">' + esc(d.status) + '</span> '
                     + (d.error ? '<code>' + esc(d.error) + '</code>' : 'Test ran with "' + esc(termFor(storeID)) + '".') + '</p>'
-                    + productTable(d.products) + '</div>';
+                    + productTable(d.products)
+                    + productPicker(d.products, termFor(storeID))
+                    + '</div>';
+                wireProductPicker(out, d.products, storeID, termFor(storeID));
                 setStatus(storeID, ok ? 'Config works.' : 'Config returned no usable price.', ok ? 'ok' : 'error');
               })
               .catch(function (e) { setStatus(storeID, 'Test failed: ' + e.message, 'error'); })
@@ -532,4 +803,5 @@
 })();
 </script>
 {{end}}
+{{template "captcha_solve_modal.html" .}}
 {{end}}

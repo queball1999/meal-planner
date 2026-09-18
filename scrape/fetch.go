@@ -216,6 +216,27 @@ func FlareClearance(ctx context.Context, proxyURL, targetURL string) (*Clearance
 	return &Clearance{Cookies: cookies, UserAgent: out.Solution.UserAgent}, nil
 }
 
+// FetchWithSavedClearance retries rawURL through Browserless carrying cookies
+// an admin obtained earlier (live-solve or pasted manually), rather than
+// running FlareSolverr again. Reports ok only when the result is a real page
+// - a caller should fall through to the ordinary FetchSmart chain, and drop
+// the saved clearance, otherwise (it has expired or the site no longer
+// accepts it).
+func FetchWithSavedClearance(ctx context.Context, rawURL string, browserless Renderer, cl *Clearance) (*FetchResult, bool) {
+	if !browserless.Enabled() || cl == nil || len(cl.Cookies) == 0 {
+		return nil, false
+	}
+	rendered, err := RenderViaWith(ctx, browserless, rawURL, cl)
+	if err != nil {
+		log.Printf("scrape: render with saved clearance failed for %s: %v", rawURL, err)
+		return nil, false
+	}
+	if ChallengeReason(rendered.HTML, rendered.StatusCode) != "" {
+		return nil, false
+	}
+	return rendered, true
+}
+
 // flareCommand posts one FlareSolverr command to /v1.
 func flareCommand(ctx context.Context, proxyURL string, payload map[string]any) (*flareResponse, error) {
 	b, _ := json.Marshal(payload)
@@ -254,9 +275,9 @@ func flareCommand(ctx context.Context, proxyURL string, payload map[string]any) 
 	return &out, nil
 }
 
-// cookieDomain is the host a cookie should be pinned to, as a leading-dot
+// CookieDomain is the host a cookie should be pinned to, as a leading-dot
 // domain so it also covers the site's subdomains.
-func cookieDomain(rawURL string) string {
+func CookieDomain(rawURL string) string {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Host == "" {
 		return ""

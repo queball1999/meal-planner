@@ -12,6 +12,7 @@ import (
 
 	"goeat/db"
 	"goeat/middleware"
+	"goeat/pricing"
 	"goeat/scrape"
 	"goeat/settings"
 )
@@ -19,6 +20,15 @@ import (
 type scrapePageData struct {
 	Stores []scrapeStoreRow
 	HasLLM bool
+	// ScrapingFields are the "Scraping" settings category's fields (FlareSolverr
+	// URL, headless browser backend/URL/token) - rendered here rather than on
+	// the Settings page, next to the per-store scraping config they support.
+	ScrapingFields []settingsFieldView
+	// HasBrowserless gates the "Solve manually" live-view option (scrape/live
+	// needs a real CDP endpoint - FlareSolverr manages its own session and
+	// exposes none). False, or when only FlareSolverr is configured, a
+	// blocked store's modal offers just the cookie-paste fallback.
+	HasBrowserless bool
 }
 
 type scrapeStoreRow struct {
@@ -40,7 +50,27 @@ func (s *Server) handleScrapeConfigPage(w http.ResponseWriter, r *http.Request) 
 		cfg, _ := s.store.GetScrapeConfigByStore(ctx, gs.ID)
 		rows = append(rows, scrapeStoreRow{Store: gs, Config: cfg})
 	}
-	s.render(w, r, "scrape_config", scrapePageData{Stores: rows, HasLLM: s.llmGen() != nil})
+
+	settingRows, _ := s.store.ListSettings(ctx)
+	byKey := make(map[string]*db.Setting, len(settingRows))
+	for _, row := range settingRows {
+		byKey[row.Key] = row
+	}
+
+	hasBrowserless := false
+	for _, rr := range s.renderConfig(ctx).Renderers() {
+		if rr.Backend == scrape.RendererBrowserless {
+			hasBrowserless = true
+			break
+		}
+	}
+
+	s.render(w, r, "scrape_config", scrapePageData{
+		Stores:         rows,
+		HasLLM:         s.llmGen() != nil,
+		ScrapingFields: s.settingsFieldsForCategory(ctx, byKey, "Scraping"),
+		HasBrowserless: hasBrowserless,
+	})
 }
 
 func (s *Server) handleScrapeConfigSave(w http.ResponseWriter, r *http.Request) {
@@ -233,6 +263,12 @@ func (s *Server) handleScrapeConfigTest(w http.ResponseWriter, r *http.Request) 
 		Status:            status,
 		LastTestedAt:      now,
 	})
+	if status == "active" && cfg.Blocked() {
+		// "Retry automatically" got through on its own - the bot wall
+		// lifted, or an earlier manual solve's clearance is still good.
+		// Nothing left for an admin to solve on this store.
+		_ = s.store.ClearScrapeConfigBlocked(ctx, storeID)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -446,6 +482,40 @@ func (s *Server) handleScrapeAIExtract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"products": products, "term": term})
+}
+
+// handleScrapePinProduct records which of several products found on a search
+// page is the right one for a term at this store, so a real lookup picks it
+// by name (§6.7) instead of just the first priced result on the page - e.g.
+// choosing "Member's Mark ... Eggs" over a bundled sandwich product that also
+// matched "eggs". Reuses item_product_map, the same table barcode scans
+// resolve against.
+func (s *Server) handleScrapePinProduct(w http.ResponseWriter, r *http.Request) {
+	storeID, err := strconv.ParseInt(r.PathValue("storeID"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad storeID", http.StatusBadRequest)
+		return
+	}
+	term := strings.TrimSpace(r.FormValue("term"))
+	name := strings.TrimSpace(r.FormValue("name"))
+	if term == "" || name == "" {
+		http.Error(w, "missing term or name", http.StatusBadRequest)
+		return
+	}
+	packSize, unit := pricing.ParsePackSize(r.FormValue("pack_size"))
+
+	err = s.store.UpsertItemProductMap(r.Context(), db.UpsertItemProductMapParams{
+		StoreID:        storeID,
+		NormalizedTerm: pricing.Normalize(term),
+		ChosenProduct:  name,
+		PackSize:       packSize,
+		PurchaseUnit:   unit,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // blockedAdvice is the next step to suggest when a store answers with a bot

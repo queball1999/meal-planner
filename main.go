@@ -87,6 +87,11 @@ func main() {
 	// AUTO_PLAN_HOUR is set (Settings → Calendar).
 	go srv.RunAutoPlanScheduler(ctx)
 
+	// Slow, background backfill of catalog-item photos (freefoodphotos.com,
+	// routed through the same FlareSolverr/Browserless-escalating fetch as
+	// store scraping); no-ops until ITEM_IMAGE_DIR is set.
+	go srv.RunImageBackfillScheduler(ctx)
+
 	log.Printf("go-eat %s listening on %s", version, cfg.ListenAddr)
 	if err := srv.Run(ctx); err != nil {
 		log.Fatalf("server: %v", err)

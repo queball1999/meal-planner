@@ -2880,6 +2880,23 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     background: var(--surface-raised);
 }
 
+/* Items catalog table thumbnail (web/templates/items.html). A bare <img>
+ * relying only on width/height attributes collapses to 0 width in an
+ * auto-layout table: img's own `max-width: 100%` (base.css) resolves against
+ * the column's not-yet-determined width, and loses. An explicit px width
+ * here, not a percentage, sidesteps that. */
+.item-thumb {
+    display: block;
+    width: 40px;
+    height: 40px;
+    max-width: none; /* override img's global max-width:100% (base.css), which
+                         otherwise resolves against the table column's
+                         shrink-to-fit width and clips this down to a sliver */
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    background: var(--surface-raised);
+}
+
 /* ── Meal detail: matching recipe photo, when the catalog has one ───────── */
 .meal-detail__image {
     display: block;

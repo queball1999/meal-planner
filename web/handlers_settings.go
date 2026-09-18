@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -181,14 +182,60 @@ func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 		activeLabel = info.Label
 	}
 
+	// Scraping lives on its own tab now (/admin/scrape's "Headless browser &
+	// anti-bot" card, built from settingsFieldsForCategory below) rather than
+	// as a plain category card here - it belongs next to the per-store
+	// scraping config it configures, not among the General settings.
+	generalCategories := make([]settingsCategoryView, 0, len(categories))
+	for _, c := range categories {
+		if c.Name == "Scraping" {
+			continue
+		}
+		generalCategories = append(generalCategories, c)
+	}
+
 	s.render(w, r, "settings", settingsPageData{
 		HasLLM:       s.llmGen() != nil,
 		ActiveID:     active,
 		ActiveLabel:  activeLabel,
 		Providers:    providers,
 		SharedFields: sharedAI,
-		Categories:   categories,
+		Categories:   generalCategories,
 	})
+}
+
+// settingsFieldsForCategory resolves every settings.Defs entry in one
+// category to its current settingsFieldView - the same per-field resolution
+// handleSettingsPage's own category loop does, pulled out so the Scraping
+// page's "Headless browser & anti-bot" card can render just that one
+// category outside the otherwise-general Settings page.
+func (s *Server) settingsFieldsForCategory(ctx context.Context, byKey map[string]*db.Setting, category string) []settingsFieldView {
+	var fields []settingsFieldView
+	for _, d := range settings.Defs {
+		if d.Category != category {
+			continue
+		}
+		field := settingsFieldView{
+			Key: d.Key, Role: d.Role, Label: d.Label, Help: d.Help,
+			Kind: kindNames[d.Kind], Options: d.Options,
+		}
+		if row := byKey[d.Key]; row != nil {
+			field.Source = row.Source
+			if d.Kind == settings.KindSecret {
+				field.IsSet = row.Value != ""
+			} else {
+				field.Value = row.Value
+			}
+		}
+		if d.Kind == settings.KindSecret && d.Encrypted && s.box != nil {
+			if ct, ok, _ := s.store.GetSecret(ctx, d.Key); ok && ct != "" {
+				field.IsSet = true
+				field.Source = "admin"
+			}
+		}
+		fields = append(fields, field)
+	}
+	return fields
 }
 
 // modelChoices is the curated model list for a provider with the currently
@@ -428,6 +475,10 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLLMDebugLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	entries := llmDebugEntries()
+	// TEMPORARY diagnostic - remove once the missing-audit-log-entries bug is
+	// found. Confirms whether s.llmGen() (what plan generation actually uses)
+	// is the same instance as the global the entries came from.
+	log.Printf("[llm-debug] handleLLMDebugLog: entries=%d global_nil=%v llmGen_nil=%v", len(entries), llm.GlobalDebugLog == nil, s.llmGen() == nil)
 	if len(entries) > 10 {
 		entries = entries[:10]
 	}

@@ -50,6 +50,12 @@ func (s *Server) handlePantryPage(w http.ResponseWriter, r *http.Request) {
 		if pi.ItemID != nil {
 			linked = itemsByID[*pi.ItemID]
 		}
+		// Viewing the pantry list is "viewing these items directly" - queue an
+		// immediate fetch for whichever ones are missing a photo, same as the
+		// items catalog page and an item's own detail page already do. Only
+		// the page actually shown (post-pagination via `items` above), not
+		// every pantry row in the household.
+		s.lazyFetchItemImage(ctx, linked)
 		rows[i] = pantryRow{PantryItem: pi, ImageURL: itemImageURL(linked)}
 	}
 

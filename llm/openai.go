@@ -43,7 +43,13 @@ func newOpenAIClient(baseURL, apiKey, model, provider string, maxToks int, s Sam
 		maxToks:  maxToks,
 		sampling: s,
 		provider: provider,
-		httpCli:  &http.Client{Timeout: 300 * time.Second}, // 5 min - large local models are slow
+		// 15 min - a backstop, not the real budget: web/handlers_plan.go's
+		// generation job already bounds every call at 12 min via ctx, and a
+		// client.Timeout tighter than that fires first regardless of how much
+		// of the job's own budget is left, which is exactly what was cutting
+		// off slow local models mid-stream. This only needs to be looser than
+		// that ceiling, not tight itself.
+		httpCli: &http.Client{Timeout: 15 * time.Minute},
 	}
 }
 

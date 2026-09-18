@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 
 	"goeat/db"
 )
@@ -149,6 +150,70 @@ func seedItems(ctx context.Context, store db.Store, planID int64, items []AggIte
 	return seeded, nil
 }
 
+// maxConcurrentStoreLookups bounds how many stores' resolveFirstStore fans
+// out to at once. Uncapped concurrency here would mean one ingredient with a
+// dozen configured stores opens a dozen simultaneous scrape/render calls;
+// this keeps it to a sane number regardless of how many stores a household has.
+const maxConcurrentStoreLookups = 6
+
+// storeHit is one store's answer, for resolveFirstStore's result channel.
+type storeHit struct {
+	result  *PriceResult
+	storeID int64
+}
+
+// resolveFirstStore tries chain.resolveExcluding against every store
+// concurrently (bounded by maxConcurrentStoreLookups) and returns the first
+// one that answers, canceling the rest. A scrape lookup can legitimately take
+// up to 90-180s before falling through (pricing/scraper.go's
+// scrapeTimeout/scrapeAITimeout), so trying stores one at a time - as this
+// used to - could mean minutes per ingredient once a household has several
+// configured. Tie-breaking is by completion order rather than by stores'
+// list order: the point of running them concurrently is to not wait out a
+// slow store just because an earlier one in the list would also have
+// answered.
+func resolveFirstStore(ctx context.Context, chain *Chain, term string, stores []*db.GroceryStore, region string) (*PriceResult, int64, bool) {
+	if len(stores) == 0 {
+		return nil, 0, false
+	}
+
+	resolveCtx, cancel := context.WithCancel(ctx)
+	defer cancel() // stop every other in-flight lookup once we have a winner (or none does)
+
+	hits := make(chan storeHit, len(stores)) // buffered: a losing goroutine's send never blocks
+	sem := make(chan struct{}, min(len(stores), maxConcurrentStoreLookups))
+	var wg sync.WaitGroup
+
+	for _, gs := range stores {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(gs *db.GroceryStore) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			r, err := chain.resolveExcluding(resolveCtx, term, gs.ID, region, aiEstimateProviderName)
+			if err != nil {
+				if resolveCtx.Err() == nil { // don't log the ones we canceled ourselves
+					log.Printf("costing: %v", err)
+				}
+				return
+			}
+			if r != nil {
+				hits <- storeHit{result: r, storeID: gs.ID}
+			}
+		}(gs)
+	}
+	go func() {
+		wg.Wait()
+		close(hits)
+	}()
+
+	winner, ok := <-hits
+	if !ok {
+		return nil, 0, false
+	}
+	return winner.result, winner.storeID, true
+}
+
 // lineState is one shopping-list line's pricing progress, carried between
 // ResolvePricing's resolve pass and its finalize pass so the AI-estimate step
 // in between can fill in whatever the resolve pass couldn't.
@@ -217,25 +282,21 @@ func ResolvePricing(
 
 		// 2. Fall back to the resolution chain, minus the AI estimate provider -
 		//    a chain miss here is batched into one AI-estimate call below
-		//    instead of asking the LLM once per ingredient.
+		//    instead of asking the LLM once per ingredient. Stores are tried
+		//    concurrently (resolveFirstStore) rather than one at a time: a
+		//    scrape lookup can legitimately take up to 90-180s
+		//    (pricing/scraper.go's scrapeTimeout/scrapeAITimeout) before
+		//    falling through, so a sequential loop over several stores could
+		//    mean minutes per ingredient in the worst case.
 		if !ls.priced {
-			for _, gs := range stores {
-				r, rerr := chain.resolveExcluding(ctx, item.NormalizedTerm, gs.ID, region, aiEstimateProviderName)
-				if rerr != nil {
-					log.Printf("costing: %v", rerr)
-					continue
-				}
-				if r != nil {
-					ls.packAmount = r.PackSize
-					ls.packUnit = r.PurchaseUnit
-					ls.priceCents = r.PriceCents
-					ls.priceSource = r.Source
-					ls.confidence = r.Confidence
-					sid := gs.ID
-					ls.resolvedStoreID = &sid
-					ls.priced = true
-					break
-				}
+			if r, sid, ok := resolveFirstStore(ctx, chain, item.NormalizedTerm, stores, region); ok {
+				ls.packAmount = r.PackSize
+				ls.packUnit = r.PurchaseUnit
+				ls.priceCents = r.PriceCents
+				ls.priceSource = r.Source
+				ls.confidence = r.Confidence
+				ls.resolvedStoreID = &sid
+				ls.priced = true
 			}
 		}
 

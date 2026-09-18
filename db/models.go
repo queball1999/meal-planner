@@ -439,6 +439,38 @@ type ScrapeConfig struct {
 	Status       string // "active"|"degraded"|"unconfigured"
 	LastTestedAt string // ISO timestamp or ""
 	CreatedAt    time.Time
+
+	// BlockReason/BlockURL/BlockedAt record a genuine bot-wall hit (Cloudflare/
+	// Incapsula/PerimeterX/CAPTCHA signature) that survived the full automated
+	// FlareSolverr + Browserless chain - distinct from Status "degraded"
+	// (selectors found nothing), which no human solving a CAPTCHA would fix.
+	// A non-empty BlockedAt is what the Scrape Config page treats as "blocked"
+	// rather than a new Status enum value (its CHECK constraint would need a
+	// full table rebuild to widen - see db/migrations/00027 for the same
+	// tradeoff made with a separate flag instead of a new status).
+	// Set by MarkScrapeConfigBlocked, cleared by ClearScrapeConfigBlocked.
+	BlockReason string
+	BlockURL    string
+	BlockedAt   string // ISO timestamp or ""
+}
+
+// Blocked reports whether this store's scraper is waiting on a human to solve
+// a bot wall (see ScrapeConfig.BlockedAt).
+func (sc *ScrapeConfig) Blocked() bool {
+	return sc != nil && sc.BlockedAt != ""
+}
+
+// ScrapeClearance holds cookies (+ the user agent they were issued to) an
+// admin obtained by solving a store's challenge themselves - live via
+// scrape/live, or pasted in manually - reused by ScraperProvider.Lookup ahead
+// of the automated chain until ExpiresAt. One row per store
+// (db/migrations/00031_scrape_captcha.sql).
+type ScrapeClearance struct {
+	StoreID     int64
+	CookiesJSON string // JSON []scrape.Cookie
+	UserAgent   string
+	ObtainedAt  time.Time
+	ExpiresAt   time.Time
 }
 
 // ShoppingListItem is one priced buy-line on a plan's shopping list (§5.1, §6.4).

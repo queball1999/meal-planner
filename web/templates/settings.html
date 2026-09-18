@@ -215,37 +215,6 @@
     {{end}}
 </div>
 
-{{/* ── Headless browser (scraping) ─────────────────────────────────── */}}
-<div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">{{icon "code"}} Headless browser</h2>
-    <p class="field-hint" style="margin-top:0">
-        Most grocery sites block plain HTTP requests or render their prices in JavaScript.
-        Point Go Eat at a headless browser and scraping escalates to it automatically when a
-        direct fetch comes back as a challenge page or an empty shell.
-        Configure <code>RENDER_BACKEND</code>, <code>RENDER_URL</code> and
-        <code>RENDER_TOKEN</code> in the <strong>Scraping</strong> section below - changes take
-        effect immediately, no restart.
-    </p>
-    <ul class="help-steps">
-        <li><strong>flaresolverr</strong> - solves Cloudflare-style anti-bot challenges. Use when a store returns 403 or "Just a moment".</li>
-        <li><strong>browserless</strong> - runs the page's JavaScript and returns the rendered HTML
-            (<code>browserless/chromium</code> or anything exposing <code>POST /content</code>).
-            Use when the page loads but has no prices in its markup.</li>
-    </ul>
-    <p class="field-hint">
-        <code>docker-compose.yml</code> already includes both services - comment out either
-        block if you don't need it, then set the URL to <code>http://browserless:3000</code>
-        (same Docker network) or <code>http://localhost:3900</code>.
-    </p>
-
-    <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;margin-top:var(--sp-4)">
-        <button id="testRenderBtn" class="btn btn-ghost btn-sm" type="button">
-            {{icon "refresh"}} Test headless browser
-        </button>
-        <span id="testRenderStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
-    </div>
-</div>
-
 {{/* ── Editable settings, one card per category ────────────────────────── */}}
 {{range .Data.Categories}}
 <div class="card form-section settings-category" style="margin-bottom:1.5rem">
@@ -685,53 +654,4 @@
 }());
 </script>
 {{end}}
-<script>
-(function () {
-    var btn = document.getElementById('testRenderBtn');
-    var status = document.getElementById('testRenderStatus');
-    if (!btn) return;
-
-    function token() {
-        var f = document.getElementById('csrf-token');
-        return f ? f.value : '';
-    }
-
-    btn.addEventListener('click', function () {
-        btn.disabled = true;
-        btn.classList.add('is-loading');
-        status.style.color = 'var(--text-muted)';
-        status.textContent = 'Rendering a test page\u2026';
-
-        fetch('/settings/test-render', {
-            method: 'POST',
-            headers: { 'X-CSRF-Token': token(), 'Content-Type': 'application/json' }
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            var checks = d.checks || [];
-            if (!checks.length) {
-                status.style.color = 'var(--color-danger, #ef4444)';
-                status.textContent = d.error || 'No headless browser configured.';
-                return;
-            }
-            /* One line per configured service - under "auto" both are tested. */
-            status.style.color = d.ok ? 'var(--color-success, #22c55e)' : 'var(--color-danger, #ef4444)';
-            status.textContent = checks.map(function (c) {
-                return c.ok
-                    ? c.backend + ' at ' + c.url + ' rendered the test page in ' + c.duration_ms + ' ms.'
-                    : c.backend + ' at ' + c.url + ' failed: ' + c.error;
-            }).join('  ');
-        })
-        .catch(function (e) {
-            status.style.color = 'var(--color-danger, #ef4444)';
-            status.textContent = String(e);
-        })
-        .finally(function () {
-            btn.disabled = false;
-            btn.classList.remove('is-loading');
-        });
-    });
-}());
-</script>
-
 {{end}}

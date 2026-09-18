@@ -1,0 +1,238 @@
+{{/* Shared modal for solving a store's bot wall by hand - opened by any
+     .btn-solve-captcha button on the page (scrape_config.html), which sets
+     data-store before opening. Two paths: a live CDP session (needs
+     Browserless), or pasting cookies solved elsewhere. */}}
+<div class="modal-overlay" id="captchaSolveModal" data-modal>
+    <div class="modal-dialog" style="max-width:640px;width:100%">
+        <div class="modal-dialog__header">
+            <h2>Solve the bot wall</h2>
+            <button type="button" class="modal-dialog__close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-dialog__body">
+            {{if .Data.HasBrowserless}}
+            <div id="captchaLiveArea">
+                <p class="field-hint" id="captchaLiveHint">
+                    Opens a live browser session against this store's search page - watch it below and click
+                    through whatever it's asking for, then hit <strong>I solved it</strong>.
+                </p>
+                <button type="button" class="btn btn-primary" id="captchaLiveStartBtn">
+                    {{icon "eye"}} Start live session
+                </button>
+                <div id="captchaLiveViewer" hidden style="margin-top:.75rem">
+                    <canvas id="captchaLiveCanvas" style="width:100%;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:#000"></canvas>
+                    <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+                        <button type="button" class="btn btn-primary" id="captchaLiveFinishBtn">{{icon "check"}} I solved it</button>
+                        <button type="button" class="btn btn-ghost" id="captchaLiveCancelBtn">Cancel</button>
+                    </div>
+                </div>
+                <p id="captchaLiveStatus" class="field-hint" style="margin-top:.5rem"></p>
+            </div>
+            <details style="margin-top:1.25rem">
+                <summary>Paste cookies instead</summary>
+                {{template "captchaCookieForm" .}}
+            </details>
+            {{else}}
+            <p class="field-hint">
+                No Browserless renderer configured, so there's no live view available - solve the
+                challenge in your own browser, then paste the cookies it leaves you with below.
+            </p>
+            {{template "captchaCookieForm" .}}
+            {{end}}
+        </div>
+    </div>
+</div>
+
+{{define "captchaCookieForm"}}
+<form id="captchaCookieForm">
+    <div class="field">
+        <label class="field-label" for="captchaCookies">Cookies</label>
+        <textarea class="field-input" id="captchaCookies" rows="3"
+                  placeholder="name=value; name2=value2"></textarea>
+        <span class="field-hint">
+            Open the store's search page in your own browser, solve its challenge, then run
+            <code>document.cookie</code> in the dev tools console and paste the result here.
+        </span>
+    </div>
+    <div class="field">
+        <label class="field-label" for="captchaUserAgent">User agent (optional)</label>
+        <input class="field-input" id="captchaUserAgent" type="text"
+               placeholder="leave blank to use this app's default">
+    </div>
+    <button type="submit" class="btn btn-primary">{{icon "check"}} Save cookies</button>
+    <p id="captchaCookieStatus" class="field-hint" style="margin-top:.5rem"></p>
+</form>
+{{end}}
+
+<script>
+(function () {
+    var modal = document.getElementById('captchaSolveModal');
+    if (!modal) return;
+
+    function csrfToken() {
+        var f = document.getElementById('csrf-token');
+        return f ? f.value : '';
+    }
+
+    var currentStoreID = null;
+    var ws = null;
+    var sessionID = null;
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target instanceof Element ? e.target.closest('.btn-solve-captcha') : null;
+        if (!btn) return;
+        currentStoreID = btn.getAttribute('data-store');
+        resetLiveArea();
+        var cookieStatus = document.getElementById('captchaCookieStatus');
+        if (cookieStatus) cookieStatus.textContent = '';
+        var cookieField = document.getElementById('captchaCookies');
+        if (cookieField) cookieField.value = '';
+        window.goeat && window.goeat.openModal('captchaSolveModal');
+    });
+
+    function resetLiveArea() {
+        endLiveSession();
+        var viewer = document.getElementById('captchaLiveViewer');
+        var startBtn = document.getElementById('captchaLiveStartBtn');
+        var status = document.getElementById('captchaLiveStatus');
+        if (viewer) viewer.hidden = true;
+        if (startBtn) startBtn.hidden = false;
+        if (status) status.textContent = '';
+    }
+
+    function endLiveSession(keepServerSession) {
+        if (ws) { try { ws.close(); } catch (e) {} ws = null; }
+        if (sessionID && !keepServerSession) {
+            fetch('/admin/scrape/live/' + sessionID + '/cancel', {
+                method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }
+            }).catch(function () {});
+        }
+        sessionID = null;
+    }
+
+    // Closing the modal any other way (X, Escape, backdrop) should not leave
+    // a Browserless tab running - modal.js's own close paths all go through
+    // the overlay losing the 'active' class, so watch for that instead of
+    // hooking every dismissal path individually.
+    new MutationObserver(function () {
+        if (!modal.classList.contains('active')) endLiveSession();
+    }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+
+    var startBtn = document.getElementById('captchaLiveStartBtn');
+    if (startBtn) startBtn.addEventListener('click', function () {
+        var status = document.getElementById('captchaLiveStatus');
+        status.textContent = 'Starting a live session…';
+        startBtn.disabled = true;
+
+        fetch('/admin/scrape/' + currentStoreID + '/live/start', {
+            method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+            if (!res.ok) throw new Error(res.d.error || 'could not start a session');
+            sessionID = res.d.session_id;
+            startBtn.hidden = true;
+            document.getElementById('captchaLiveViewer').hidden = false;
+            status.textContent = 'Connecting…';
+            connectLiveWS();
+        })
+        .catch(function (e) {
+            status.textContent = 'Failed: ' + e.message;
+        })
+        .finally(function () { startBtn.disabled = false; });
+    });
+
+    function connectLiveWS() {
+        var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(proto + '//' + location.host + '/admin/scrape/live/' + sessionID + '/ws');
+        var canvas = document.getElementById('captchaLiveCanvas');
+        var ctx = canvas.getContext('2d');
+        var status = document.getElementById('captchaLiveStatus');
+        var lastW = 0, lastH = 0;
+
+        ws.onopen = function () { status.textContent = 'Live - click the page below to interact.'; };
+        ws.onclose = function () { status.textContent = 'Session ended.'; };
+        ws.onerror = function () { status.textContent = 'Connection error.'; };
+        ws.onmessage = function (ev) {
+            var msg;
+            try { msg = JSON.parse(ev.data); } catch (e) { return; }
+            if (msg.type !== 'frame' || !msg.data) return;
+            var img = new Image();
+            img.onload = function () {
+                if (img.width !== lastW || img.height !== lastH) {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    lastW = img.width; lastH = img.height;
+                }
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = 'data:image/jpeg;base64,' + msg.data;
+        };
+
+        function frameCoords(e) {
+            var rect = canvas.getBoundingClientRect();
+            var scaleX = canvas.width / rect.width;
+            var scaleY = canvas.height / rect.height;
+            return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+        }
+        canvas.addEventListener('click', function (e) {
+            if (!ws || ws.readyState !== 1) return;
+            var p = frameCoords(e);
+            ws.send(JSON.stringify({ type: 'click', x: p.x, y: p.y }));
+        });
+        canvas.tabIndex = 0;
+        canvas.addEventListener('keydown', function (e) {
+            if (!ws || ws.readyState !== 1) return;
+            ws.send(JSON.stringify({ type: 'keydown', key: e.key, text: e.key.length === 1 ? e.key : '' }));
+            if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+            }
+        });
+    }
+
+    var finishBtn = document.getElementById('captchaLiveFinishBtn');
+    if (finishBtn) finishBtn.addEventListener('click', function () {
+        if (!sessionID) return;
+        var status = document.getElementById('captchaLiveStatus');
+        status.textContent = 'Checking…';
+        fetch('/admin/scrape/live/' + sessionID + '/finish', {
+            method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+            if (!res.ok) throw new Error(res.d.error || 'not solved yet - keep trying');
+            status.textContent = 'Solved and saved. Reloading…';
+            endLiveSession(true);
+            setTimeout(function () { location.reload(); }, 700);
+        })
+        .catch(function (e) { status.textContent = e.message; });
+    });
+
+    var cancelBtn = document.getElementById('captchaLiveCancelBtn');
+    if (cancelBtn) cancelBtn.addEventListener('click', function () {
+        resetLiveArea();
+        window.goeat && window.goeat.closeModal('captchaSolveModal');
+    });
+
+    var cookieForm = document.getElementById('captchaCookieForm');
+    if (cookieForm) cookieForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var status = document.getElementById('captchaCookieStatus');
+        var body = new URLSearchParams();
+        body.set('cookies', document.getElementById('captchaCookies').value);
+        body.set('user_agent', document.getElementById('captchaUserAgent').value);
+        status.textContent = 'Saving…';
+        fetch('/admin/scrape/' + currentStoreID + '/clearance/manual', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+            if (!res.ok) throw new Error(res.d.error || 'save failed');
+            status.textContent = 'Saved. Reloading…';
+            setTimeout(function () { location.reload(); }, 700);
+        })
+        .catch(function (e) { status.textContent = e.message; });
+    });
+})();
+</script>

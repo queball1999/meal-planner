@@ -156,7 +156,7 @@ func contextCookies(targetURL string, sc *StoreContext, cl *Clearance) []Cookie 
 		out = append(out, cl.Cookies...)
 	}
 
-	domain := cookieDomain(targetURL)
+	domain := CookieDomain(targetURL)
 	names := make([]string, 0, len(sc.Cookies))
 	for name := range sc.Cookies {
 		names = append(names, name)

@@ -51,8 +51,8 @@ func TestCookieDomain(t *testing.T) {
 		"not a url":                       "",
 	}
 	for in, want := range cases {
-		if got := cookieDomain(in); got != want {
-			t.Errorf("cookieDomain(%q) = %q, want %q", in, got, want)
+		if got := CookieDomain(in); got != want {
+			t.Errorf("CookieDomain(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

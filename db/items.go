@@ -129,6 +129,18 @@ func (s *store) ClearItemImage(ctx context.Context, id int64) error {
 	return err
 }
 
+// SetItemImageSource records a freefoodphotos match found for an item that
+// had none (see the background image backfill scheduler) - image_path is
+// left untouched, so the next lazy-fetch or backfill tick downloads it.
+func (s *store) SetItemImageSource(ctx context.Context, id int64, sourceURL, attribution string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE items
+		SET image_source_url = ?, image_attribution = ?,
+		    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE id = ?`, sourceURL, attribution, id)
+	return err
+}
+
 // ── scan helpers ─────────────────────────────────────────────────────────────
 
 type rowScanner interface {
