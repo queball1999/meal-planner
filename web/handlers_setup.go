@@ -36,10 +36,10 @@ type setupPageData struct {
 }
 
 // handleSetupPage renders the first-run setup wizard.
-// Redirects away if setup is already complete.
+// Redirects away if setup is already complete - any account existing counts,
+// so the wizard can't be used to mint a second admin later.
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
-	hh := middleware.HouseholdFromCtx(r)
-	if hh != nil {
+	if middleware.SetupDone(r) {
 		if middleware.UserFromCtx(r) != nil {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 		} else {
@@ -69,7 +69,7 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 
 // handleSetup processes the setup wizard form (POST /setup).
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
-	if middleware.HouseholdFromCtx(r) != nil {
+	if middleware.SetupDone(r) {
 		http.Error(w, "setup already complete", http.StatusForbidden)
 		return
 	}
@@ -77,6 +77,27 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		s.setNotify(w, NotifyDanger, "Invalid form submission")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+
+	// ── Setup token (QSS security design §15) ───────────────────────────────
+	// Rate-limited per IP, compared in constant time, and held under the
+	// claim lock for the rest of the handler so two correct submissions can't
+	// both create an admin.
+	if !s.setupLimiter.allow(middleware.ClientIP(r), time.Now()) {
+		http.Error(w, "Too many setup attempts - wait 15 minutes.", http.StatusTooManyRequests)
+		return
+	}
+	s.setup.mu.Lock()
+	defer s.setup.mu.Unlock()
+	if !s.setupTokenMatches(strings.TrimSpace(r.FormValue("setup_token"))) {
+		s.logEvent(r, nil, "setup.token_rejected", "", "", "")
+		s.setNotify(w, NotifyDanger, "That setup token is wrong. It is printed in the server log at startup (\"Setup token: ...\").")
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	if n, err := s.store.CountUsers(r.Context()); err != nil || n > 0 {
+		http.Error(w, "setup already complete", http.StatusForbidden)
 		return
 	}
 
@@ -153,12 +174,17 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.store.CreateUser(ctx, username, hash, "admin")
+	user, err := s.store.CreateUser(ctx, username, hash, db.InstanceRoleAdmin)
 	if err != nil {
 		s.setNotify(w, NotifyDanger, "Could not create account - username may already be taken")
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
+	// The instance is claimed: the token stops working now, not at the end
+	// of the handler, so a failure below can't leave it usable.
+	s.setup.token = ""
+	claimedID := user.ID
+	s.logEvent(r, &claimedID, "setup.claimed", "user", strconv.FormatInt(user.ID, 10), "")
 
 	hh, err := s.store.CreateHousehold(ctx, db.CreateHouseholdParams{
 		Name:              householdName,
@@ -169,6 +195,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		HouseholdSize:     hSize,
 	})
 	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := s.store.UpsertMembership(ctx, hh.ID, user.ID, db.HouseholdRoleOwner); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -261,7 +291,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	s.setSessionCookie(w, token, expiresAt)
 
 	id := user.ID
-	s.logEvent(r, &id, "setup.complete", "household", "1", "")
+	s.logEvent(r, &id, "setup.complete", "household", strconv.FormatInt(hh.ID, 10), "")
 
 	if hasNonAPIStore {
 		s.setNotify(w, NotifySuccess, "Setup complete! For live prices on your stores, configure scraping in Settings → Scraper.")

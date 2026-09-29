@@ -62,7 +62,7 @@ type Pricer func(ctx context.Context, planID int64, hh *db.Household) error
 // GenerateForWeek with an explicit week (the one containing today). See
 // GenerateForWeek for a specific past or future week.
 func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, pricer Pricer, checker PriceChecker, j *Job) (int64, error) {
-	hh, err := store.GetHousehold(ctx)
+	hh, err := store.GetHousehold(ctx, householdID)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
 	}
@@ -102,7 +102,7 @@ func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, hou
 // which can run long after the LLM has already answered. See GenerateForWeek
 // for fromDate.
 func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested []string) (int64, error) {
-	hh, err := store.GetHousehold(ctx)
+	hh, err := store.GetHousehold(ctx, householdID)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
 	}

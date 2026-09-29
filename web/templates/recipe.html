@@ -76,7 +76,7 @@
 <div style="margin-top:1.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
     <a href="/recipes" class="btn btn-ghost">{{icon "arrow-left"}} Back</a>
 
-    <button type="button" class="btn btn-secondary" data-toggle-edit>{{icon "pencil"}} Edit recipe</button>
+    <button type="button" class="btn btn-secondary" data-toggle-edit data-requires="edit">{{icon "pencil"}} Edit recipe</button>
 
     {{if $r.SourceURL}}
     <form method="POST" action="/recipes/{{$r.ID}}/reimport">

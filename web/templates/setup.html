@@ -38,9 +38,18 @@
                 <p class="form-section__desc">Create admin credentials for this Go Eat instance.</p>
 
                 <div class="field">
+                    <label class="field-label" for="setup_token">Setup token</label>
+                    <input class="field-input" type="text" id="setup_token" name="setup_token"
+                           autocomplete="off" autofocus spellcheck="false" required>
+                    <span class="field-hint">Printed in the server log when Go Eat starts:
+                        <code>Setup token: …</code> (<code>docker compose logs goeat</code>).
+                        It proves you run this server.</span>
+                </div>
+
+                <div class="field">
                     <label class="field-label" for="username">Username</label>
                     <input class="field-input" type="text" id="username" name="username"
-                           autocomplete="username" minlength="3" autofocus required>
+                           autocomplete="username" minlength="3" required>
                     <span class="field-hint">At least 3 characters. Used to sign in.</span>
                 </div>
 

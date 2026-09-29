@@ -2,14 +2,60 @@ package db
 
 import "time"
 
-// User represents a household member account (§9.1, §10.1).
+// User is a login (§9.1, §10.1). Role is the *instance* role - see
+// InstanceRoleAdmin; what a user may do inside a household is the
+// HouseholdMembership.Role for that household.
 type User struct {
 	ID           int64
 	Username     string
 	PasswordHash string
-	Role         string // "admin" | "read_only"
+	Role         string // InstanceRoleAdmin | InstanceRoleMember
 	TOTPEnabled  bool
 	CreatedAt    time.Time
+}
+
+// Instance roles (users.role). An admin runs the server - settings, AI keys,
+// scraper tooling, accounts - and is an implicit owner of every household.
+const (
+	InstanceRoleAdmin  = "admin"
+	InstanceRoleMember = "member"
+)
+
+// IsAdmin reports whether u is an instance admin. Nil-safe.
+func (u *User) IsAdmin() bool { return u != nil && u.Role == InstanceRoleAdmin }
+
+// Household roles (household_memberships.role), weakest first.
+const (
+	HouseholdRoleViewer = "viewer"
+	HouseholdRoleEditor = "editor"
+	HouseholdRoleOwner  = "owner"
+)
+
+// HouseholdRoleRank orders household roles so a gate can ask "at least
+// editor". Unknown roles rank 0 - below viewer - so a typo denies.
+func HouseholdRoleRank(role string) int {
+	switch role {
+	case HouseholdRoleViewer:
+		return 1
+	case HouseholdRoleEditor:
+		return 2
+	case HouseholdRoleOwner:
+		return 3
+	}
+	return 0
+}
+
+// ValidHouseholdRole reports whether role is one of the three household roles.
+func ValidHouseholdRole(role string) bool { return HouseholdRoleRank(role) > 0 }
+
+// HouseholdMembership is one user's seat in one household.
+type HouseholdMembership struct {
+	HouseholdID   int64
+	HouseholdName string
+	UserID        int64
+	Username      string
+	Role          string
+	CreatedAt     time.Time
 }
 
 // Setting is one runtime-editable configuration value (see package settings).
@@ -31,10 +77,14 @@ type Session struct {
 	IPAddress string
 	UserAgent string
 	CreatedAt time.Time
+
+	// ActiveHouseholdID is the household this session is looking at; 0 means
+	// "none chosen yet" and middleware falls back to the first membership.
+	ActiveHouseholdID int64
 }
 
-// Household is the single household row (§10.1). In v1 there is always at
-// most one; the table is kept for the multi-tenant migration path.
+// Household is one tenant (§10.1). Every household-scoped table carries
+// household_id; users reach a household through HouseholdMembership.
 type Household struct {
 	ID                int64
 	Name              string

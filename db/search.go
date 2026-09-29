@@ -170,12 +170,16 @@ func (s *store) IncrementPantryItem(ctx context.Context, id int64, delta float64
 	return err
 }
 
-func (s *store) GetItemProductMapByBarcode(ctx context.Context, code string) (*ItemProductMap, error) {
+// GetItemProductMapByBarcode finds a product pinned to one of householdID's
+// stores - scoped through stores so a scan can't surface another household's
+// pinned products.
+func (s *store) GetItemProductMapByBarcode(ctx context.Context, householdID int64, code string) (*ItemProductMap, error) {
 	var m ItemProductMap
 	var updatedAt string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, store_id, normalized_term, chosen_product, pack_size, purchase_unit, barcode, updated_at
-		FROM item_product_map WHERE barcode = ? LIMIT 1`, code,
+		SELECT m.id, m.store_id, m.normalized_term, m.chosen_product, m.pack_size, m.purchase_unit, m.barcode, m.updated_at
+		  FROM item_product_map m JOIN stores st ON st.id = m.store_id
+		 WHERE m.barcode = ? AND st.household_id = ? LIMIT 1`, code, householdID,
 	).Scan(&m.ID, &m.StoreID, &m.NormalizedTerm, &m.ChosenProduct,
 		&m.PackSize, &m.PurchaseUnit, &m.Barcode, &updatedAt)
 	if err != nil {

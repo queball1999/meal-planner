@@ -109,6 +109,9 @@ func (s *Server) handlePantryDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	if !s.owns(w, r, db.ResPantryItem, id) {
+		return
+	}
 	_ = s.store.DeletePantryItem(r.Context(), id)
 	http.Redirect(w, r, "/pantry", http.StatusSeeOther)
 }
@@ -125,6 +128,9 @@ func (s *Server) handlePantryStock(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if !s.owns(w, r, db.ResPantryItem, id) {
 		return
 	}
 	ctx := r.Context()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,6 +117,11 @@ func (s *Server) handleHASave(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	_ = s.store.SetSetting(ctx, "HA_BASE_URL", f.BaseURL)
+	// One HA to-do list, one household: bind it to whichever household the
+	// admin is in while saving (see settings.HAConfig.HouseholdID).
+	if hh := middleware.HouseholdFromCtx(r); hh != nil {
+		_ = s.store.SetSetting(ctx, settings.HAHouseholdKey, strconv.FormatInt(hh.ID, 10))
+	}
 	if f.TodoEntity != "" {
 		_ = s.store.SetSetting(ctx, "HA_TODO_ENTITY", f.TodoEntity)
 	}
@@ -157,8 +163,14 @@ func (s *Server) handleHASave(w http.ResponseWriter, r *http.Request) {
 //
 //	POST /list/sync
 func (s *Server) handleListSync(w http.ResponseWriter, r *http.Request) {
-	if middleware.HouseholdFromCtx(r) == nil {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	hc := settings.LiveHAConfig(r.Context(), s.store, s.cfg, s.box)
+	if bound, _ := hc.HouseholdFor(r.Context(), s.store); hc.Configured() && bound != hh.ID {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Home Assistant syncs with a different household's list."})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)

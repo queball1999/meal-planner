@@ -515,6 +515,9 @@ func (s *Server) handleShoppingListCheck(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	if !s.owns(w, r, db.ResShoppingItem, id) {
+		return
+	}
 	checked := r.FormValue("checked") == "1"
 	if err := s.store.CheckShoppingListItem(r.Context(), id, checked); err != nil {
 		http.Error(w, "db error", http.StatusInternalServerError)
@@ -547,6 +550,9 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad id"})
+		return
+	}
+	if !s.owns(w, r, db.ResShoppingItem, id) {
 		return
 	}
 	have := r.FormValue("have") == "1"
@@ -880,6 +886,9 @@ func (s *Server) handleShoppingItemPriceSet(w http.ResponseWriter, r *http.Reque
 	}
 	if body.StoreID == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "choose a store"})
+		return
+	}
+	if !s.owns(w, r, db.ResStore, body.StoreID) {
 		return
 	}
 	priceCents := parseDollarsToCents(body.PriceDollars)

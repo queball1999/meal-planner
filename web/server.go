@@ -4,11 +4,10 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
-	"github.com/gorilla/csrf"
+	csrf "filippo.io/csrf/gorilla"
 
 	"goeat/agent"
 	"goeat/config"
@@ -70,6 +69,11 @@ type Server struct {
 	// remembers being asked about.
 	pendingMu   sync.Mutex
 	pendingChat map[int64]*agent.Pending
+
+	// setup is the first-run claim token; setupLimiter throttles guesses at
+	// it per IP (see setup_token.go).
+	setup        setupClaim
+	setupLimiter *attemptLimiter
 }
 
 // NewServer wires up routes, session loading, and CSRF middleware, then
@@ -93,6 +97,7 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		startedAt:      time.Now(),
 		repricingPlans: make(map[int64]bool),
 		pendingChat:    make(map[int64]*agent.Pending),
+		setupLimiter:   newAttemptLimiter(10, 15*time.Minute),
 	}
 	s.handler = s.buildHandler()
 	return s
@@ -197,10 +202,15 @@ func buildChain(cfg *config.Config, store db.Store, gen llm.Generator) *pricing.
 
 // buildHandler composes the middleware stack around the route mux:
 //
-//	CSRF → LoadSession → mux
+//	Timing → scheme guard → CSRF → LoadSession → mux
 //
-// gorilla/csrf only enforces on non-safe methods (POST/PUT/PATCH/DELETE),
-// so wrapping the whole mux is safe for GET/HEAD.
+// CSRF is filippo.io/csrf/gorilla (QSS security design §6.1): a cross-origin
+// check on Sec-Fetch-Site / Origin, the same one as Go's
+// http.CrossOriginProtection. It is not github.com/gorilla/csrf, whose
+// TrustedOrigins compares hosts only (GO-2025-3884). Tokens are ignored, so
+// the {{.CSRFField}} fields in templates are now inert but harmless. Every
+// non-GET/HEAD/OPTIONS request on every route is checked, login and setup
+// included; there are no exemptions.
 func (s *Server) buildHandler() http.Handler {
 	mux := http.NewServeMux()
 	s.routes(mux)
@@ -208,25 +218,17 @@ func (s *Server) buildHandler() http.Handler {
 	var h http.Handler = mux
 	h = middleware.LoadSession(s.store)(h)
 
-	csrfOpts := []csrf.Option{
-		csrf.Secure(false),                  // Allow plain HTTP on LAN (§9.3)
-		csrf.SameSite(csrf.SameSiteLaxMode), // Required alongside Secure(false)
-		csrf.HttpOnly(true),
-		csrf.Path("/"), // Pin the cookie's scope; otherwise it defaults to the
-		// directory of whichever URL last set it (e.g. "/plan" from a GET to
-		// /plan/generate), so the browser can end up holding two same-named
-		// cookies at different paths and send the stale one.
-		csrf.ErrorHandler(http.HandlerFunc(s.handleCSRFError)),
+	csrfOpts := []csrf.Option{csrf.ErrorHandler(http.HandlerFunc(s.handleCSRFError))}
+	// Trust the external origin declared in PUBLIC_BASE_URL - with its
+	// scheme, since a bare host is read as https:// (§6.1 step 3). Needed
+	// when Docker maps a different host port (e.g. 8081:8080) so the
+	// browser's Origin doesn't match the Host the server sees.
+	public := publicOrigin(s.cfg.PublicBaseURL)
+	if public != nil {
+		csrfOpts = append(csrfOpts, csrf.TrustedOrigins([]string{public.Scheme + "://" + public.Host}))
 	}
-	// Trust the external origin declared in PUBLIC_BASE_URL. This is required
-	// when Docker maps a different host port (e.g. 8081:8080) so the browser's
-	// Origin header doesn't match the server's internal bind address.
-	if s.cfg.PublicBaseURL != "" {
-		if u, err := url.Parse(s.cfg.PublicBaseURL); err == nil && u.Host != "" {
-			csrfOpts = append(csrfOpts, csrf.TrustedOrigins([]string{u.Host}))
-		}
-	}
-	h = csrf.Protect([]byte(s.cfg.SessionSecret), csrfOpts...)(h)
+	h = csrf.Protect(nil, csrfOpts...)(h)
+	h = csrfSchemeGuard(public, h)
 	h = middleware.Timing(h) // outermost: footer's "Page" time includes CSRF + session overhead
 
 	return h

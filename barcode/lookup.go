@@ -38,7 +38,7 @@ func Lookup(ctx context.Context, store db.Store, householdID int64, code string)
 	}
 
 	// 2. Item-product map
-	pm, err := store.GetItemProductMapByBarcode(ctx, code)
+	pm, err := store.GetItemProductMapByBarcode(ctx, householdID, code)
 	if err != nil {
 		return nil, fmt.Errorf("barcode: product lookup: %w", err)
 	}

@@ -1,0 +1,206 @@
+{{define "title"}}Households - {{.AppName}}{{end}}
+{{define "content"}}
+{{$d := .Data}}
+{{$csrf := .CSRFField}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "account-group"}} Households</h1>
+    <p class="page-subtitle">
+        {{if $d.Active}}You're in <strong>{{$d.Active.Name}}</strong>.{{else}}You're not in a household yet.{{end}}
+        Each household has its own plans, pantry, recipes, stores and budget.
+    </p>
+</div>
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "swap-horizontal"}} Switch household</h2>
+    {{if $d.Households}}
+    <table class="data-table" aria-label="Your households">
+        <thead><tr><th>Household</th><th>Your role</th><th></th></tr></thead>
+        <tbody>
+        {{range $d.Households}}
+        <tr>
+            <td>{{.Name}}</td>
+            <td>{{.Role}}</td>
+            <td>
+                {{if .Active}}<span class="field-hint">Current</span>{{else}}
+                <form method="POST" action="/households/switch" data-viewer-ok>
+                    {{$csrf}}
+                    <input type="hidden" name="household_id" value="{{.ID}}">
+                    <button type="submit" class="btn btn-secondary btn-sm">Switch</button>
+                </form>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="field-hint">Nobody has added you to a household yet. Ask a household owner to add your username
+        <strong>{{$.User.Username}}</strong>.</p>
+    {{end}}
+</div>
+
+{{if and $d.Active $d.CanOwn}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "account-group"}} People in {{$d.Active.Name}}</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        <strong>Viewer</strong> can see everything but change nothing.
+        <strong>Editor</strong> plans, shops, and edits the pantry and recipes.
+        <strong>Owner</strong> also manages people, stores and preferences.
+    </p>
+    <table class="data-table" aria-label="People in this household">
+        <thead><tr><th>Username</th><th>Role</th><th></th></tr></thead>
+        <tbody>
+        {{range $d.Members}}
+        {{$m := .}}
+        <tr>
+            <td>{{.Username}}{{if eq .UserID $d.Me}} <span class="field-hint">(you)</span>{{end}}</td>
+            <td>
+                {{if eq .UserID $d.Me}}{{.Role}}{{else}}
+                <form method="POST" action="/households/members/{{.UserID}}/role" class="field-row">
+                    {{$csrf}}
+                    <select class="field-input" name="role" aria-label="Role for {{.Username}}">
+                        {{range $d.Roles}}<option value="{{.}}"{{if eq . $m.Role}} selected{{end}}>{{.}}</option>{{end}}
+                    </select>
+                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </form>
+                {{end}}
+            </td>
+            <td>
+                {{if ne .UserID $d.Me}}
+                <form method="POST" action="/households/members/{{.UserID}}/remove"
+                      data-confirm="Remove {{.Username}} from {{$d.Active.Name}}? Their account is kept."
+                      data-confirm-title="Remove person" data-confirm-label="Remove" data-confirm-danger>
+                    {{$csrf}}
+                    <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Remove</button>
+                </form>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+
+    <h3 class="form-section__title" style="margin-top:1.25rem">Add a person</h3>
+    <form method="POST" action="/households/members" class="pref-form">
+        {{$csrf}}
+        <div class="field-row">
+            <div class="field" style="flex:1">
+                <label class="field-label" for="add-username">Username</label>
+                <input class="field-input" id="add-username" name="username" type="text"
+                       autocomplete="off" minlength="3" required>
+            </div>
+            <div class="field">
+                <label class="field-label" for="add-role">Role</label>
+                <select class="field-input" id="add-role" name="role">
+                    {{range $d.Roles}}<option value="{{.}}"{{if eq . "editor"}} selected{{end}}>{{.}}</option>{{end}}
+                </select>
+            </div>
+        </div>
+        <div class="field">
+            <label class="field-label" for="add-password">Password (only for a new account)</label>
+            <input class="field-input" id="add-password" name="password" type="password"
+                   autocomplete="new-password" minlength="8">
+            <p class="field-hint">Leave blank to add someone who already has an account.</p>
+        </div>
+        <div><button type="submit" class="btn btn-primary">{{icon "plus"}} Add person</button></div>
+    </form>
+
+    <h3 class="form-section__title" style="margin-top:1.25rem">Rename</h3>
+    <form method="POST" action="/households/rename" class="field-row">
+        {{$csrf}}
+        <input class="field-input" name="name" type="text" value="{{$d.Active.Name}}"
+               aria-label="Household name" maxlength="80" required>
+        <button type="submit" class="btn btn-secondary">Rename</button>
+    </form>
+</div>
+{{end}}
+
+{{if $d.IsAdmin}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "plus"}} New household</h2>
+    <form method="POST" action="/households" class="pref-form">
+        {{$csrf}}
+        <div class="field-row">
+            <div class="field" style="flex:1">
+                <label class="field-label" for="new-name">Name</label>
+                <input class="field-input" id="new-name" name="name" type="text" maxlength="80" required>
+            </div>
+            <div class="field">
+                <label class="field-label" for="new-budget">Weekly budget ($)</label>
+                <input class="field-input" id="new-budget" name="budget" type="number" min="1" step="0.01" value="150" required>
+            </div>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label class="field-label" for="new-zip">ZIP code</label>
+                <input class="field-input" id="new-zip" name="zip_code" type="text" inputmode="numeric" maxlength="10">
+            </div>
+            <div class="field" style="flex:1">
+                <label class="field-label" for="new-tz">Timezone</label>
+                <select class="field-input" id="new-tz" name="timezone">
+                    {{range $d.Timezones}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+                </select>
+            </div>
+        </div>
+        <div><button type="submit" class="btn btn-primary">{{icon "plus"}} Create &amp; switch to it</button></div>
+    </form>
+</div>
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "shield-check"}} Accounts on this server</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        <strong>Admins</strong> run the server (settings, AI keys, scraper, accounts) and can open every household.
+    </p>
+    <table class="data-table" aria-label="Accounts">
+        <thead><tr><th>Username</th><th>Server role</th><th></th></tr></thead>
+        <tbody>
+        {{range $d.Users}}
+        <tr>
+            <td>{{.Username}}{{if eq .ID $d.Me}} <span class="field-hint">(you)</span>{{end}}</td>
+            <td>
+                {{if eq .ID $d.Me}}{{.Role}}{{else}}
+                <form method="POST" action="/admin/users/{{.ID}}/role" class="field-row">
+                    {{$csrf}}
+                    <select class="field-input" name="role" aria-label="Server role for {{.Username}}">
+                        <option value="member"{{if eq .Role "member"}} selected{{end}}>member</option>
+                        <option value="admin"{{if eq .Role "admin"}} selected{{end}}>admin</option>
+                    </select>
+                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </form>
+                {{end}}
+            </td>
+            <td>
+                {{if ne .ID $d.Me}}
+                <form method="POST" action="/admin/users/{{.ID}}/delete"
+                      data-confirm="Delete the account {{.Username}}? They lose access to every household."
+                      data-confirm-title="Delete account" data-confirm-label="Delete" data-confirm-danger>
+                    {{$csrf}}
+                    <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Delete</button>
+                </form>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+</div>
+
+{{if $d.Active}}
+<div class="card form-section form-section--danger">
+    <h2 class="form-section__title">{{icon "delete"}} Delete {{$d.Active.Name}}</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        Permanently deletes this household and everything in it: plans, shopping lists, pantry,
+        recipes, items, stores and memberships. Accounts are kept. This cannot be undone.
+    </p>
+    <form method="POST" action="/households/delete" class="pref-form">
+        {{$csrf}}
+        <div class="field field--sm">
+            <label class="field-label" for="del-cf">Type <code>{{$d.Active.Name}}</code> to confirm</label>
+            <input class="field-input" id="del-cf" name="confirm" type="text" autocomplete="off" required>
+        </div>
+        <div><button type="submit" class="btn btn-danger">{{icon "delete"}} Delete household</button></div>
+    </form>
+</div>
+{{end}}
+{{end}}
+{{end}}

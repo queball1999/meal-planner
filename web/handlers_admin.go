@@ -79,6 +79,9 @@ func (s *Server) handleAdminPriceCreate(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/admin/prices", http.StatusSeeOther)
 		return
 	}
+	if !s.owns(w, r, db.ResStore, storeID) {
+		return
+	}
 
 	ctx := r.Context()
 
@@ -161,6 +164,9 @@ func (s *Server) handleAdminPriceDelete(w http.ResponseWriter, r *http.Request) 
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if !s.owns(w, r, db.ResManualPrice, id) {
 		return
 	}
 	_ = s.store.DeleteManualPrice(r.Context(), id)

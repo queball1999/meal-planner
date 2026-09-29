@@ -10,14 +10,17 @@ import (
 )
 
 // The widget is rendered from layout.html, so it has to appear on an ordinary
-// page - that is what "available on every page" means.
+// page - that is what "available on every page" means - for anyone who can
+// edit the household.
 func TestChatWidgetRendersForSignedInUser(t *testing.T) {
 	out := renderPage(t, "plan", pageData{
-		AppName:   "Go Eat",
-		Page:      "plan",
-		User:      &db.User{Username: "sam"},
-		CSRFToken: "tok-123",
-		Data:      planPageData{HasPlan: false, Tab: "plan"},
+		AppName:       "Go Eat",
+		Page:          "plan",
+		User:          &db.User{Username: "sam"},
+		HouseholdRole: db.HouseholdRoleEditor,
+		CanEdit:       true,
+		CSRFToken:     "tok-123",
+		Data:          planPageData{HasPlan: false, Tab: "plan"},
 	})
 
 	for _, want := range []string{
@@ -34,6 +37,26 @@ func TestChatWidgetRendersForSignedInUser(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("page missing %q", want)
 		}
+	}
+}
+
+// A viewer can't change the plan, so the assistant - whose tools rewrite it -
+// isn't offered either.
+func TestChatWidgetHiddenForViewer(t *testing.T) {
+	out := renderPage(t, "plan", pageData{
+		AppName:       "Go Eat",
+		Page:          "plan",
+		User:          &db.User{Username: "vera"},
+		HouseholdRole: db.HouseholdRoleViewer,
+		Data:          planPageData{HasPlan: false, Tab: "plan"},
+	})
+	for _, unwanted := range []string{`id="chat-launcher"`, `/static/js/chat.js`} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("viewer page contains %q", unwanted)
+		}
+	}
+	if !strings.Contains(out, `data-role="viewer"`) {
+		t.Error(`viewer page is missing <body data-role="viewer">`)
 	}
 }
 

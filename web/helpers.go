@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -103,4 +104,62 @@ func (s *Server) logEvent(r *http.Request, userID *int64, action, targetType, ta
 		UserAgent:   r.UserAgent(),
 		Status:      "ok",
 	})
+}
+
+// serveHouseholdImage serves dir/name when one of the active household's
+// recipes or items references that file, and 404s otherwise - so a guessed
+// or leaked file name from another household serves nothing (QSS §17).
+func (s *Server) serveHouseholdImage(w http.ResponseWriter, r *http.Request, dir string, kind db.ImageKind) {
+	if dir == "" {
+		http.NotFound(w, r)
+		return
+	}
+	name := r.PathValue("name")
+	if name == "" || strings.Contains(name, "..") || strings.ContainsAny(name, `/\`) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.NotFound(w, r)
+		return
+	}
+	used, err := s.store.HouseholdUsesImage(r.Context(), hh.ID, kind, name)
+	if err != nil {
+		log.Printf("serve image %s/%s: %v", kind, name, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !used {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeFile(w, r, dir+"/"+name)
+}
+
+// ── Tenancy ──────────────────────────────────────────────────────────────────
+
+// owns reports whether the row (kind, id) belongs to the active household,
+// answering 404 itself when it doesn't - a caller just returns on false.
+// 404 rather than 403 so probing ids can't confirm another household's rows
+// exist. Every handler that takes an id from the path or form must call this
+// (or check the loaded row's HouseholdID) before reading or writing the row.
+func (s *Server) owns(w http.ResponseWriter, r *http.Request, kind db.ResourceKind, id int64) bool {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.NotFound(w, r)
+		return false
+	}
+	ok, err := s.store.HouseholdOwns(r.Context(), hh.ID, kind, id)
+	if err != nil {
+		log.Printf("owns %s %d: %v", kind, id, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return false
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return false
+	}
+	return true
 }

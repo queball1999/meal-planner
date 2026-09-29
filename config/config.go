@@ -16,11 +16,15 @@ import (
 // present) then from environment variables. SESSION_SECRET, DATABASE_URL, and
 // LISTEN_ADDR are not runtime-editable (§11.4).
 type Config struct {
-	AppName         string
-	ListenAddr      string
-	PublicBaseURL   string
-	DatabaseURL     string
-	SessionSecret   string
+	AppName       string
+	ListenAddr    string
+	PublicBaseURL string
+	DatabaseURL   string
+	SessionSecret string
+	// SetupToken, when set, is the token the first-run wizard demands
+	// instead of a freshly generated one (QSS security design §15). At
+	// least 24 hex characters; Load rejects anything weaker.
+	SetupToken      string
 	SessionTTLHours int // default 168 (7 days)
 
 	// ── AI provider (§11.2) ───────────────────────────────────────────────
@@ -230,6 +234,11 @@ func Load() (*Config, error) {
 
 	cfg.DeriveKrogerCredentials()
 
+	cfg.SetupToken = strings.TrimSpace(os.Getenv("SETUP_TOKEN"))
+	if cfg.SetupToken != "" && !validSetupToken(cfg.SetupToken) {
+		return nil, fmt.Errorf("SETUP_TOKEN must be at least 24 hex characters (generate one with: openssl rand -hex 16)")
+	}
+
 	if cfg.SessionSecret == "" {
 		// Dev fallback: ephemeral secret with a loud warning. Set SESSION_SECRET
 		// in .env for any persistent deployment.
@@ -242,6 +251,11 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// validSetupToken: at least 24 hex characters (96 bits).
+func validSetupToken(tok string) bool {
+	return len(tok) >= 24 && strings.Trim(tok, "0123456789abcdefABCDEF") == ""
 }
 
 func getenv(key, def string) string {

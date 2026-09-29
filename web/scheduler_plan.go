@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"time"
+
+	"goeat/db"
 )
 
 // lastAutoPlanCheck reports when this server's auto-plan scheduler last
@@ -58,11 +60,20 @@ func (s *Server) maybeAutoGeneratePlanAt(ctx context.Context, wallClock time.Tim
 	if s.cfg.AutoPlanHour < 0 || s.llmGen() == nil {
 		return
 	}
-	hh, err := s.store.GetHousehold(ctx)
-	if err != nil || hh == nil {
+	households, err := s.store.ListHouseholds(ctx)
+	if err != nil {
+		log.Printf("auto-plan: list households: %v", err)
 		return
 	}
+	for _, hh := range households {
+		s.maybeAutoGenerateFor(ctx, hh, wallClock)
+	}
+}
 
+// maybeAutoGenerateFor is one household's turn of the auto-plan tick. Each
+// household is judged in its own timezone, so "Saturday at AutoPlanHour"
+// lands at a different instant for each.
+func (s *Server) maybeAutoGenerateFor(ctx context.Context, hh *db.Household, wallClock time.Time) {
 	loc := time.UTC
 	if hh.Timezone != "" {
 		if l, lerr := time.LoadLocation(hh.Timezone); lerr == nil {

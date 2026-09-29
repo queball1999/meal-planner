@@ -26,12 +26,14 @@ func (s *store) CreateSession(ctx context.Context, userID int64, tokenHash, ipAd
 
 func (s *store) GetSessionByTokenHash(ctx context.Context, hash string) (*Session, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, token_hash, expires_at, ip_address, user_agent, created_at
+		`SELECT id, user_id, token_hash, expires_at, ip_address, user_agent, created_at,
+		        COALESCE(active_household_id, 0)
 		   FROM sessions WHERE token_hash = ?`,
 		hash)
 	var sess Session
 	var expiresAt, createdAt string
-	err := row.Scan(&sess.ID, &sess.UserID, &sess.TokenHash, &expiresAt, &sess.IPAddress, &sess.UserAgent, &createdAt)
+	err := row.Scan(&sess.ID, &sess.UserID, &sess.TokenHash, &expiresAt, &sess.IPAddress, &sess.UserAgent, &createdAt,
+		&sess.ActiveHouseholdID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -51,4 +53,15 @@ func (s *store) DeleteSession(ctx context.Context, id int64) error {
 func (s *store) DeleteUserSessions(ctx context.Context, userID int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID)
 	return err
+}
+
+// SetSessionHousehold points one session at a household. The caller checks
+// the user may see it; middleware re-checks on every request anyway.
+func (s *store) SetSessionHousehold(ctx context.Context, sessionID, householdID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET active_household_id = ? WHERE id = ?`, householdID, sessionID)
+	if err != nil {
+		return fmt.Errorf("set session household: %w", err)
+	}
+	return nil
 }

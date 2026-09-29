@@ -49,7 +49,9 @@
 <a href="/finance" class="{{$link}}{{if $financeSection}} {{$active}}{{end}}"{{if $financeSection}} aria-current="page"{{end}}>
     {{icon "history"}} <span>Finance</span>
 </a>
+{{- if .IsAdmin}}
 <a href="/settings" class="{{$link}}{{if eq $page "settings"}} {{$active}}{{end}}"{{if eq $page "settings"}} aria-current="page"{{end}}>
     {{icon "cog"}} <span>Settings</span>
 </a>
+{{- end}}
 {{end}}

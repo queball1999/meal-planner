@@ -8,7 +8,7 @@
             Recipes, meals, the pantry, and the shopping list all resolve to these.
         </p>
     </div>
-    <button type="button" class="btn btn-primary" data-modal-open="add-item">
+    <button type="button" class="btn btn-primary" data-modal-open="add-item" data-requires="edit">
         {{icon "plus"}} Add item
     </button>
 </div>
@@ -69,7 +69,7 @@
                     <span class="badge {{pill "source" .Source}}">{{.Source}}</span>
                 </td>
                 <td data-label="" class="data-table__actions">
-                    <button type="button" class="btn btn-ghost btn-sm"
+                    <button type="button" class="btn btn-ghost btn-sm" data-requires="edit"
                             data-quick-add data-id="{{.ID}}" data-name="{{.Name}}"
                             data-unit="{{.StockUnit}}" data-qty="{{.DefaultPurchaseQty}}"
                             aria-label="Add {{.Name}} to the list or pantry"

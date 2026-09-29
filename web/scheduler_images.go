@@ -81,14 +81,22 @@ func (s *Server) imageBackfillTick(ctx context.Context) {
 	s.imageBackfillCheckedAt = time.Now()
 	s.imageBackfillMu.Unlock()
 
-	hh, err := s.store.GetHousehold(ctx)
-	if err != nil || hh == nil {
+	// Photos are matched by item name, so which household an item belongs to
+	// doesn't matter here - walk every household's catalog in turn, still
+	// downloading at most one image per tick across all of them.
+	households, err := s.store.ListHouseholds(ctx)
+	if err != nil {
+		log.Printf("image backfill: list households: %v", err)
 		return
 	}
-	items, err := s.store.ListItems(ctx, hh.ID)
-	if err != nil {
-		log.Printf("image backfill: list items: %v", err)
-		return
+	var items []*db.Item
+	for _, hh := range households {
+		hhItems, err := s.store.ListItems(ctx, hh.ID)
+		if err != nil {
+			log.Printf("image backfill: list items for household %d: %v", hh.ID, err)
+			continue
+		}
+		items = append(items, hhItems...)
 	}
 
 	render := s.renderConfig(ctx)

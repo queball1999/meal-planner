@@ -17,7 +17,7 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	if middleware.HouseholdFromCtx(r) == nil {
+	if !middleware.SetupDone(r) {
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}

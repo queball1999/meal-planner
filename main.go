@@ -51,14 +51,16 @@ func main() {
 	if err := catalog.SeedGlobalConversions(seedCtx, store); err != nil {
 		log.Printf("catalog: seed global conversions: %v", err)
 	}
-	if hh, err := store.GetHousehold(seedCtx); err != nil {
+	if households, err := store.ListHouseholds(seedCtx); err != nil {
 		log.Printf("catalog: household lookup: %v", err)
-	} else if hh != nil {
-		if err := catalog.SeedHousehold(seedCtx, store, hh.ID); err != nil {
-			log.Printf("catalog: seed household: %v", err)
-		}
-		if err := catalog.BackfillHousehold(seedCtx, store, hh.ID); err != nil {
-			log.Printf("catalog: backfill household: %v", err)
+	} else {
+		for _, hh := range households {
+			if err := catalog.SeedHousehold(seedCtx, store, hh.ID); err != nil {
+				log.Printf("catalog: seed household %d: %v", hh.ID, err)
+			}
+			if err := catalog.BackfillHousehold(seedCtx, store, hh.ID); err != nil {
+				log.Printf("catalog: backfill household %d: %v", hh.ID, err)
+			}
 		}
 	}
 
@@ -75,6 +77,12 @@ func main() {
 
 	box := cryptbox.New(cfg.SessionSecret)
 	srv := web.NewServer(cfg, store, gen, version, box)
+
+	// First-run claim: with no account yet, the setup wizard demands a token
+	// printed here (stderr, once) or taken from SETUP_TOKEN (§15).
+	if err := srv.ArmSetupToken(seedCtx, os.Stderr); err != nil {
+		log.Fatalf("setup token: %v", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

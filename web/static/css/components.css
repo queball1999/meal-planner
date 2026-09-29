@@ -2961,3 +2961,29 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     margin: 0;
     color: var(--text-muted);
 }
+
+/* ── Role-aware controls (phase 13) ──────────────────────────────────────────
+   <body data-role> carries the user's role in the active household. Controls
+   they can't use are hidden rather than left to fail with a 403 - hiding only,
+   the route gates in routes.go are what enforce.
+     viewer: every POST form, bar the few marked data-viewer-ok (sign out,
+             switch household), plus anything marked data-requires.
+     editor: owner-only forms, marked data-requires="own".
+   data-requires="admin" (server settings, e.g. a store's scraper) needs
+   <body data-admin>. Instance admins read as owner, so they see everything. */
+body[data-role="viewer"] form[method="POST" i]:not([data-viewer-ok]),
+body[data-role="viewer"] [data-requires],
+body[data-role="editor"] [data-requires="own"] {
+    display: none !important;
+}
+body:not([data-admin]) [data-requires="admin"] {
+    display: none !important;
+}
+
+/* A <fieldset> used only to disable a group of fields at once. */
+.fieldset-plain {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}

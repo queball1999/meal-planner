@@ -254,6 +254,9 @@ func (s *Server) handleStoreDelete(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/stores", http.StatusSeeOther)
 		return
 	}
+	if !s.owns(w, r, db.ResStore, id) {
+		return
+	}
 
 	if err := s.store.DeleteStore(r.Context(), id); err != nil {
 		s.setNotify(w, NotifyDanger, "Could not delete store.")

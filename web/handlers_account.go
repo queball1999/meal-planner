@@ -142,7 +142,7 @@ func (s *Server) handleAccountExport(w http.ResponseWriter, r *http.Request) {
 		"exported_at": time.Now().UTC().Format(time.RFC3339),
 		"app":         s.cfg.AppName,
 	}
-	out["household"], _ = s.store.GetHousehold(ctx)
+	out["household"] = hh
 	out["preferences"], _ = s.store.GetPreferences(ctx, hh.ID)
 	out["members"], _ = s.store.ListHouseholdMembers(ctx, hh.ID)
 	out["stores"], _ = s.store.ListStores(ctx, hh.ID)

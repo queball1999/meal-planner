@@ -11,9 +11,10 @@
         </div>
         {{if .Data.HasPlan}}
         <div class="cal-toolbar__modes">
-            {{if .Data.ReadOnly}}<a href="/" class="btn btn-ghost btn-sm">{{icon "arrow-left"}} Dashboard</a>{{end}}
+            {{if and .Data.ReadOnly $.CanEdit}}<a href="/" class="btn btn-ghost btn-sm">{{icon "arrow-left"}} Dashboard</a>{{end}}
             <span class="cal-toolbar__budget">Budget: {{.Data.BudgetLabel}}</span>
             {{if .Data.Canceled}}<span class="badge badge-muted" title="Superseded by a later regenerate for this week">{{icon "archive"}} Canceled - archived, read only</span>
+            {{else if not $.CanEdit}}<span class="badge badge-muted" title="Your role in this household is viewer">View only</span>
             {{else if .Data.ReadOnly}}<span class="badge badge-muted">Past plan - read only</span>{{end}}
         </div>
         {{end}}

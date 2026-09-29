@@ -4,7 +4,7 @@
     <div class="page-header__row">
         <h1 class="page-title">{{icon "store"}} Grocery Stores</h1>
         <div class="page-header__actions">
-            <button type="button" class="btn btn-primary" data-modal-open="add-store-modal">
+            <button type="button" class="btn btn-primary" data-modal-open="add-store-modal" data-requires="own">
                 {{icon "plus"}} Add custom store
             </button>
         </div>
@@ -39,7 +39,7 @@
     </div>
     {{end}}
 
-    <form method="POST" action="/stores/select">
+    <form method="POST" data-requires="own" action="/stores/select">
         {{.CSRFField}}
         <div class="store-picker-grid" id="store-picker" role="group" aria-label="Select your grocery stores">
             {{range .Data.Catalog}}
@@ -92,13 +92,13 @@
             {{end}}
         </div>
         <div class="store-item__actions">
-            <button type="button" class="btn btn-ghost btn-sm"
+            <button type="button" class="btn btn-ghost btn-sm" data-requires="admin"
                     data-modal-open="store-cfg-{{.Store.ID}}"
                     aria-label="Configure scraping for {{.Store.Name}}"
                     title="Scraping settings">
                 {{icon "cog"}}
             </button>
-            <form method="POST" action="/stores/{{.Store.ID}}/delete"
+            <form method="POST" data-requires="own" action="/stores/{{.Store.ID}}/delete"
                   data-confirm="Remove {{.Store.Name}} from your stores?"
                   data-confirm-title="Remove store" data-confirm-label="Remove" data-confirm-danger>
                 {{$.CSRFField}}
@@ -128,7 +128,7 @@
         <p class="field-hint">This store has an official price API. Scraping is only used as a fallback.</p>
         {{end}}
 
-        <form method="POST" action="/admin/scrape/{{.Store.ID}}/save" class="pref-form">
+        <form method="POST" data-requires="admin" action="/admin/scrape/{{.Store.ID}}/save" class="pref-form">
             {{$.CSRFField}}
             <input type="hidden" name="redirect_to" value="/stores">
 
@@ -226,14 +226,14 @@
 <div class="empty-state card">
     <p class="empty-state__text">
         No stores yet. Pick them above, or
-        <button type="button" class="btn-link" data-modal-open="add-store-modal">add a custom one</button>.
+        <button type="button" class="btn-link" data-modal-open="add-store-modal" data-requires="own">add a custom one</button>.
     </p>
 </div>
 {{end}}
 
 {{/* ── Add a custom store (opened from the header) ─────────────────────────── */}}
 {{template "partials/modal_open.html" dict "ID" "add-store-modal" "Title" "Add a custom store" "Form" true}}
-        <form method="POST" action="/stores" novalidate>
+        <form method="POST" data-requires="own" action="/stores" novalidate>
             {{.CSRFField}}
             <div class="field">
                 <label class="field-label" for="name">Store name</label>

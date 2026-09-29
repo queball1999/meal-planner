@@ -51,9 +51,17 @@ func (s *store) ListConversionsForItem(ctx context.Context, itemID int64) ([]*Un
 	return scanConversionRows(rows)
 }
 
-func (s *store) DeleteUnitConversion(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM unit_conversions WHERE id = ?`, id)
-	return err
+// DeleteUnitConversion deletes one of itemID's conversions. The item_id
+// match is the ownership check (QSS security design §17): a conversion id
+// belonging to another item - or a global one, item_id NULL - deletes
+// nothing and reports ErrNotFound.
+func (s *store) DeleteUnitConversion(ctx context.Context, itemID, id int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM unit_conversions WHERE id = ? AND item_id = ?`, id, itemID)
+	if err != nil {
+		return err
+	}
+	return oneRow(res)
 }
 
 // ReplaceDerivedItemConversions swaps an item's machine-generated (derived)

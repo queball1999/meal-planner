@@ -24,6 +24,10 @@ type Store interface {
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
 	GetUserByID(ctx context.Context, id int64) (*User, error)
 	UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error
+	CountUsers(ctx context.Context) (int, error)
+	ListUsers(ctx context.Context) ([]*User, error)
+	SetUserRole(ctx context.Context, userID int64, role string) error
+	DeleteUser(ctx context.Context, userID int64) error
 
 	// ── Sessions (§9.3, §10.1) ────────────────────────────────────────────
 
@@ -31,14 +35,30 @@ type Store interface {
 	GetSessionByTokenHash(ctx context.Context, hash string) (*Session, error)
 	DeleteSession(ctx context.Context, id int64) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
+	SetSessionHousehold(ctx context.Context, sessionID, householdID int64) error
 
 	// ── Household (§10.1) ─────────────────────────────────────────────────
 
-	// CreateHousehold creates the single household row.
 	CreateHousehold(ctx context.Context, p CreateHouseholdParams) (*Household, error)
 
-	// GetHousehold returns nil, nil when no household exists yet (setup not done).
-	GetHousehold(ctx context.Context) (*Household, error)
+	// GetHousehold returns nil, nil when there is no household with that id.
+	GetHousehold(ctx context.Context, id int64) (*Household, error)
+	ListHouseholds(ctx context.Context) ([]*Household, error)
+	RenameHousehold(ctx context.Context, id int64, name string) error
+	DeleteHousehold(ctx context.Context, id int64) error
+
+	// ── Memberships + tenancy boundary (00032_multi_tenant.sql) ───────────
+
+	UpsertMembership(ctx context.Context, householdID, userID int64, role string) error
+	SetMembershipRole(ctx context.Context, householdID, userID int64, role string) error
+	DeleteMembership(ctx context.Context, householdID, userID int64) error
+	GetMembership(ctx context.Context, householdID, userID int64) (*HouseholdMembership, error)
+	ListMembershipsForUser(ctx context.Context, userID int64) ([]*HouseholdMembership, error)
+	ListMembershipsForHousehold(ctx context.Context, householdID int64) ([]*HouseholdMembership, error)
+
+	// HouseholdOwns is the tenancy check for any id taken from a request.
+	HouseholdOwns(ctx context.Context, householdID int64, kind ResourceKind, id int64) (bool, error)
+	HouseholdUsesImage(ctx context.Context, householdID int64, kind ImageKind, name string) (bool, error)
 
 	// ── Audit log (§9.3) ──────────────────────────────────────────────────
 
@@ -290,14 +310,14 @@ type Store interface {
 	UpsertUnitConversion(ctx context.Context, p UpsertUnitConversionParams) error
 	ListGlobalConversions(ctx context.Context) ([]*UnitConversion, error)
 	ListConversionsForItem(ctx context.Context, itemID int64) ([]*UnitConversion, error)
-	DeleteUnitConversion(ctx context.Context, id int64) error
+	DeleteUnitConversion(ctx context.Context, itemID, id int64) error
 	ReplaceDerivedItemConversions(ctx context.Context, itemID int64, edges []UpsertUnitConversionParams) error
 
 	UpsertItemStorePackage(ctx context.Context, p UpsertItemStorePackageParams) error
 	ListPackagesForItem(ctx context.Context, itemID int64) ([]*ItemStorePackage, error)
 	ListPackagesForStore(ctx context.Context, storeID int64) ([]*ItemStorePackage, error)
 	GetItemStorePackage(ctx context.Context, itemID, storeID int64) (*ItemStorePackage, error)
-	DeleteItemStorePackage(ctx context.Context, id int64) error
+	DeleteItemStorePackage(ctx context.Context, itemID, id int64) error
 	SetItemStorePreferred(ctx context.Context, itemID, storeID int64, preferred bool) error
 	ListPriceHistory(ctx context.Context, itemID, storeID int64) ([]*PriceHistoryEntry, error)
 	ListPriceHistoryForItem(ctx context.Context, itemID int64) ([]*PriceHistoryEntry, error)
@@ -316,7 +336,7 @@ type Store interface {
 
 	// ── Item product map - barcode (§8.4d) ────────────────────────────────────
 
-	GetItemProductMapByBarcode(ctx context.Context, code string) (*ItemProductMap, error)
+	GetItemProductMapByBarcode(ctx context.Context, householdID int64, code string) (*ItemProductMap, error)
 
 	// ── Settings (see package settings) ───────────────────────────────────────
 

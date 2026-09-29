@@ -107,9 +107,15 @@ func (s *store) GetItemStorePackage(ctx context.Context, itemID, storeID int64) 
 	return out[0], nil
 }
 
-func (s *store) DeleteItemStorePackage(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM item_store_packages WHERE id = ?`, id)
-	return err
+// DeleteItemStorePackage deletes one of itemID's store packages; a package
+// id belonging to another item deletes nothing and reports ErrNotFound.
+func (s *store) DeleteItemStorePackage(ctx context.Context, itemID, id int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM item_store_packages WHERE id = ? AND item_id = ?`, id, itemID)
+	if err != nil {
+		return err
+	}
+	return oneRow(res)
 }
 
 // SetItemStorePreferred marks (or unmarks) a store as the one the household

@@ -17,6 +17,27 @@ type HAConfig struct {
 	TodoEntity      string
 	IntervalMinutes int
 	ItemFormat      string // "name" | "name_qty"
+
+	// HouseholdID is the one household whose shopping list syncs with this
+	// HA to-do entity: whoever saved the HA settings last, from inside their
+	// active household. 0 (installs from before multi-tenancy) means the
+	// oldest household - see HouseholdFor.
+	HouseholdID int64
+}
+
+// HAHouseholdKey is the settings row binding HA sync to one household.
+const HAHouseholdKey = "HA_HOUSEHOLD_ID"
+
+// HouseholdFor returns the id of the household HA syncs with.
+func (c HAConfig) HouseholdFor(ctx context.Context, store db.Store) (int64, error) {
+	if c.HouseholdID != 0 {
+		return c.HouseholdID, nil
+	}
+	all, err := store.ListHouseholds(ctx)
+	if err != nil || len(all) == 0 {
+		return 0, err
+	}
+	return all[0].ID, nil
 }
 
 // Configured reports whether enough is set to talk to HA at all.
@@ -63,6 +84,11 @@ func LiveHAConfig(ctx context.Context, store db.Store, cfg *config.Config, box *
 	if v, ok := admin("HA_SYNC_INTERVAL_MINUTES"); ok {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			hc.IntervalMinutes = n
+		}
+	}
+	if row, err := store.GetSetting(ctx, HAHouseholdKey); err == nil && row != nil {
+		if n, err := strconv.ParseInt(strings.TrimSpace(row.Value), 10, 64); err == nil {
+			hc.HouseholdID = n
 		}
 	}
 	if box != nil {

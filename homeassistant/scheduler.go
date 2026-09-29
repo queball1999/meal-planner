@@ -103,7 +103,11 @@ func SyncOnce(ctx context.Context, store db.Store, cfg *config.Config, box *cryp
 	if client == nil {
 		return res, errNotConfigured
 	}
-	hh, err := store.GetHousehold(ctx)
+	hhID, err := hc.HouseholdFor(ctx, store)
+	if err != nil || hhID == 0 {
+		return res, err
+	}
+	hh, err := store.GetHousehold(ctx, hhID)
 	if err != nil || hh == nil {
 		return res, err
 	}

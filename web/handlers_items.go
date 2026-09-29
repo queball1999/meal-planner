@@ -45,16 +45,7 @@ func parseDollarsToCents(s string) int64 {
 
 // handleItemImageServe serves catalog-item images from the runtime itemImageDir.
 func (s *Server) handleItemImageServe(w http.ResponseWriter, r *http.Request) {
-	if s.itemImageDir == "" {
-		http.NotFound(w, r)
-		return
-	}
-	name := r.PathValue("name")
-	if strings.Contains(name, "..") || strings.ContainsAny(name, `/\`) {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-	http.ServeFile(w, r, s.itemImageDir+"/"+name)
+	s.serveHouseholdImage(w, r, s.itemImageDir, db.ImageItem)
 }
 
 // itemImageFetching tracks item IDs with an in-flight lazy download so a burst
@@ -640,6 +631,9 @@ func (s *Server) handleItemPackageUpsert(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, dest, http.StatusSeeOther)
 		return
 	}
+	if !s.owns(w, r, db.ResStore, storeID) {
+		return
+	}
 	unit := strings.TrimSpace(r.FormValue("purchase_unit"))
 	if unit == "" {
 		unit = "each"
@@ -699,6 +693,9 @@ func (s *Server) handleItemStorePreferred(w http.ResponseWriter, r *http.Request
 		http.NotFound(w, r)
 		return
 	}
+	if !s.owns(w, r, db.ResStore, storeID) {
+		return
+	}
 
 	preferred := r.FormValue("preferred") == "1"
 	if err := s.store.SetItemStorePreferred(r.Context(), id, storeID, preferred); err != nil {
@@ -728,7 +725,7 @@ func (s *Server) handleItemPackageDelete(w http.ResponseWriter, r *http.Request)
 		http.NotFound(w, r)
 		return
 	}
-	_ = s.store.DeleteItemStorePackage(r.Context(), pkgID)
+	_ = s.store.DeleteItemStorePackage(r.Context(), id, pkgID)
 	http.Redirect(w, r, fmt.Sprintf("/pantry/items/%d", id), http.StatusSeeOther)
 }
 
@@ -785,7 +782,7 @@ func (s *Server) handleItemConversionDelete(w http.ResponseWriter, r *http.Reque
 		http.NotFound(w, r)
 		return
 	}
-	_ = s.store.DeleteUnitConversion(r.Context(), cid)
+	_ = s.store.DeleteUnitConversion(r.Context(), id, cid)
 	_ = catalog.RecalcItemConversions(r.Context(), s.store, id)
 	http.Redirect(w, r, fmt.Sprintf("/pantry/items/%d", id), http.StatusSeeOther)
 }

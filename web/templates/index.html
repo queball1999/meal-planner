@@ -40,13 +40,13 @@
             <div class="plan-status__actions">
                 <a href="/plan{{$d.PlanWeekParam}}" class="btn btn-primary btn-sm">{{icon "calendar-week"}} View plan</a>
                 {{if and $d.HasLLM $d.IsCurrentWeek}}
-                <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal"
+                <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal" data-requires="edit"
                         data-week="" data-mid-week="{{$d.TodayMidWeek}}" data-generate-confirm-title="Regenerate plan"
                         data-generate-confirm="This replaces your current plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference.">
                     {{icon "autorenew"}} Regenerate
                 </button>
                 {{else if and $d.HasLLM (not $d.IsPastWeek)}}
-                <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal"
+                <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal" data-requires="edit"
                         data-week="{{$d.WeekParam}}" data-generate-confirm-title="Regenerate plan"
                         data-generate-confirm="This replaces the plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference.">
                     {{icon "autorenew"}} Regenerate this week
@@ -65,7 +65,7 @@
             <a href="/stores">grocery stores</a>, then generate your first plan.
         </p>
         {{if $d.HasLLM}}
-        <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-week="" data-mid-week="{{$d.TodayMidWeek}}">
+        <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-requires="edit" data-week="" data-mid-week="{{$d.TodayMidWeek}}">
             {{icon "chef-hat"}} Plan my week
         </button>
         {{else}}
@@ -80,7 +80,7 @@
         <h2 class="skeleton-card__title">No plan yet for {{$d.WeekNavLabel}}</h2>
         <p class="skeleton-card__body">Generate one now, or wait for it to be planned automatically.</p>
         {{if $d.HasLLM}}
-        <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-week="{{$d.WeekParam}}">
+        <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-requires="edit" data-week="{{$d.WeekParam}}">
             {{icon "chef-hat"}} Plan this week
         </button>
         {{else}}
@@ -209,7 +209,7 @@
                     {{else if eq .Status "ready"}}
                     <a href="/plan?week={{.WeekStart}}" class="btn-icon" title="View plan" aria-label="View plan">{{icon "calendar"}}</a>
                     {{else if and .CanRegenerate $d.HasLLM}}
-                    <button type="button" class="btn-icon" data-modal-open="must-include-modal"
+                    <button type="button" class="btn-icon" data-modal-open="must-include-modal" data-requires="edit"
                             data-week="{{.WeekStart}}" data-mid-week="{{.TodayMidWeek}}"
                             data-generate-confirm-title="Retry plan"
                             data-generate-confirm="Retry generating the plan for {{fmtWeekRange .WeekStart .WeekEnd}}? This replaces the failed attempt."

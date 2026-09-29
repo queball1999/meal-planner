@@ -12,8 +12,11 @@ cp .env.example .env
 # 2. Build and start
 docker compose up --build
 
-# 3. Open http://localhost:8080 and run through the setup wizard
+# 3. Copy the setup token from the log (docker compose logs goeat | grep "Setup token")
+# 4. Open http://localhost:8080 and run through the setup wizard
 ```
+
+The setup wizard asks for a **setup token** so nobody else can claim a fresh install. It is printed once to the server log at startup (`Setup token: …`), or set your own with `SETUP_TOKEN` (24+ hex characters). Anyone who can read that log before setup finishes can claim the instance; the token stops working once setup is done.
 
 Data (SQLite database + recipe images) is stored in the `goeat-data` named Docker volume and survives container restarts. `docker compose down -v` (or `make docker-reset`) deletes that volume and resets the app to the first-run setup wizard; `docker compose down` (or `make docker-down`) leaves it in place. Use `make docker-backup` / `make docker-restore` to archive or restore it - see [Docker details](#docker-details).
 
@@ -25,7 +28,7 @@ Requires Go 1.26+. No C compiler needed — the SQLite driver is pure Go.
 go run . 
 ```
 
-The server binds to `:8080` by default. Visit `http://localhost:8080` to run the setup wizard.
+The server binds to `:8080` by default. Visit `http://localhost:8080` to run the setup wizard, using the `Setup token: …` line printed to the terminal.
 
 ## Configuration
 

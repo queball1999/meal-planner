@@ -187,6 +187,9 @@ func (s *Server) handleRecipeDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	if !s.owns(w, r, db.ResRecipe, id) {
+		return
+	}
 	ctx := r.Context()
 
 	cr, err := s.store.GetCatalogRecipe(ctx, id)
@@ -206,6 +209,9 @@ func (s *Server) handleRecipeDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	if !s.owns(w, r, db.ResRecipe, id) {
+		return
+	}
 	_ = s.store.DeleteCatalogRecipe(r.Context(), id)
 	http.Redirect(w, r, "/recipes", http.StatusSeeOther)
 }
@@ -216,6 +222,9 @@ func (s *Server) handleRecipeEdit(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if !s.owns(w, r, db.ResRecipe, id) {
 		return
 	}
 	ctx := r.Context()
@@ -277,6 +286,9 @@ func (s *Server) handleRecipeReimport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	if !s.owns(w, r, db.ResRecipe, id) {
+		return
+	}
 	if err := recipes.Refresh(r.Context(), s.store, id, s.imageDir); err != nil {
 		s.setNotify(w, NotifyDanger, fmt.Sprintf("Re-import failed: %v", err))
 	} else {
@@ -291,6 +303,9 @@ func (s *Server) handleRecipeImageReplace(w http.ResponseWriter, r *http.Request
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if !s.owns(w, r, db.ResRecipe, id) {
 		return
 	}
 	ctx := r.Context()
@@ -379,14 +394,5 @@ func splitLines(v string) []string {
 
 // handleRecipeImageServe serves images from the runtime imageDir.
 func (s *Server) handleRecipeImageServe(w http.ResponseWriter, r *http.Request) {
-	if s.imageDir == "" {
-		http.NotFound(w, r)
-		return
-	}
-	name := r.PathValue("name")
-	if strings.Contains(name, "..") || strings.ContainsAny(name, `/\`) {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-	http.ServeFile(w, r, s.imageDir+"/"+name)
+	s.serveHouseholdImage(w, r, s.imageDir, db.ImageRecipe)
 }

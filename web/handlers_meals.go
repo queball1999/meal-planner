@@ -29,6 +29,9 @@ func (s *Server) handleMealDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad meal id", http.StatusBadRequest)
 		return
 	}
+	if !s.owns(w, r, db.ResMeal, mealID) {
+		return
+	}
 	ctx := r.Context()
 
 	meal, err := s.store.GetMealByID(ctx, mealID)
@@ -95,6 +98,9 @@ func (s *Server) handleMealFeedback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad meal id", http.StatusBadRequest)
 		return
 	}
+	if !s.owns(w, r, db.ResMeal, mealID) {
+		return
+	}
 	ctx := r.Context()
 
 	meal, err := s.store.GetMealByID(ctx, mealID)
@@ -132,6 +138,9 @@ func (s *Server) handleMealLock(w http.ResponseWriter, r *http.Request) {
 	mealID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "bad meal id", http.StatusBadRequest)
+		return
+	}
+	if !s.owns(w, r, db.ResMeal, mealID) {
 		return
 	}
 	locked := r.FormValue("locked") == "1"

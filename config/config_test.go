@@ -38,3 +38,28 @@ func TestSessionSecretRequired(t *testing.T) {
 		t.Error("SessionSecret not loaded from environment")
 	}
 }
+
+// TestSetupTokenValidation: SETUP_TOKEN must be 24+ hex characters, so a weak
+// operator-chosen token fails at boot instead of guarding the wizard.
+func TestSetupTokenValidation(t *testing.T) {
+	cases := []struct {
+		tok  string
+		isOK bool
+	}{
+		{"", true}, // unset: a random one is generated at startup
+		{"aabbccddeeff001122334455", true},
+		{"AABBCCDDEEFF0011223344556677", true},
+		{"aabbccddeeff00112233445", false},    // 23 chars
+		{"changeme-changeme-changeme", false}, // not hex
+	}
+	for _, c := range cases {
+		t.Setenv("SETUP_TOKEN", c.tok)
+		cfg, err := config.Load()
+		if (err == nil) != c.isOK {
+			t.Errorf("SETUP_TOKEN=%q: err = %v, want ok=%v", c.tok, err, c.isOK)
+		}
+		if err == nil && cfg.SetupToken != c.tok {
+			t.Errorf("SETUP_TOKEN=%q: cfg.SetupToken = %q", c.tok, cfg.SetupToken)
+		}
+	}
+}

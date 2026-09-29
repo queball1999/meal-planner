@@ -8,7 +8,7 @@
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">{{icon "logout"}} Session</h2>
     <p class="field-hint" style="margin-bottom:.75rem">End this session on this device.</p>
-    <form method="POST" action="/auth/logout">
+    <form method="POST" action="/auth/logout" data-viewer-ok>
         {{.CSRFField}}
         <button type="submit" class="btn btn-secondary">{{icon "logout"}} Sign out</button>
     </form>
@@ -56,7 +56,7 @@
     </p>
 </div>
 
-<div class="card form-section form-section--danger" style="margin-bottom:1.5rem">
+<div class="card form-section form-section--danger" style="margin-bottom:1.5rem" data-requires="own">
     <h2 class="form-section__title">{{icon "broom"}} Reset meal planning</h2>
     <p class="field-hint" style="margin-bottom:.75rem">
         Deletes every meal plan and shopping list. <strong>Recipes, pantry, preferences
@@ -75,7 +75,7 @@
     </form>
 </div>
 
-<div class="card form-section form-section--danger">
+<div class="card form-section form-section--danger" data-requires="own">
     <h2 class="form-section__title">{{icon "delete"}} Delete all data</h2>
     <p class="field-hint" style="margin-bottom:.75rem">
         Deletes <strong>every meal plan, shopping list, saved recipe and pantry item</strong>.

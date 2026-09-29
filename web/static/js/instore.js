@@ -59,6 +59,8 @@
     root.addEventListener('click', function (e) {
         const row = e.target.closest('[data-instore-row]');
         if (!row) return;
+        // A viewer can look at the list but not tick it (the server would 403).
+        if (document.body.dataset.role === 'viewer') return;
 
         const on = !row.classList.contains('instore-row--checked');
         // Flip first: at the shelf, the tick has to feel immediate, and a

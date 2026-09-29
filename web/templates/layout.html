@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/static/css/choices.min.css">
     <link rel="stylesheet" href="/static/css/choices-overrides.css">
 </head>
-<body>
+<body{{if .HouseholdRole}} data-role="{{.HouseholdRole}}"{{end}}{{if .IsAdmin}} data-admin{{end}}>
 
     <a href="#main-content" class="skip-link">Skip to content</a>
 
@@ -34,7 +34,7 @@
             <span class="nav-toggle__bar"></span>
         </button>
         <nav class="site-nav" id="site-nav" aria-label="Main navigation">
-            {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav" "WeekParam" .WeekParam}}
+            {{template "partials/nav_items.html" dict "Page" .Page "Style" "nav" "WeekParam" .WeekParam "IsAdmin" .IsAdmin}}
         </nav>
         {{end}}
 
@@ -55,6 +55,10 @@
 
             {{if .User}}
             <div class="user-menu">
+                <a href="/households" class="user-menu__name{{if eq .Page "households"}} user-menu__name--active{{end}}"
+                   title="Switch or manage households{{if .HouseholdRole}} - you are {{.HouseholdRole}} here{{end}}">
+                    {{icon "account-group"}} <span>{{if .Household}}{{.Household.Name}}{{else}}No household{{end}}</span>
+                </a>
                 <a href="/account" class="user-menu__name{{if eq .Page "account"}} user-menu__name--active{{end}}"
                    title="Account &amp; data - signed in as {{.User.Username}}">
                     {{icon "account"}} <span>{{.User.Username}}</span>
@@ -67,8 +71,11 @@
     {{if .User}}
     <div class="popover" id="navMenu" data-popover-panel hidden>
         <nav class="popover__list" aria-label="Site menu">
-            {{template "partials/nav_items.html" dict "Page" .Page "Style" "popover" "WeekParam" .WeekParam}}
+            {{template "partials/nav_items.html" dict "Page" .Page "Style" "popover" "WeekParam" .WeekParam "IsAdmin" .IsAdmin}}
             <span class="popover__divider"></span>
+            <a href="/households" class="popover__item{{if eq .Page "households"}} popover__item--active{{end}}">
+                {{icon "account-group"}} <span>Households</span>
+            </a>
             <a href="/account" class="popover__item{{if eq .Page "account"}} popover__item--active{{end}}">
                 {{icon "account"}} <span>Account &amp; data</span>
             </a>
@@ -102,7 +109,7 @@
         {{end}}
     </footer>
 
-    {{if .User}}{{template "chatWidget" .}}{{end}}
+    {{if .CanEdit}}{{template "chatWidget" .}}{{end}}
 
     <script src="/static/js/choices.min.js" defer></script>
     <script src="/static/js/modal.js" defer></script>
@@ -111,6 +118,6 @@
     <script src="/static/js/hovercard.js" defer></script>
     <script src="/static/js/conversions.js" defer></script>
     <script src="/static/js/main.js" defer></script>
-    {{if .User}}<script src="/static/js/chat.js" defer></script>{{end}}
+    {{if .CanEdit}}<script src="/static/js/chat.js" defer></script>{{end}}
 </body>
 </html>

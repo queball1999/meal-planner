@@ -213,12 +213,12 @@ func buildRescalePricer(store db.Store, chain *pricing.Chain) plan.Pricer {
 // reasonable but whose total quietly blew past the household's budget.
 // Tries every configured store, same order buildPricer's chain.Resolve loop
 // uses, and returns the first hit.
-func buildPriceChecker(store db.Store, chain *pricing.Chain) plan.PriceChecker {
+func buildPriceChecker(store db.Store, chain *pricing.Chain, householdID int64) plan.PriceChecker {
 	if chain == nil {
 		return nil
 	}
 	return func(ctx context.Context, term string) (int64, string, string, bool) {
-		hh, err := store.GetHousehold(ctx)
+		hh, err := store.GetHousehold(ctx, householdID)
 		if err != nil || hh == nil {
 			return 0, "", "", false
 		}
@@ -282,7 +282,15 @@ func (s *Server) reconcilePlanStatus(ctx context.Context, hhID int64, p *db.Plan
 // Prev/Next toolbar links always carry ?week=, so landing back on the current
 // week that way (rather than via the bare "Today" link) must still be
 // editable, not silently fall back to a past-plan view.
+//
+// A viewer always gets readOnly: the page's existing read-only mode is exactly
+// "show everything, offer no edits", which is what the viewer role means.
 func (s *Server) resolvePlanForRequest(ctx context.Context, hh *db.Household, r *http.Request) (p *db.Plan, readOnly bool) {
+	p, readOnly = s.resolvePlanWeek(ctx, hh, r)
+	return p, readOnly || !middleware.CanEdit(r)
+}
+
+func (s *Server) resolvePlanWeek(ctx context.Context, hh *db.Household, r *http.Request) (p *db.Plan, readOnly bool) {
 	if idStr := r.URL.Query().Get("plan_id"); idStr != "" {
 		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
 			if found, _ := s.store.GetPlanByID(ctx, id); found != nil && found.HouseholdID == hh.ID {
@@ -736,7 +744,7 @@ func (s *Server) handlePlanDelete(w http.ResponseWriter, r *http.Request) {
 // progress is reported.
 func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error)) (job *plan.Job, started bool) {
 	pricer := buildPricer(s.store, s.priceChain())
-	checker := buildPriceChecker(s.store, s.priceChain())
+	checker := buildPriceChecker(s.store, s.priceChain(), hhID)
 
 	return s.jobs.Start(context.Background(), hhID, func(j *plan.Job) {
 		j.EmitStatus("Resolving preferences…")
