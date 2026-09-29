@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 
 	"goeat/db"
 )
@@ -156,22 +155,20 @@ func seedItems(ctx context.Context, store db.Store, planID int64, items []AggIte
 // this keeps it to a sane number regardless of how many stores a household has.
 const maxConcurrentStoreLookups = 6
 
-// storeHit is one store's answer, for resolveFirstStore's result channel.
-type storeHit struct {
-	result  *PriceResult
-	storeID int64
-}
-
 // resolveFirstStore tries chain.resolveExcluding against every store
-// concurrently (bounded by maxConcurrentStoreLookups) and returns the first
+// concurrently (bounded by maxConcurrentStoreLookups) and returns the best
 // one that answers, canceling the rest. A scrape lookup can legitimately take
 // up to 90-180s before falling through (pricing/scraper.go's
 // scrapeTimeout/scrapeAITimeout), so trying stores one at a time - as this
 // used to - could mean minutes per ingredient once a household has several
-// configured. Tie-breaking is by completion order rather than by stores'
-// list order: the point of running them concurrently is to not wait out a
-// slow store just because an earlier one in the list would also have
-// answered.
+// configured.
+//
+// "Best" is the highest SharePct (how much of the household's shopping
+// happens there), then completion order among equal shares. A hit returns
+// as soon as no still-running store has a higher share than it: the primary
+// store is waited for, since landing the line there is the point of having
+// one, but equal-share stores never wait on each other - with every share
+// at 0 (the default) this is the old first-to-answer behaviour.
 func resolveFirstStore(ctx context.Context, chain *Chain, term string, stores []*db.GroceryStore, region string) (*PriceResult, int64, bool) {
 	if len(stores) == 0 {
 		return nil, 0, false
@@ -180,38 +177,87 @@ func resolveFirstStore(ctx context.Context, chain *Chain, term string, stores []
 	resolveCtx, cancel := context.WithCancel(ctx)
 	defer cancel() // stop every other in-flight lookup once we have a winner (or none does)
 
-	hits := make(chan storeHit, len(stores)) // buffered: a losing goroutine's send never blocks
+	// Every lookup reports back, hit or miss, so the loop below knows which
+	// higher-share stores are still worth waiting for. Buffered: a send after
+	// the winner is chosen never blocks.
+	type storeDone struct {
+		idx    int
+		result *PriceResult
+	}
+	done := make(chan storeDone, len(stores))
 	sem := make(chan struct{}, min(len(stores), maxConcurrentStoreLookups))
-	var wg sync.WaitGroup
 
-	for _, gs := range stores {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(gs *db.GroceryStore) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			r, err := chain.resolveExcluding(resolveCtx, term, gs.ID, region, aiEstimateProviderName)
-			if err != nil {
-				if resolveCtx.Err() == nil { // don't log the ones we canceled ourselves
+	go func() {
+		for i, gs := range stores {
+			select {
+			case sem <- struct{}{}:
+			case <-resolveCtx.Done():
+				done <- storeDone{idx: i}
+				continue
+			}
+			go func(i int, gs *db.GroceryStore) {
+				defer func() { <-sem }()
+				r, err := chain.resolveExcluding(resolveCtx, term, gs.ID, region, aiEstimateProviderName)
+				if err != nil && resolveCtx.Err() == nil { // don't log the ones we canceled ourselves
 					log.Printf("costing: %v", err)
 				}
-				return
-			}
-			if r != nil {
-				hits <- storeHit{result: r, storeID: gs.ID}
-			}
-		}(gs)
-	}
-	go func() {
-		wg.Wait()
-		close(hits)
+				done <- storeDone{idx: i, result: r}
+			}(i, gs)
+		}
 	}()
 
-	winner, ok := <-hits
-	if !ok {
+	pending := make([]bool, len(stores))
+	for i := range pending {
+		pending[i] = true
+	}
+	best := -1
+	var bestResult *PriceResult
+	for range stores {
+		d := <-done
+		pending[d.idx] = false
+		if d.result != nil && (best < 0 || stores[d.idx].SharePct > stores[best].SharePct) {
+			best, bestResult = d.idx, d.result
+		}
+		if best < 0 {
+			continue
+		}
+		waiting := false
+		for i, p := range pending {
+			if p && stores[i].SharePct > stores[best].SharePct {
+				waiting = true
+				break
+			}
+		}
+		if !waiting {
+			break
+		}
+	}
+	if best < 0 {
 		return nil, 0, false
 	}
-	return winner.result, winner.storeID, true
+	return bestResult, stores[best].ID, true
+}
+
+// storesForItem narrows stores to the one an item is only bought at
+// (items.preferred_store_id - "we only buy this here" on the Stores page or
+// the item's own page). Falls back to every store when the item is not
+// catalogued, has no preference, or prefers a store that is not in stores
+// (removed since, or not passed in): a line priced somewhere beats a line
+// not priced at all.
+func storesForItem(ctx context.Context, store db.Store, itemID *int64, stores []*db.GroceryStore) []*db.GroceryStore {
+	if itemID == nil {
+		return stores
+	}
+	it, err := store.GetItem(ctx, *itemID)
+	if err != nil || it == nil || it.PreferredStoreID == nil {
+		return stores
+	}
+	for _, gs := range stores {
+		if gs.ID == *it.PreferredStoreID {
+			return []*db.GroceryStore{gs}
+		}
+	}
+	return stores
 }
 
 // lineState is one shopping-list line's pricing progress, carried between
@@ -250,16 +296,22 @@ func ResolvePricing(
 	region := household.ZIPCode
 
 	lines := make([]lineState, len(seeded))
+	lineStores := make([][]*db.GroceryStore, len(seeded))
 	var missIdx []int
 
 	for i, seed := range seeded {
 		item := seed.AggItem
 		ls := lineState{packAmount: 1}
+		// Stores arrive primary-first (ListStores orders by share_pct), and
+		// an item the household only buys at one store is looked up there
+		// alone.
+		itemStores := storesForItem(ctx, store, item.ItemID, stores)
+		lineStores[i] = itemStores
 
 		// 1. Prefer a per-store package for a catalogued item: it carries the
 		//    real "amount per package" in a known unit, so pack maths is exact.
 		if item.ItemID != nil {
-			for _, gs := range stores {
+			for _, gs := range itemStores {
 				pkg, perr := store.GetItemStorePackage(ctx, *item.ItemID, gs.ID)
 				if perr != nil {
 					log.Printf("costing: package lookup: %v", perr)
@@ -289,7 +341,7 @@ func ResolvePricing(
 		//    falling through, so a sequential loop over several stores could
 		//    mean minutes per ingredient in the worst case.
 		if !ls.priced {
-			if r, sid, ok := resolveFirstStore(ctx, chain, item.NormalizedTerm, stores, region); ok {
+			if r, sid, ok := resolveFirstStore(ctx, chain, item.NormalizedTerm, itemStores, region); ok {
 				ls.packAmount = r.PackSize
 				ls.packUnit = r.PurchaseUnit
 				ls.priceCents = r.PriceCents
@@ -307,18 +359,17 @@ func ResolvePricing(
 	}
 
 	// 2b. Batch every chain miss into as few AI-estimate calls as possible.
-	// stores[0].ID is the same store a per-item AI lookup would have landed
-	// on: the old per-store loop always resolved (and cached) an AI-only
-	// answer against the first store it tried, since the provider ignores
-	// storeID entirely.
+	// The estimate is filed under the line's first store - the primary one,
+	// or the store the item is only bought at - which is where a per-item AI
+	// lookup would have landed: the provider ignores storeID entirely.
 	if ai := chain.aiEstimateProvider(); ai != nil && len(missIdx) > 0 {
 		terms := make([]string, len(missIdx))
 		for j, i := range missIdx {
 			terms[j] = seeded[i].AggItem.NormalizedTerm
 		}
 		estimates := ai.LookupBatch(ctx, terms, region)
-		sid := stores[0].ID
 		for j, i := range missIdx {
+			sid := lineStores[i][0].ID
 			r := estimates[j]
 			if r == nil {
 				continue

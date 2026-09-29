@@ -904,6 +904,38 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .store-item__preferred-label svg { width: 14px; height: 14px; color: var(--warning, #f59e0b); }
 .store-item__preferred .badge { text-decoration: none; }
 
+/* Shopping split (Stores page and setup wizard): one slider per store, and a
+ * stacked bar whose segments grow with each store's share. */
+.store-shares__bar {
+    display: flex;
+    height: 10px;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    background: var(--border);
+    margin-bottom: var(--sp-3);
+}
+.store-shares__seg { flex-basis: 0; transition: flex-grow var(--dur) var(--ease); }
+
+.store-shares__row {
+    display: grid;
+    grid-template-columns: auto minmax(6rem, 12rem) 1fr 3.5rem;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-1) 0;
+}
+.store-shares__swatch { width: 10px; height: 10px; border-radius: 50%; }
+.store-shares__name {
+    font-weight: var(--weight-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.store-shares__range { width: 100%; accent-color: var(--accent); }
+.store-shares__pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+.store-shares .form-actions { align-items: center; flex-wrap: wrap; }
+.store-shares [data-share-total] { margin-right: auto !important; }
+
 .store-item__icon {
     display: inline-flex;
     align-items: center;

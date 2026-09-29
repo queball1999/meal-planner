@@ -31,6 +31,11 @@ type Config struct {
 	// least 24 hex characters; Load rejects anything weaker.
 	SetupToken      string
 	SessionTTLHours int // default 168 (7 days)
+	// MultiTenant (ENABLE_MULTI_TENANT, default off) allows more than one
+	// household on this server: the household switcher, and creating and
+	// deleting households. Off, everyone works in the one household setup
+	// created; household roles (owner/editor/viewer) apply either way.
+	MultiTenant bool
 
 	// ── AI provider (§11.2) ───────────────────────────────────────────────
 	// Provider selects the active profile: anthropic | openai | google | openai_compatible
@@ -238,6 +243,8 @@ func Load() (*Config, error) {
 	}
 
 	cfg.DeriveKrogerCredentials()
+
+	cfg.MultiTenant, _ = strconv.ParseBool(os.Getenv("ENABLE_MULTI_TENANT"))
 
 	cfg.Desktop = os.Getenv("GOEAT_DESKTOP") == "1"
 	if cfg.Desktop && !loopbackAddr(cfg.ListenAddr) {

@@ -3,13 +3,22 @@
 {{$d := .Data}}
 {{$csrf := .CSRFField}}
 <div class="page-header">
-    <h1 class="page-title">{{icon "account-group"}} Households</h1>
+    <h1 class="page-title">{{icon "account-group"}} {{if $d.MultiTenant}}Households{{else}}Household{{end}}</h1>
     <p class="page-subtitle">
         {{if $d.Active}}You're in <strong>{{$d.Active.Name}}</strong>.{{else}}You're not in a household yet.{{end}}
-        Each household has its own plans, pantry, recipes, stores and budget.
+        {{if $d.MultiTenant}}Each household has its own plans, pantry, recipes, stores and budget.{{end}}
     </p>
 </div>
 
+{{/* Switch, new and delete household only exist with ENABLE_MULTI_TENANT on. */}}
+{{if not $d.MultiTenant}}
+{{if not $d.Active}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <p class="field-hint">Nobody has added you to the household yet. Ask its owner to add your username
+        <strong>{{$.User.Username}}</strong>.</p>
+</div>
+{{end}}
+{{else}}
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">{{icon "swap-horizontal"}} Switch household</h2>
     {{if $d.Households}}
@@ -38,6 +47,7 @@
         <strong>{{$.User.Username}}</strong>.</p>
     {{end}}
 </div>
+{{end}}
 
 {{if and $d.Active $d.CanOwn}}
 <div class="card form-section" style="margin-bottom:1.5rem">
@@ -116,6 +126,7 @@
 {{end}}
 
 {{if $d.IsAdmin}}
+{{if $d.MultiTenant}}
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">{{icon "plus"}} New household</h2>
     <form method="POST" action="/households" class="pref-form">
@@ -145,6 +156,7 @@
         <div><button type="submit" class="btn btn-primary">{{icon "plus"}} Create &amp; switch to it</button></div>
     </form>
 </div>
+{{end}}
 
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">{{icon "shield-check"}} Accounts on this server</h2>
@@ -185,7 +197,7 @@
     </table>
 </div>
 
-{{if $d.Active}}
+{{if and $d.Active $d.MultiTenant}}
 <div class="card form-section form-section--danger">
     <h2 class="form-section__title">{{icon "delete"}} Delete {{$d.Active.Name}}</h2>
     <p class="field-hint" style="margin-bottom:.75rem">

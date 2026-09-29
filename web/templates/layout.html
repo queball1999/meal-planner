@@ -56,7 +56,7 @@
             {{if .User}}
             <div class="user-menu">
                 <a href="/households" class="user-menu__name{{if eq .Page "households"}} user-menu__name--active{{end}}"
-                   title="Switch or manage households{{if .HouseholdRole}} - you are {{.HouseholdRole}} here{{end}}">
+                   title="{{if .MultiTenant}}Switch or manage households{{else}}Manage your household{{end}}{{if .HouseholdRole}} - you are {{.HouseholdRole}} here{{end}}">
                     {{icon "account-group"}} <span>{{if .Household}}{{.Household.Name}}{{else}}No household{{end}}</span>
                 </a>
                 <a href="/account" class="user-menu__name{{if eq .Page "account"}} user-menu__name--active{{end}}"
@@ -74,7 +74,7 @@
             {{template "partials/nav_items.html" dict "Page" .Page "Style" "popover" "WeekParam" .WeekParam "IsAdmin" .IsAdmin}}
             <span class="popover__divider"></span>
             <a href="/households" class="popover__item{{if eq .Page "households"}} popover__item--active{{end}}">
-                {{icon "account-group"}} <span>Households</span>
+                {{icon "account-group"}} <span>{{if .MultiTenant}}Households{{else}}Household{{end}}</span>
             </a>
             <a href="/account" class="popover__item{{if eq .Page "account"}} popover__item--active{{end}}">
                 {{icon "account"}} <span>Account &amp; data</span>

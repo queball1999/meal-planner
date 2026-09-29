@@ -111,7 +111,11 @@ func RequestStart(r *http.Request) (time.Time, bool) {
 // The user and role are re-read from the database on every request, never
 // copied from login time, so a demotion or a removal from a household takes
 // effect on the victim's very next click (QSS security design §1.4, §8.5).
-func LoadSession(store db.Store) func(http.Handler) http.Handler {
+//
+// multiTenant is ENABLE_MULTI_TENANT: when false the instance has one
+// household (the oldest) and every request acts on it - see
+// withActiveHousehold.
+func LoadSession(store db.Store, multiTenant bool) func(http.Handler) http.Handler {
 	// Once an account exists setup is done for good (the last admin can't be
 	// deleted), so stop counting users after the first yes.
 	var setupDone atomic.Bool
@@ -135,7 +139,7 @@ func LoadSession(store db.Store) func(http.Handler) http.Handler {
 					if err == nil && user != nil {
 						ctx = context.WithValue(ctx, ctxKeyUser, user)
 						ctx = context.WithValue(ctx, ctxKeySession, sess)
-						ctx = withActiveHousehold(ctx, store, user, sess)
+						ctx = withActiveHousehold(ctx, store, user, sess, multiTenant)
 					}
 				}
 			}
@@ -149,23 +153,43 @@ func LoadSession(store db.Store) func(http.Handler) http.Handler {
 // session's chosen one if the user may still see it, else their first
 // membership. Instance admins may see every household (as owner) and, with
 // no memberships of their own, land in the oldest one.
-func withActiveHousehold(ctx context.Context, store db.Store, user *db.User, sess *db.Session) context.Context {
+//
+// With multiTenant off there is only the oldest household: memberships of
+// any other (left over from a multi-tenant install) are ignored, the
+// session's choice is overridden, and a user who is not a member of it gets
+// no household at all - the same as a multi-tenant user nobody has added yet.
+func withActiveHousehold(ctx context.Context, store db.Store, user *db.User, sess *db.Session, multiTenant bool) context.Context {
 	memberships, err := store.ListMembershipsForUser(ctx, user.ID)
 	if err != nil {
 		log.Printf("middleware: memberships for user %d: %v", user.ID, err)
 		return ctx
+	}
+	activeID := sess.ActiveHouseholdID
+	if !multiTenant {
+		all, err := store.ListHouseholds(ctx)
+		if err != nil || len(all) == 0 {
+			return ctx
+		}
+		activeID = all[0].ID
+		var only []*db.HouseholdMembership
+		for _, m := range memberships {
+			if m.HouseholdID == activeID {
+				only = append(only, m)
+			}
+		}
+		memberships = only
 	}
 	ctx = context.WithValue(ctx, ctxKeyMemberships, memberships)
 
 	var hhID int64
 	var role string
 	for _, m := range memberships {
-		if m.HouseholdID == sess.ActiveHouseholdID {
+		if m.HouseholdID == activeID {
 			hhID, role = m.HouseholdID, m.Role
 		}
 	}
-	if hhID == 0 && user.IsAdmin() && sess.ActiveHouseholdID != 0 {
-		hhID = sess.ActiveHouseholdID
+	if hhID == 0 && user.IsAdmin() && activeID != 0 {
+		hhID = activeID
 	}
 	if hhID == 0 && len(memberships) > 0 {
 		hhID, role = memberships[0].HouseholdID, memberships[0].Role

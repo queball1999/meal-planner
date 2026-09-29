@@ -1,6 +1,45 @@
-.env
-.git
-.gitignore
+# The image is built from `go build .` alone: Go sources, go.mod/go.sum, and
+# the embedded files (web/static, web/templates, db/migrations,
+# catalog/seed_items.json). Everything else stays out of the build context -
+# desktop/ alone (Tauri build output + node_modules) is several GB.
+
+# Desktop app, build output, local data
+desktop/
+output/
+bin/
 data/
+
+# Dev-only Go tools (separate main packages, not part of the server)
+cmd/
+
+# Repo and editor metadata
+.git
+.gitattributes
+.gitignore
+.github/
+.claude/
+.vscode/
+.idea/
+
+# Secrets and config - passed at runtime via env_file, never baked in
+.env
+.env.*
+
+# Docs, specs, build files
 spec/
 *.md
+Makefile
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Tests are not compiled into the binary
+**/*_test.go
+**/testdata/
+
+# Stray junk
+**/node_modules/
+**/*.log
+**/*.exe
+**/*.db
+**/*.db-*

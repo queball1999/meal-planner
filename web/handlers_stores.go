@@ -1,10 +1,12 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,6 +16,7 @@ import (
 
 type storesPageData struct {
 	Stores      []storeRow
+	ShareTotal  int // sum of every store's SharePct; 0 = never set
 	Catalog     []catalogEntry
 	HasLLM      bool
 	KrogerReady bool
@@ -27,11 +30,24 @@ type storeRow struct {
 	Store  *db.GroceryStore
 	Config *db.ScrapeConfig
 	Known  *KnownStore // nil for hand-typed stores not in the catalog
+	Hue    int         // 1-8, this store's colour in the shopping-split bar
 
-	// PreferredItems is "we buy this here": catalog items whose preferred
-	// store (item_detail's star toggle) is this one. Read-only here - set
-	// from the item's own page, not this one.
+	// PreferredItems is "we only buy this here": catalog items whose
+	// preferred store (items.preferred_store_id) is this one. Set from the
+	// item's own page (star toggle) or this page's "Choose items" modal.
 	PreferredItems []preferredItemLink
+
+	// ItemOptions is every household item for that modal's picker, with the
+	// ones already tied here selected and the ones tied elsewhere labelled.
+	ItemOptions []storeItemOption
+}
+
+// storeItemOption is one <option> in a store's "only buy here" picker.
+type storeItemOption struct {
+	ID        int64
+	Name      string
+	Selected  bool
+	Elsewhere string // name of the other store this item is tied to; "" = none
 }
 
 // preferredItemLink is one chip in a store's "we buy this here" list.
@@ -58,35 +74,43 @@ func (s *Server) handleStoresPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stores, _ := s.store.ListStores(ctx, hh.ID)
 
-	// One catalog read for the whole page, so "we buy this here" can resolve
-	// each preferred package's item name without a query per store.
+	// One catalog read for the whole page: every store's "only buy here"
+	// chips and picker come from each item's preferred_store_id, without a
+	// query per store.
 	catalogItems, _ := s.store.ListItems(ctx, hh.ID)
-	itemName := make(map[int64]string, len(catalogItems))
-	for _, it := range catalogItems {
-		itemName[it.ID] = it.Name
+	storeName := make(map[int64]string, len(stores))
+	for _, gs := range stores {
+		storeName[gs.ID] = gs.Name
 	}
 
 	rows := make([]storeRow, 0, len(stores))
 	have := make(map[string]bool, len(stores))
+	shareTotal := 0
 	for _, gs := range stores {
 		have[gs.Name] = true
+		shareTotal += gs.SharePct
 		cfg, _ := s.store.GetScrapeConfigByStore(ctx, gs.ID)
 
 		var preferred []preferredItemLink
-		if pkgs, _ := s.store.ListPackagesForStore(ctx, gs.ID); pkgs != nil {
-			for _, p := range pkgs {
-				if !p.Preferred {
-					continue
-				}
-				if name := itemName[p.ItemID]; name != "" {
-					preferred = append(preferred, preferredItemLink{ItemID: p.ItemID, Name: name})
+		options := make([]storeItemOption, 0, len(catalogItems))
+		for _, it := range catalogItems {
+			opt := storeItemOption{ID: it.ID, Name: it.Name}
+			if it.PreferredStoreID != nil {
+				if *it.PreferredStoreID == gs.ID {
+					opt.Selected = true
+					preferred = append(preferred, preferredItemLink{ItemID: it.ID, Name: it.Name})
+				} else {
+					opt.Elsewhere = storeName[*it.PreferredStoreID]
 				}
 			}
+			options = append(options, opt)
 		}
 
 		rows = append(rows, storeRow{
 			Store: gs, Config: cfg, Known: KnownStoreByName(gs.Name),
+			Hue:            len(rows)%8 + 1,
 			PreferredItems: preferred,
+			ItemOptions:    options,
 		})
 	}
 
@@ -110,6 +134,7 @@ func (s *Server) handleStoresPage(w http.ResponseWriter, r *http.Request) {
 
 	s.render(w, r, "stores", storesPageData{
 		Stores:      rows,
+		ShareTotal:  shareTotal,
 		Catalog:     catalog,
 		HasLLM:      s.llmGen() != nil,
 		KrogerReady: s.cfg.KrogerClientID != "",
@@ -270,6 +295,119 @@ func (s *Server) handleStoreDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setNotify(w, NotifySuccess, "Store removed.")
 	http.Redirect(w, r, "/stores", http.StatusSeeOther)
+}
+
+// handleStoreShares saves how the household splits its shopping across its
+// stores - one share_<storeID> field (0-100) per store. A split that does not
+// add up to 100 is scaled to, rather than rejected: only the order matters
+// to pricing, and "70 / 20" plainly means "mostly the first one".
+//
+//	POST /stores/shares
+func (s *Server) handleStoreShares(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not read form data.")
+		http.Redirect(w, r, "/stores", http.StatusSeeOther)
+		return
+	}
+	stores, _ := s.store.ListStores(r.Context(), hh.ID)
+	shares := make(map[int64]int, len(stores))
+	for _, gs := range stores {
+		shares[gs.ID], _ = strconv.Atoi(r.FormValue(fmt.Sprintf("share_%d", gs.ID)))
+	}
+	shares, scaled := normalizeShares(shares)
+	if err := s.store.SetStoreShares(r.Context(), hh.ID, shares); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not save your store split.")
+	} else if scaled {
+		s.setNotify(w, NotifySuccess, "Store split saved - scaled to add up to 100%.")
+	} else {
+		s.setNotify(w, NotifySuccess, "Store split saved.")
+	}
+	http.Redirect(w, r, "/stores", http.StatusSeeOther)
+}
+
+// normalizeShares clamps each share to 0-100 and, when they are not all zero
+// and do not already total 100, scales them to 100 (largest-remainder
+// rounding, so the result always adds up exactly). scaled reports whether
+// the total had to change.
+func normalizeShares[K cmp.Ordered](in map[K]int) (out map[K]int, scaled bool) {
+	out = make(map[K]int, len(in))
+	total := 0
+	for k, v := range in {
+		v = min(max(v, 0), 100)
+		out[k] = v
+		total += v
+	}
+	if total == 0 || total == 100 {
+		return out, false
+	}
+	type rem struct {
+		key K
+		rem int
+	}
+	rems := make([]rem, 0, len(out))
+	sum := 0
+	for k, v := range out {
+		out[k] = v * 100 / total
+		sum += out[k]
+		rems = append(rems, rem{k, v * 100 % total})
+	}
+	sort.Slice(rems, func(i, j int) bool {
+		if rems[i].rem != rems[j].rem {
+			return rems[i].rem > rems[j].rem
+		}
+		return rems[i].key < rems[j].key
+	})
+	for i := 0; sum < 100; i++ {
+		out[rems[i%len(rems)].key]++
+		sum++
+	}
+	return out, true
+}
+
+// handleStoreItems sets which household items are bought only at this store
+// (items.preferred_store_id): the posted item_ids become exactly that set,
+// moving any of them off whichever store they were tied to before.
+//
+//	POST /stores/{id}/items  {item_ids: [...]}
+func (s *Server) handleStoreItems(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		s.setNotify(w, NotifyDanger, "Invalid store ID.")
+		http.Redirect(w, r, "/stores", http.StatusSeeOther)
+		return
+	}
+	if !s.owns(w, r, db.ResStore, id) {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not read form data.")
+		http.Redirect(w, r, "/stores", http.StatusSeeOther)
+		return
+	}
+	var itemIDs []int64
+	for _, v := range r.Form["item_ids"] {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			itemIDs = append(itemIDs, n)
+		}
+	}
+	// SetStoreItems drops ids from another household on its own (the
+	// household_id guard in its UPDATE), so a forged id changes nothing.
+	if err := s.store.SetStoreItems(r.Context(), hh.ID, id, itemIDs); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not save those items.")
+	} else {
+		s.setNotify(w, NotifySuccess, fmt.Sprintf("%d item(s) now bought only here.", len(itemIDs)))
+	}
+	http.Redirect(w, r, fmt.Sprintf("/stores#store-%d", id), http.StatusSeeOther)
 }
 
 // ensureScrapeConfig gives a newly added catalog store a starting scrape

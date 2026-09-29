@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const storeColumns = `id, household_id, name, kind, provider_chain, enabled, share_pct, created_at`
+
 func (s *store) CreateStore(ctx context.Context, p UpsertStoreParams) (*GroceryStore, error) {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO stores (household_id, name, kind) VALUES (?, ?, ?)`,
@@ -22,8 +24,8 @@ func (s *store) CreateStore(ctx context.Context, p UpsertStoreParams) (*GroceryS
 
 func (s *store) ListStores(ctx context.Context, householdID int64) ([]*GroceryStore, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, household_id, name, kind, provider_chain, enabled, created_at
-		   FROM stores WHERE household_id = ? ORDER BY name`,
+		`SELECT `+storeColumns+`
+		   FROM stores WHERE household_id = ? ORDER BY share_pct DESC, name`,
 		householdID)
 	if err != nil {
 		return nil, fmt.Errorf("list stores: %w", err)
@@ -46,10 +48,33 @@ func (s *store) DeleteStore(ctx context.Context, id int64) error {
 	return err
 }
 
+// SetStoreShares writes every store's share_pct for one household in one
+// transaction, keyed by store id. Stores missing from shares are set to 0,
+// so the form that posts this is always the whole picture, and an id that
+// belongs to another household updates nothing.
+func (s *store) SetStoreShares(ctx context.Context, householdID int64, shares map[int64]int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE stores SET share_pct = 0 WHERE household_id = ?`, householdID); err != nil {
+		return fmt.Errorf("reset store shares: %w", err)
+	}
+	for id, pct := range shares {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE stores SET share_pct = ? WHERE id = ? AND household_id = ?`,
+			min(max(pct, 0), 100), id, householdID); err != nil {
+			return fmt.Errorf("set store share: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *store) getStoreByID(ctx context.Context, id int64) (*GroceryStore, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, household_id, name, kind, provider_chain, enabled, created_at
-		   FROM stores WHERE id = ?`, id)
+		`SELECT `+storeColumns+` FROM stores WHERE id = ?`, id)
 	return scanStore(row)
 }
 
@@ -62,7 +87,7 @@ func scanStore(sc storeScanner) (*GroceryStore, error) {
 	var createdAt string
 	var enabled int
 	if err := sc.Scan(&gs.ID, &gs.HouseholdID, &gs.Name, &gs.Kind,
-		&gs.ProviderChain, &enabled, &createdAt); err != nil {
+		&gs.ProviderChain, &enabled, &gs.SharePct, &createdAt); err != nil {
 		return nil, fmt.Errorf("scan store: %w", err)
 	}
 	gs.Enabled = enabled != 0

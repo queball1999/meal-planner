@@ -248,6 +248,36 @@
     width: 100%;
 }
 
+/* ── Header fit stages ──────────────────────────────────────────────────────
+ * Above the hamburger breakpoint the header has to fit a nav whose width
+ * varies (Settings only for admins, household and user names of any length),
+ * so no fixed breakpoint can know when it overflows. main.js (initHeaderFit)
+ * measures instead and sets data-compact on .site-header, one stage at a
+ * time, until every nav link is visible:
+ *   1 - the inline search field becomes the icon that opens #searchPop
+ *   2 - household and username labels drop to their icons
+ *   3 - nav links drop to icon only (label stays for screen readers, and
+ *       a title tooltip names it)
+ * Each stage keeps the ones before it. */
+
+.site-header[data-compact] .header-search { display: none; }
+.site-header[data-compact] .site-header-actions .header-search-btn { display: inline-flex; }
+
+.site-header[data-compact="2"] .user-menu__name span,
+.site-header[data-compact="3"] .user-menu__name span { display: none; }
+.site-header[data-compact="2"] .user-menu__name,
+.site-header[data-compact="3"] .user-menu__name { max-width: none; padding: var(--sp-1); }
+
+.site-header[data-compact="3"] .nav-link { padding: var(--sp-2); }
+.site-header[data-compact="3"] .nav-link span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
 
 .filter-bar {

@@ -5,8 +5,11 @@ import (
 	"time"
 )
 
+// preferred is derived from items.preferred_store_id (00033), not read from
+// item_store_packages.preferred, which nothing writes any more.
 const itemPackageColumns = `id, item_id, store_id, purchase_unit, amount_per_package,
-	price_cents, updated_by, updated_at, preferred`
+	price_cents, updated_by, updated_at,
+	COALESCE((SELECT i.preferred_store_id FROM items i WHERE i.id = item_store_packages.item_id) = store_id, 0)`
 
 // UpsertItemStorePackage inserts or replaces how one item is sold at one store.
 // Every write is also appended to price_history, so callers never need to
@@ -119,26 +122,47 @@ func (s *store) DeleteItemStorePackage(ctx context.Context, itemID, id int64) er
 }
 
 // SetItemStorePreferred marks (or unmarks) a store as the one the household
-// buys an item from - "we buy this here". Only ever one store per item: a
-// second preference for the same item replaces the first, rather than
-// leaving two stores both marked, which would make the reverse "what do we
-// buy at this store" view on the Stores page unable to tell which one meant it.
+// buys an item from - "we only buy this here". It is a column on the item
+// (items.preferred_store_id), so there is only ever one store per item and a
+// second preference replaces the first; and it no longer needs a package row
+// at that store, since the store alone is enough for pricing to know where
+// to look. Unmarking only clears it when storeID is still the preferred one.
 func (s *store) SetItemStorePreferred(ctx context.Context, itemID, storeID int64, preferred bool) error {
 	if preferred {
-		if _, err := s.db.ExecContext(ctx,
-			`UPDATE item_store_packages SET preferred = 0 WHERE item_id = ? AND store_id != ?`,
-			itemID, storeID); err != nil {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE items SET preferred_store_id = ? WHERE id = ?`, storeID, itemID)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE items SET preferred_store_id = NULL WHERE id = ? AND preferred_store_id = ?`,
+		itemID, storeID)
+	return err
+}
+
+// SetStoreItems makes itemIDs exactly the set of household items bought only
+// at storeID: each listed item moves here (from whichever store it was tied
+// to before), and any item tied here that is not listed is released to "any
+// store". The household_id guard drops item ids from another household
+// rather than trusting them.
+func (s *store) SetStoreItems(ctx context.Context, householdID, storeID int64, itemIDs []int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE items SET preferred_store_id = NULL WHERE household_id = ? AND preferred_store_id = ?`,
+		householdID, storeID); err != nil {
+		return err
+	}
+	for _, id := range itemIDs {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE items SET preferred_store_id = ? WHERE id = ? AND household_id = ?`,
+			storeID, id, householdID); err != nil {
 			return err
 		}
 	}
-	v := 0
-	if preferred {
-		v = 1
-	}
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE item_store_packages SET preferred = ? WHERE item_id = ? AND store_id = ?`,
-		v, itemID, storeID)
-	return err
+	return tx.Commit()
 }
 
 func scanItemPackageRows(rows interface {

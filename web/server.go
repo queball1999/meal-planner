@@ -218,7 +218,7 @@ func (s *Server) buildHandler() http.Handler {
 	s.routes(mux)
 
 	var h http.Handler = mux
-	h = middleware.LoadSession(s.store)(h)
+	h = middleware.LoadSession(s.store, s.cfg.MultiTenant)(h)
 
 	csrfOpts := []csrf.Option{csrf.ErrorHandler(http.HandlerFunc(s.handleCSRFError))}
 	// Trust the external origin declared in PUBLIC_BASE_URL - with its

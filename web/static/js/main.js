@@ -133,6 +133,43 @@ function goeatApplyTheme(family, pinkMode) {
     });
 })();
 
+// ── Header fit: collapse in stages instead of clipping the nav ────────────
+// See "Header fit stages" in layout.css. Resets to the full header, then
+// steps data-compact up until .site-nav no longer overflows. Below the
+// hamburger breakpoint .site-nav is display:none, so it never overflows and
+// the header stays at stage 0 (the media query handles that layout).
+
+(function initHeaderFit() {
+    const header = document.querySelector('.site-header');
+    const nav = header && header.querySelector('.site-nav');
+    if (!nav) return;
+    const MAX_STAGE = 3;
+
+    nav.querySelectorAll('.nav-link').forEach(function (a) {
+        const label = a.querySelector('span');
+        if (label && !a.title) a.title = label.textContent.trim();
+    });
+
+    function overflowing() {
+        return nav.scrollWidth > nav.clientWidth + 1;
+    }
+
+    function fit() {
+        header.removeAttribute('data-compact');
+        for (let stage = 1; stage <= MAX_STAGE && overflowing(); stage++) {
+            header.setAttribute('data-compact', String(stage));
+        }
+    }
+
+    fit();
+    if (window.ResizeObserver) {
+        new ResizeObserver(fit).observe(header);
+    } else {
+        window.addEventListener('resize', fit);
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+})();
+
 // ── Toast notification system ─────────────────────────────────────────────
 // Universal module: window.showToast(message, type, duration) covers every
 // status this app raises (autosave results, AI test connection, settings

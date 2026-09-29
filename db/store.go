@@ -69,6 +69,9 @@ type Store interface {
 	CreateStore(ctx context.Context, p UpsertStoreParams) (*GroceryStore, error)
 	ListStores(ctx context.Context, householdID int64) ([]*GroceryStore, error)
 	DeleteStore(ctx context.Context, id int64) error
+	// SetStoreShares sets every store's share_pct for the household at once;
+	// stores left out of shares go to 0.
+	SetStoreShares(ctx context.Context, householdID int64, shares map[int64]int) error
 
 	// ── Preferences (§4.2, §4.3, §10.1) ──────────────────────────────────
 
@@ -319,6 +322,8 @@ type Store interface {
 	GetItemStorePackage(ctx context.Context, itemID, storeID int64) (*ItemStorePackage, error)
 	DeleteItemStorePackage(ctx context.Context, itemID, id int64) error
 	SetItemStorePreferred(ctx context.Context, itemID, storeID int64, preferred bool) error
+	// SetStoreItems makes itemIDs exactly the items bought only at storeID.
+	SetStoreItems(ctx context.Context, householdID, storeID int64, itemIDs []int64) error
 	ListPriceHistory(ctx context.Context, itemID, storeID int64) ([]*PriceHistoryEntry, error)
 	ListPriceHistoryForItem(ctx context.Context, itemID int64) ([]*PriceHistoryEntry, error)
 

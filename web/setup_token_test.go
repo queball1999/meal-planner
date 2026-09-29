@@ -30,7 +30,7 @@ func newSetupTestServer(t *testing.T, envToken string) (*Server, db.Store, http.
 	s := NewServer(cfg, store, nil, "test", nil)
 	mux := http.NewServeMux()
 	s.routes(mux)
-	return s, store, middleware.LoadSession(store)(mux)
+	return s, store, middleware.LoadSession(store, false)(mux)
 }
 
 func postSetup(h http.Handler, token, ip string) *httptest.ResponseRecorder {

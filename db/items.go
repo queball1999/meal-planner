@@ -10,7 +10,7 @@ import (
 
 const itemColumns = `id, household_id, name, normalized_term, category, stock_unit,
 	default_purchase_qty, image_path, image_attribution, image_source_url,
-	source, notes, created_at, updated_at`
+	source, notes, preferred_store_id, created_at, updated_at`
 
 func (s *store) CreateItem(ctx context.Context, p CreateItemParams) (*Item, error) {
 	if p.Source == "" {
@@ -153,7 +153,7 @@ func scanItemInto(sc rowScanner) (*Item, error) {
 	err := sc.Scan(
 		&it.ID, &it.HouseholdID, &it.Name, &it.NormalizedTerm, &it.Category, &it.StockUnit,
 		&it.DefaultPurchaseQty, &it.ImagePath, &it.ImageAttribution, &it.ImageSourceURL,
-		&it.Source, &it.Notes, &createdAt, &updatedAt,
+		&it.Source, &it.Notes, &it.PreferredStoreID, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return nil, err

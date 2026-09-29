@@ -131,7 +131,12 @@ type GroceryStore struct {
 	Kind          string // "grocery" | "warehouse" | "specialty" | "online"
 	ProviderChain string // comma-separated provider list
 	Enabled       bool
-	CreatedAt     time.Time
+	// SharePct is roughly how much of the household's shopping happens here,
+	// 0-100 (00033_store_shares.sql). ListStores orders by it, so every caller
+	// that walks stores in order - pricing above all - tries the primary
+	// store first.
+	SharePct  int
+	CreatedAt time.Time
 }
 
 // Preferences holds the household's structured preference settings (§4.2, §4.3).
@@ -677,8 +682,11 @@ type Item struct {
 	ImageSourceURL     string // where the photo is lazily fetched from
 	Source             string // "builtin" | "manual" | "auto"
 	Notes              string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// PreferredStoreID is "we only buy this here" (00033_store_shares.sql):
+	// pricing looks the item up at this store and no other. nil = any store.
+	PreferredStoreID *int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // UnitConversion is one edge in the quantity-conversion graph: 1 FromUnit =

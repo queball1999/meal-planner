@@ -227,6 +227,8 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	// ── Create selected stores ───────────────────────────────────────────────
 
 	hasNonAPIStore := false
+	shareByName := make(map[string]int)
+	storeIDByName := make(map[string]int64)
 	for _, storeName := range selectedStores {
 		ks := KnownStoreByName(storeName)
 		if ks == nil {
@@ -239,9 +241,24 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		})
 		if cerr == nil {
 			s.ensureScrapeConfig(ctx, created.ID, ks)
+			storeIDByName[ks.Name] = created.ID
+			shareByName[ks.Name], _ = strconv.Atoi(r.FormValue("share:" + ks.Name))
 		}
 		if !ks.HasAPI {
 			hasNonAPIStore = true
+		}
+	}
+
+	// The wizard's shopping split (share:<store name>, only posted when two
+	// or more stores were picked), scaled to 100 the same way Settings →
+	// Stores does it.
+	if normalized, _ := normalizeShares(shareByName); len(normalized) > 1 {
+		shares := make(map[int64]int, len(normalized))
+		for name, pct := range normalized {
+			shares[storeIDByName[name]] = pct
+		}
+		if err := s.store.SetStoreShares(ctx, hh.ID, shares); err != nil {
+			log.Printf("setup: store shares: %v", err)
 		}
 	}
 

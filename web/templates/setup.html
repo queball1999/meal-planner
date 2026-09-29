@@ -335,6 +335,21 @@
                     {{end}}
                 </div>
 
+                {{/* Filled in by the store-split script below once two or
+                     more stores are checked; the rows are built client-side
+                     because they follow the checkboxes above. */}}
+                <div class="store-shares" id="setup-shares" hidden style="margin-top:var(--sp-5)">
+                    <h3 class="form-section__title">How do you split your shopping?</h3>
+                    <p class="form-section__desc">
+                        Roughly how much happens at each store. The biggest share is checked first
+                        for every item. You can change this, and pick items you only buy at one
+                        store, in <strong>Settings → Stores</strong>.
+                    </p>
+                    <div class="store-shares__bar" id="setup-shares-bar" aria-hidden="true"></div>
+                    <div id="setup-shares-rows"></div>
+                    <span class="field-hint" id="setup-shares-total"></span>
+                </div>
+
                 {{if not .Data.KrogerReady}}
                 <p class="field-hint" style="margin-top:var(--sp-3)">
                     {{icon "alert"}} No live price API configured. Set
@@ -612,12 +627,82 @@
                 if (box && box.checked) box.checked = false;
             }
         });
+        renderShares(); // unchecking above fires no change event
     }
 
     if (zipFilter) zipFilter.addEventListener('input', function () {
         if (zipFilter.value.trim().length === 5) applyStoreFilter();
     });
     if (showAll) showAll.addEventListener('change', renderStoreFilter);
+
+    // ── Store split ───────────────────────────────────────────────────────
+    //
+    // One slider per checked store, posted as share:<store name>. Rebuilt
+    // whenever the checkboxes change; a store keeps the value it had, and a
+    // newly checked one starts at whatever keeps the total near 100.
+
+    const sharesBox  = document.getElementById('setup-shares');
+    const sharesRows = document.getElementById('setup-shares-rows');
+    const sharesBar  = document.getElementById('setup-shares-bar');
+    const sharesTotal = document.getElementById('setup-shares-total');
+    const shareVals = {};
+
+    function renderShares() {
+        const names = checked('stores');
+        sharesBox.hidden = names.length < 2;
+        sharesRows.textContent = '';
+        sharesBar.textContent = '';
+        if (names.length < 2) return;
+        const unset = names.filter(function (n) { return shareVals[n] === undefined; });
+        const used = names.reduce(function (t, n) { return t + (shareVals[n] || 0); }, 0);
+        unset.forEach(function (n) {
+            shareVals[n] = Math.max(0, Math.round((100 - used) / unset.length / 5) * 5);
+        });
+        names.forEach(function (n, i) {
+            const hue = 'var(--meal-' + (i % 8 + 1) + '-text)';
+            const seg = document.createElement('span');
+            seg.className = 'store-shares__seg';
+            seg.style.background = hue;
+            seg.style.flexGrow = shareVals[n];
+            sharesBar.appendChild(seg);
+
+            const row = document.createElement('label');
+            row.className = 'store-shares__row';
+            const sw = document.createElement('span');
+            sw.className = 'store-shares__swatch';
+            sw.style.background = hue;
+            const nm = document.createElement('span');
+            nm.className = 'store-shares__name';
+            nm.textContent = n;
+            const inp = document.createElement('input');
+            inp.type = 'range'; inp.min = 0; inp.max = 100; inp.step = 5;
+            inp.className = 'store-shares__range';
+            inp.name = 'share:' + n;
+            inp.value = shareVals[n];
+            inp.setAttribute('aria-label', 'Share of shopping at ' + n);
+            const out = document.createElement('output');
+            out.className = 'store-shares__pct';
+            out.textContent = shareVals[n] + '%';
+            inp.addEventListener('input', function () {
+                shareVals[n] = parseInt(inp.value, 10) || 0;
+                out.textContent = shareVals[n] + '%';
+                seg.style.flexGrow = shareVals[n];
+                renderSharesTotal(names);
+            });
+            row.append(sw, nm, inp, out);
+            sharesRows.appendChild(row);
+        });
+        renderSharesTotal(names);
+    }
+
+    function renderSharesTotal(names) {
+        const t = names.reduce(function (s, n) { return s + shareVals[n]; }, 0);
+        sharesTotal.textContent = t === 100 ? 'Total 100%'
+            : 'Total ' + t + '% - saved as the same proportions out of 100%.';
+    }
+
+    document.getElementById('store-picker').addEventListener('change', renderShares);
+    renderShares();
 
     // Carry the household ZIP forward into the store step's filter.
     const zipInput = form.elements['zip_code'];

@@ -71,11 +71,46 @@
     </form>
 </div>
 
+{{/* ── Shopping split - how much of the shopping happens at each store ──────── */}}
+{{if gt (len .Data.Stores) 1}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">How do you split your shopping?</h2>
+    <p class="form-section__desc">
+        Roughly how much of your shopping happens at each store. The store with the biggest
+        share is checked first for every item, so your shopping list lands there whenever it
+        can. Items you only buy at one store (below) always go to that store.
+    </p>
+    <form method="POST" data-requires="own" action="/stores/shares" class="store-shares" data-store-shares>
+        {{.CSRFField}}
+        <div class="store-shares__bar" aria-hidden="true">
+            {{range .Data.Stores}}<span class="store-shares__seg" data-share-seg="{{.Store.ID}}" style="background:var(--meal-{{.Hue}}-text);flex-grow:{{.Store.SharePct}}"></span>{{end}}
+        </div>
+        {{range .Data.Stores}}
+        <label class="store-shares__row">
+            <span class="store-shares__swatch" style="background:var(--meal-{{.Hue}}-text)" aria-hidden="true"></span>
+            <span class="store-shares__name">{{.Store.Name}}</span>
+            <input type="range" class="store-shares__range" min="0" max="100" step="5"
+                   name="share_{{.Store.ID}}" value="{{.Store.SharePct}}" data-share-input="{{.Store.ID}}"
+                   aria-label="Share of shopping at {{.Store.Name}}">
+            <output class="store-shares__pct" data-share-out="{{.Store.ID}}">{{.Store.SharePct}}%</output>
+        </label>
+        {{end}}
+        <div class="form-actions" style="margin-top:var(--sp-3)">
+            <span class="field-hint" style="margin:0" data-share-total>
+                {{if .Data.ShareTotal}}Total {{.Data.ShareTotal}}%{{else}}Not set - every store is treated the same.{{end}}
+            </span>
+            <button type="button" class="btn btn-ghost" data-share-even>Split evenly</button>
+            <button type="submit" class="btn btn-primary">{{icon "check"}} Save split</button>
+        </div>
+    </form>
+</div>
+{{end}}
+
 {{/* ── Your stores ────────────────────────────────────────────────────────── */}}
 {{if .Data.Stores}}
 <ul class="store-list" aria-label="Your grocery stores">
     {{range .Data.Stores}}
-    <li class="store-item card">
+    <li class="store-item card" id="store-{{.Store.ID}}">
         <span class="store-item__icon" aria-hidden="true">
             {{$logo := storeLogo .Store.Name}}
             {{if $logo}}<img src="{{$logo}}" alt="" width="24" height="24">{{else}}{{icon "store"}}{{end}}
@@ -83,6 +118,7 @@
         <div class="store-item__info">
             <span class="store-item__name">{{.Store.Name}}</span>
             {{if .Store.Kind}}<span class="badge badge-muted">{{.Store.Kind}}</span>{{end}}
+            {{if .Store.SharePct}}<span class="badge badge-accent" title="Share of your shopping">{{.Store.SharePct}}%</span>{{end}}
             {{if and .Known .Known.HasAPI}}
             <span class="badge badge-success">API</span>
             {{else if .Config}}
@@ -92,6 +128,12 @@
             {{end}}
         </div>
         <div class="store-item__actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-requires="edit"
+                    data-modal-open="store-items-{{.Store.ID}}"
+                    aria-label="Choose items you only buy at {{.Store.Name}}"
+                    title="Items you only buy here">
+                {{icon "cart"}}
+            </button>
             <button type="button" class="btn btn-ghost btn-sm" data-requires="admin"
                     data-modal-open="store-cfg-{{.Store.ID}}"
                     aria-label="Configure scraping for {{.Store.Name}}"
@@ -110,7 +152,7 @@
         </div>
         {{if .PreferredItems}}
         <div class="store-item__preferred">
-            <span class="store-item__preferred-label">{{icon "star"}} We buy here:</span>
+            <span class="store-item__preferred-label">{{icon "star"}} Only bought here:</span>
             {{range .PreferredItems}}
             <a href="/pantry/items/{{.ItemID}}" class="badge badge-accent">{{.Name}}</a>
             {{end}}
@@ -119,6 +161,35 @@
     </li>
     {{end}}
 </ul>
+
+{{/* ── Per-store "only buy here" item pickers ─────────────────────────────── */}}
+{{range .Data.Stores}}
+{{template "partials/modal_open.html" dict "ID" (printf "store-items-%d" .Store.ID) "Title" (printf "Only bought at %s" .Store.Name) "Form" true}}
+        <form method="POST" data-requires="edit" action="/stores/{{.Store.ID}}/items">
+            {{$.CSRFField}}
+            <div class="field">
+                <label class="field-label" for="store-items-sel-{{.Store.ID}}">Pantry items</label>
+                {{if .ItemOptions}}
+                <select class="field-input" id="store-items-sel-{{.Store.ID}}" name="item_ids" multiple data-choices>
+                    {{range .ItemOptions}}
+                    <option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Name}}{{if .Elsewhere}} (now: {{.Elsewhere}}){{end}}</option>
+                    {{end}}
+                </select>
+                <span class="field-hint">
+                    These are always priced and listed at {{.Store.Name}}, whatever your split says.
+                    Picking an item marked "now: …" moves it here from that store.
+                </span>
+                {{else}}
+                <p class="field-hint">No pantry items yet - they appear here once a plan or the Pantry page adds some.</p>
+                {{end}}
+            </div>
+            <div class="modal-dialog__footer">
+                <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+                {{if .ItemOptions}}<button type="submit" class="btn btn-primary">{{icon "check"}} Save</button>{{end}}
+            </div>
+        </form>
+{{template "partials/modal_close.html" $}}
+{{end}}
 
 {{/* ── Per-store scraping modals ──────────────────────────────────────────── */}}
 {{range .Data.Stores}}
@@ -260,6 +331,36 @@
 (function () {
     // Out-of-area chains are hidden, not removed: a household near a state
     // line can still opt in.
+    // Shopping split: live percentages, the stacked bar, and a running total.
+    // The server scales a total that is not 100, so this only informs.
+    var split = document.querySelector('[data-store-shares]');
+    if (split) {
+        var inputs = split.querySelectorAll('[data-share-input]');
+        var totalEl = split.querySelector('[data-share-total]');
+        var refresh = function () {
+            var total = 0;
+            inputs.forEach(function (inp) {
+                var id = inp.dataset.shareInput, v = parseInt(inp.value, 10) || 0;
+                total += v;
+                split.querySelector('[data-share-out="' + id + '"]').textContent = v + '%';
+                split.querySelector('[data-share-seg="' + id + '"]').style.flexGrow = v;
+            });
+            totalEl.textContent = total === 0 ? 'Not set - every store is treated the same.'
+                : total === 100 ? 'Total 100%'
+                : 'Total ' + total + '% - saved as the same proportions out of 100%.';
+        };
+        inputs.forEach(function (inp) { inp.addEventListener('input', refresh); });
+        split.querySelector('[data-share-even]').addEventListener('click', function () {
+            var n = inputs.length, base = Math.floor(100 / n / 5) * 5, left = 100 - base * n;
+            inputs.forEach(function (inp, i) {
+                var extra = Math.min(left, 5 * Math.ceil(left / (n - i) / 5));
+                inp.value = base + extra;
+                left -= extra;
+            });
+            refresh();
+        });
+    }
+
     var showAll = document.getElementById('store_show_all');
     if (showAll) showAll.addEventListener('change', function () {
         document.querySelectorAll('#store-picker .store-chip--unavailable').forEach(function (chip) {

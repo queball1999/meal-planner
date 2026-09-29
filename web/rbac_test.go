@@ -114,7 +114,7 @@ func newRBACFixtureWith(t *testing.T, tweak func(*config.Config)) *rbacFixture {
 	seat("olga", db.InstanceRoleMember, f.a.hh, db.HouseholdRoleOwner)
 	seat("bob", db.InstanceRoleMember, f.b.hh, db.HouseholdRoleOwner)
 
-	cfg := &config.Config{AppName: "test", SessionSecret: strings.Repeat("k", 32), SessionTTLHours: 1, AutoPlanHour: -1}
+	cfg := &config.Config{AppName: "test", SessionSecret: strings.Repeat("k", 32), SessionTTLHours: 1, AutoPlanHour: -1, MultiTenant: true}
 	if tweak != nil {
 		tweak(cfg)
 	}
@@ -123,7 +123,7 @@ func newRBACFixtureWith(t *testing.T, tweak func(*config.Config)) *rbacFixture {
 	// who may do what, and a CSRF 403 would mask a role 403.
 	mux := http.NewServeMux()
 	s.routes(mux)
-	f.h = middleware.LoadSession(store)(mux)
+	f.h = middleware.LoadSession(store, cfg.MultiTenant)(mux)
 	return f
 }
 
@@ -318,5 +318,32 @@ func TestControlsFollowRole(t *testing.T) {
 	}
 	if body := w.Body.String(); !strings.Contains(body, `data-role="viewer"`) {
 		t.Error(`viewer's page is missing <body data-role="viewer">`)
+	}
+}
+
+// TestSingleTenant: with ENABLE_MULTI_TENANT off, the oldest household
+// (Alpha) is the only one. Switching, creating and deleting households 404;
+// Alpha's members work as usual; Bravo's owner - a leftover from a
+// multi-tenant install - has no household at all; and the admin lands in
+// Alpha even after asking for Bravo.
+func TestSingleTenant(t *testing.T) {
+	f := newRBACFixtureWith(t, func(c *config.Config) { c.MultiTenant = false })
+
+	for _, path := range []string{"/households/switch", "/households", "/households/delete"} {
+		if w := f.do("root", "POST", path, url.Values{"household_id": {fmt.Sprint(f.b.hh.ID)}, "name": {"X"}, "budget": {"10"}}); w.Code != http.StatusNotFound {
+			t.Errorf("POST %s: %d, want 404", path, w.Code)
+		}
+	}
+
+	lock := func(mealID int64) string { return fmt.Sprintf("/meals/%d/lock", mealID) }
+	if got := f.do("alice", "POST", lock(f.a.meal.ID), url.Values{"locked": {"1"}}).Code; got != http.StatusSeeOther {
+		t.Errorf("alice in Alpha: %d, want 303", got)
+	}
+	w := f.do("bob", "POST", lock(f.b.meal.ID), url.Values{"locked": {"1"}})
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/households" {
+		t.Errorf("bob (Bravo only): %d -> %q, want 303 -> /households", w.Code, w.Header().Get("Location"))
+	}
+	if got := f.do("root", "POST", lock(f.b.meal.ID), url.Values{"locked": {"1"}}).Code; got != http.StatusNotFound {
+		t.Errorf("admin touching Bravo's meal: %d, want 404 (acting in Alpha)", got)
 	}
 }

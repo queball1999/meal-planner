@@ -57,10 +57,12 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// with no household yet lands here); managing people needs owner;
 	// creating/deleting households and accounts is the server admin's job.
 	mux.Handle("GET /households", requireAuth(http.HandlerFunc(s.handleHouseholdsPage)))
-	mux.Handle("POST /households/switch", requireAuth(http.HandlerFunc(s.handleHouseholdSwitch)))
-	mux.Handle("POST /households", admin(http.HandlerFunc(s.handleHouseholdCreate)))
+	// Switching, creating and deleting households only exist with
+	// ENABLE_MULTI_TENANT on; off, they 404 (s.multiTenantOnly).
+	mux.Handle("POST /households/switch", s.multiTenantOnly(requireAuth(http.HandlerFunc(s.handleHouseholdSwitch))))
+	mux.Handle("POST /households", s.multiTenantOnly(admin(http.HandlerFunc(s.handleHouseholdCreate))))
 	mux.Handle("POST /households/rename", own(http.HandlerFunc(s.handleHouseholdRename)))
-	mux.Handle("POST /households/delete", admin(http.HandlerFunc(s.handleHouseholdDelete)))
+	mux.Handle("POST /households/delete", s.multiTenantOnly(admin(http.HandlerFunc(s.handleHouseholdDelete))))
 	mux.Handle("POST /households/members", own(http.HandlerFunc(s.handleHouseholdMemberAdd)))
 	mux.Handle("POST /households/members/{userID}/role", own(http.HandlerFunc(s.handleHouseholdMemberRole)))
 	mux.Handle("POST /households/members/{userID}/remove", own(http.HandlerFunc(s.handleHouseholdMemberRemove)))
@@ -77,6 +79,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /stores", own(http.HandlerFunc(s.handleStoreCreate)))
 	mux.Handle("POST /stores/select", own(http.HandlerFunc(s.handleStoreSelect)))
 	mux.Handle("POST /stores/{id}/delete", own(http.HandlerFunc(s.handleStoreDelete)))
+	mux.Handle("POST /stores/shares", own(http.HandlerFunc(s.handleStoreShares)))
+	mux.Handle("POST /stores/{id}/items", edit(http.HandlerFunc(s.handleStoreItems)))
 
 	mux.Handle("GET /list", view(http.HandlerFunc(s.handleShoppingListRedirect)))
 	mux.Handle("GET /list/shop", view(http.HandlerFunc(s.handleInStore)))

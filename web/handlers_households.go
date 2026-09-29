@@ -58,14 +58,17 @@ type householdRow struct {
 
 type householdsPageData struct {
 	Households []householdRow
-	Active     *db.Household
-	CanOwn     bool
-	IsAdmin    bool
-	Members    []*db.HouseholdMembership
-	Users      []*db.User // admin only
-	Me         int64
-	Roles      []string
-	Timezones  []struct{ Label, Value string }
+	// MultiTenant is ENABLE_MULTI_TENANT: off hides switching, creating
+	// and deleting households - the page is just this household's people.
+	MultiTenant bool
+	Active      *db.Household
+	CanOwn      bool
+	IsAdmin     bool
+	Members     []*db.HouseholdMembership
+	Users       []*db.User // admin only
+	Me          int64
+	Roles       []string
+	Timezones   []struct{ Label, Value string }
 }
 
 // handleHouseholdsPage lists the households the user can switch to, the
@@ -79,12 +82,13 @@ func (s *Server) handleHouseholdsPage(w http.ResponseWriter, r *http.Request) {
 	active := middleware.HouseholdFromCtx(r)
 
 	data := householdsPageData{
-		Active:    active,
-		CanOwn:    middleware.CanOwn(r),
-		IsAdmin:   user.IsAdmin(),
-		Me:        user.ID,
-		Roles:     []string{db.HouseholdRoleOwner, db.HouseholdRoleEditor, db.HouseholdRoleViewer},
-		Timezones: usTimezones,
+		MultiTenant: s.cfg.MultiTenant,
+		Active:      active,
+		CanOwn:      middleware.CanOwn(r),
+		IsAdmin:     user.IsAdmin(),
+		Me:          user.ID,
+		Roles:       []string{db.HouseholdRoleOwner, db.HouseholdRoleEditor, db.HouseholdRoleViewer},
+		Timezones:   usTimezones,
 	}
 
 	seen := map[int64]bool{}
@@ -119,6 +123,18 @@ func (s *Server) handleHouseholdsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Switch / create / rename / delete ────────────────────────────────────────
+
+// multiTenantOnly 404s a route that only exists with ENABLE_MULTI_TENANT on:
+// with one household there is nothing to switch to, create or delete.
+func (s *Server) multiTenantOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.cfg.MultiTenant {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // handleHouseholdSwitch points this session at another household the user
 // belongs to (or any household, for an instance admin).

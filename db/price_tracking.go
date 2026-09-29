@@ -12,7 +12,8 @@ import (
 func (s *store) ListPriceTracking(ctx context.Context, householdID int64) ([]*PriceTrackingRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.item_id, i.name, p.store_id, st.name,
-		       p.price_cents, p.purchase_unit, p.amount_per_package, p.preferred, p.updated_at
+		       p.price_cents, p.purchase_unit, p.amount_per_package,
+		       COALESCE(i.preferred_store_id = p.store_id, 0), p.updated_at
 		FROM item_store_packages p
 		JOIN items i ON i.id = p.item_id
 		JOIN stores st ON st.id = p.store_id

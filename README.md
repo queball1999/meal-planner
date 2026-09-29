@@ -18,6 +18,8 @@ docker compose up --build
 
 The setup wizard asks for a **setup token** so nobody else can claim a fresh install. It is printed once to the server log at startup (`Setup token: …`), or set your own with `SETUP_TOKEN` (24+ hex characters). Anyone who can read that log before setup finishes can claim the instance; the token stops working once setup is done.
 
+One household per server by default. Set `ENABLE_MULTI_TENANT=true` to let an admin create more households and let users switch between the ones they belong to. With it off, everyone works in the household setup created (the oldest one, on a server that already has several); owner / editor / viewer roles apply either way.
+
 Data (SQLite database + recipe images) is stored in the `goeat-data` named Docker volume and survives container restarts. `docker compose down -v` (or `make docker-reset`) deletes that volume and resets the app to the first-run setup wizard; `docker compose down` (or `make docker-down`) leaves it in place. Use `make docker-backup` / `make docker-restore` to archive or restore it - see [Docker details](#docker-details).
 
 ## Quick start (local)
