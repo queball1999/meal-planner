@@ -792,10 +792,10 @@ func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 // week" list gathered on the generate form; nil when they asked for nothing
 // specific. fromDate is plan.GenerateForWeek's "start here, not at weekStart"
 // - pass weekStart itself for the normal full-week case.
-func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart, fromDate time.Time, requested []string) (job *plan.Job, started bool) {
+func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart, fromDate time.Time, requested, onHand []string) (job *plan.Job, started bool) {
 	store, gen := s.store, s.llmGen()
 	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
-		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, fromDate, pricer, checker, j, requested)
+		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, fromDate, pricer, checker, j, requested, onHand)
 	})
 }
 
@@ -826,6 +826,7 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	requested := s.buildRequestedMeals(r, hh.ID)
+	onHand := parseOnHand(r.Form["on_hand_items"], r.FormValue("on_hand_text")) // r.Form parsed by buildRequestedMeals
 	// "scope=remaining" is the generate form's "just the remaining days"
 	// choice, offered only when regenerating the live week mid-week (see
 	// must_include_modal.html) - skip the days that have already happened
@@ -855,7 +856,7 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 		if fromDate.IsZero() {
 			fromDate = weekStart
 		}
-		s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested)
+		s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested, onHand)
 		http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 		return
 	}
@@ -867,7 +868,7 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	if fromDate.IsZero() {
 		fromDate = weekStart
 	}
-	s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested)
+	s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested, onHand)
 	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 }
 
@@ -907,6 +908,44 @@ func (s *Server) buildRequestedMeals(r *http.Request, householdID int64) []strin
 		line = strings.TrimSpace(line)
 		if line != "" {
 			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// maxOnHandItems caps the "already in the fridge" list. It goes into the
+// prompt verbatim, so a pasted receipt or a runaway textarea shouldn't be
+// able to balloon every generation's token bill.
+const maxOnHandItems = 60
+
+// parseOnHand merges the generate form's two "already have it" inputs into
+// one list: picked (on_hand_items, from the pantry picker) taken whole, since
+// a catalog name can itself contain a comma ("Tomatoes, canned"), then typed
+// (on_hand_text) split on both newlines and commas, because people type
+// "eggs, spinach, half a chicken" as often as they type a list. Blank entries
+// and case-insensitive repeats are dropped.
+func parseOnHand(picked []string, typed string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(it string) bool {
+		it = strings.TrimSpace(it)
+		key := strings.ToLower(it)
+		if it != "" && !seen[key] {
+			seen[key] = true
+			out = append(out, it)
+		}
+		return len(out) < maxOnHandItems
+	}
+	for _, it := range picked {
+		if !add(it) {
+			return out
+		}
+	}
+	for _, line := range strings.Split(typed, "\n") {
+		for _, it := range strings.Split(line, ",") {
+			if !add(it) {
+				return out
+			}
 		}
 	}
 	return out

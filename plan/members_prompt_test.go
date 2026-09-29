@@ -13,7 +13,7 @@ func promptFor(t *testing.T, size int, members []*db.HouseholdMember) string {
 	hh := &db.Household{HouseholdSize: size, WeeklyBudgetCents: 15000}
 	profile := &PreferenceProfile{Members: members}
 	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
-	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil, nil)
+	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil, nil, nil)
 	return user
 }
 
@@ -82,7 +82,7 @@ func TestPromptIncludesRequestedMeals(t *testing.T) {
 	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), []string{
 		"Grandma's Lasagna (an existing recipe the household picked - use it as specified rather than inventing a substitute)",
 		"something with salmon on Friday",
-	}, nil)
+	}, nil, nil)
 
 	if !strings.Contains(user, "Grandma's Lasagna") {
 		t.Errorf("requested recipe missing from prompt:\n%s", user)
@@ -103,6 +103,30 @@ func TestPromptOmitsRequestedMealsSectionWhenEmpty(t *testing.T) {
 	}
 }
 
+// Food typed as "already in the fridge" has to reach the prompt with
+// use-it-up language, or the plan buys fresh spinach next to the bag that is
+// already wilting.
+func TestPromptIncludesOnHandFood(t *testing.T) {
+	hh := &db.Household{HouseholdSize: 2, WeeklyBudgetCents: 15000}
+	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
+	_, user := BuildPrompt(hh, &PreferenceProfile{}, nil, start, start.AddDate(0, 0, 6), nil,
+		[]string{"half a rotisserie chicken", "spinach"}, nil)
+
+	for _, want := range []string{"half a rotisserie chicken", "spinach", "already has in the fridge or pantry", "using these up"} {
+		if !strings.Contains(user, want) {
+			t.Errorf("prompt missing %q:\n%s", want, user)
+		}
+	}
+}
+
+// Nothing typed must not add an empty on-hand section.
+func TestPromptOmitsOnHandSectionWhenEmpty(t *testing.T) {
+	out := promptFor(t, 2, nil)
+	if strings.Contains(out, "already has in the fridge") {
+		t.Errorf("empty on-hand section rendered with nothing on hand:\n%s", out)
+	}
+}
+
 // A mid-week regenerate restricted to a day subset must tell the LLM plainly
 // which days to plan (and how many meals to return) - without this, the LLM
 // has no way to know some days already happened and shouldn't be replanned.
@@ -110,7 +134,7 @@ func TestPromptFlagsMidWeekDayRestriction(t *testing.T) {
 	hh := &db.Household{HouseholdSize: 2, WeeklyBudgetCents: 15000}
 	profile := &PreferenceProfile{}
 	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
-	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil,
+	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil, nil,
 		[]string{"wednesday", "thursday", "friday", "saturday"})
 
 	if !strings.Contains(user, "MID-WEEK") {
@@ -158,7 +182,7 @@ func TestTotalPortionsRounds(t *testing.T) {
 func TestSystemPromptAsksForRecipeMetadata(t *testing.T) {
 	sys, _ := BuildPrompt(&db.Household{HouseholdSize: 2}, &PreferenceProfile{}, nil,
 		time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC), nil, nil)
+		time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC), nil, nil, nil)
 
 	for _, want := range []string{
 		`"prep_minutes"`,

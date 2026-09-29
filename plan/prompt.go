@@ -104,12 +104,14 @@ func storeNames(stores []*db.GroceryStore) (names []string, hasWarehouse bool) {
 // (§7.3, §7.4). requested is this week's specific ask from the user - "make
 // sure X shows up" - collected fresh at generation time rather than pulled
 // from standing preferences; nil/empty when the household made no request.
+// onHand is food the household says is already in the fridge or pantry this
+// week - the plan should be built around using it up; nil/empty for none.
 // days restricts which day(s) the LLM should plan for - lowercase day names
 // ("sunday", ...); nil/empty means the full week, matching systemPrompt's
 // "7 days (sunday through saturday)" as written. A mid-week regenerate that
 // only wants the remaining days passes a subset here instead of asking (and
 // paying) for meals on days that have already happened.
-func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time, requested, days []string) (system, user string) {
+func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time, requested, onHand, days []string) (system, user string) {
 	var b strings.Builder
 
 	// Servings come from what the household eats, not from how many people it
@@ -201,6 +203,18 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 		b.WriteString("\nMeals the household specifically requested this week - make sure each one appears exactly once, assigned to whatever day/slot fits best, and takes priority over the soft preferences above where they conflict:\n")
 		for _, rq := range requested {
 			fmt.Fprintf(&b, "- %s\n", rq)
+		}
+	}
+
+	// Food already in the fridge or pantry, typed on the generate form. Unlike
+	// the pantry tool this is a "use it up" ask, not just stock to lean on -
+	// perishables left over from last week are the point of typing it in.
+	// Still ingredients, not meals: the household must not end up eating
+	// ketchup for dinner because ketchup was on the list.
+	if len(onHand) > 0 {
+		b.WriteString("\nFood the household already has in the fridge or pantry - build meals around using these up (perishables first, earlier in the week), and list them as normal ingredients. Not every item has to be used, and never plan a meal that makes no sense just to fit one in:\n")
+		for _, it := range onHand {
+			fmt.Fprintf(&b, "- %s\n", it)
 		}
 	}
 

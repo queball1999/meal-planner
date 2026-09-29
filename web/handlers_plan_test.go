@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -235,5 +236,95 @@ func TestBuildRequestedMeals(t *testing.T) {
 	// from the blank line in must_include_text.
 	if len(out) != 3 {
 		t.Fatalf("got %d requested-meal entries, want 3 (1 recipe + 2 typed lines):\n%v", len(out), out)
+	}
+}
+
+// The fridge list is typed however people type lists - one per line, comma
+// separated, or both - and each item must come through once, trimmed.
+func TestParseOnHand(t *testing.T) {
+	got := parseOnHand(nil, "eggs, spinach\n\n  half a chicken  \nEggs,,\nmilk")
+	want := []string{"eggs", "spinach", "half a chicken", "milk"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("parseOnHand = %q, want %q", got, want)
+	}
+
+	// Picked items come first and stay whole - a catalog name with a comma
+	// must not be split - and a typed repeat of one is dropped.
+	got = parseOnHand([]string{"Tomatoes, canned", "Rice (2 kg)"}, "rice (2 kg), eggs")
+	want = []string{"Tomatoes, canned", "Rice (2 kg)", "eggs"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("parseOnHand with picks = %q, want %q", got, want)
+	}
+
+	if got := parseOnHand(nil, ""); got != nil {
+		t.Errorf("parseOnHand(nil, \"\") = %q, want nil", got)
+	}
+
+	long := strings.Repeat("x,", maxOnHandItems*2)
+	for i := 0; i < maxOnHandItems*2; i++ {
+		long += strconv.Itoa(i) + ","
+	}
+	if n := len(parseOnHand(nil, long)); n != maxOnHandItems {
+		t.Errorf("parseOnHand kept %d items, want the %d cap", n, maxOnHandItems)
+	}
+}
+
+// The generate dialog's pantry picker: stock first with its quantity, known
+// catalog items after (minus the stocked ones), an emptied row not offered
+// as on hand, and nothing from another household.
+func TestPantryOptions(t *testing.T) {
+	f := newRBACFixture(t)
+	ctx := context.Background()
+
+	rice, err := f.store.CreateItem(ctx, db.CreateItemParams{HouseholdID: f.a.hh.ID, Name: "Rice", NormalizedTerm: "rice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.CreateItem(ctx, db.CreateItemParams{HouseholdID: f.a.hh.ID, Name: "Lentils", NormalizedTerm: "lentils"}); err != nil {
+		t.Fatal(err)
+	}
+	pi, err := f.store.CreatePantryItem(ctx, db.CreatePantryItemParams{HouseholdID: f.a.hh.ID, Name: "Rice", NormalizedTerm: "rice", QuantityOnHand: 2, Unit: "kg"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.SetPantryItemItem(ctx, pi.ID, &rice.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.CreatePantryItem(ctx, db.CreatePantryItemParams{HouseholdID: f.a.hh.ID, Name: "Oats", NormalizedTerm: "oats", QuantityOnHand: 0, Unit: "g"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.CreatePantryItem(ctx, db.CreatePantryItemParams{HouseholdID: f.b.hh.ID, Name: "Bravo caviar", NormalizedTerm: "bravo caviar", QuantityOnHand: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	w := f.do("vera", "GET", "/plan/pantry-options", nil) // viewers can open the dialog too
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Items []pantryOption `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range resp.Items {
+		labels[it.Label] = it.Stocked
+	}
+
+	if len(resp.Items) == 0 || resp.Items[0].Label != "Rice (2 kg)" || !resp.Items[0].Stocked {
+		t.Errorf("stocked rice should come first with its quantity, got %+v", resp.Items)
+	}
+	if _, dup := labels["Rice"]; dup {
+		t.Error("rice listed twice - as stock and again as a catalog item")
+	}
+	if stocked, ok := labels["Lentils"]; !ok || stocked {
+		t.Error("known-but-unstocked lentils missing or flagged as stocked")
+	}
+	if _, ok := labels["Oats (0 g)"]; ok {
+		t.Error("an emptied pantry row was offered as on hand")
+	}
+	if _, ok := labels["Bravo caviar (1)"]; ok {
+		t.Error("another household's pantry leaked into the picker")
 	}
 }

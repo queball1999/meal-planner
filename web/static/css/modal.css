@@ -80,6 +80,29 @@
   flex-wrap: wrap;
 }
 
+/* "Step 1 of 2" on a multi-step dialog: pinned left, buttons stay right. */
+.modal-dialog__step {
+  margin: 0 auto 0 0;
+  align-self: center;
+}
+
+/* A step container takes focus on Next/Back (tabindex="-1") so the next Tab
+   starts inside it; it isn't a control, so no focus ring. */
+.modal-dialog [tabindex="-1"]:focus { outline: none; }
+
+/* A long dialog's buttons stay on screen while its body scrolls. The negative
+   bottom offset cancels the dialog's own bottom padding, so the bar sits
+   flush with the dialog's edge instead of floating above a gap. */
+.modal-dialog__footer--sticky {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-5));
+  z-index: 2;
+  margin: 0 calc(-1 * var(--sp-6)) calc(-1 * var(--sp-5));
+  padding: var(--sp-3) var(--sp-6) var(--sp-5);
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border);
+}
+
 .modal-dialog__close {
   margin: 0;
   padding: var(--sp-1);
@@ -103,8 +126,26 @@
   .modal-dialog.modal-lg {
     max-width: none;
     max-height: 90vh;
+    max-height: 90dvh; /* excludes the browser's own toolbars where supported */
+    padding: var(--sp-4);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
+
+  /* iOS zooms the page into any focused field under 16px and doesn't zoom
+     back out, which leaves a bottom-sheet dialog half off screen. */
+  .modal-dialog .field-input,
+  .modal-dialog .choices__input { font-size: var(--text-base); }
+
+  .modal-dialog__footer--sticky {
+    bottom: calc(-1 * var(--sp-4));
+    margin: 0 calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4));
+    padding: var(--sp-3) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Thumb-sized buttons sharing the row; the "Step 1 of 2" label takes its
+     own line above them rather than squeezing them. */
+  .modal-dialog__footer--sticky .btn { flex: 1 1 0; min-height: 44px; }
+  .modal-dialog__footer--sticky .modal-dialog__step { flex-basis: 100%; margin: 0; text-align: center; }
 }
 
 /* ── Tooltip "(?)" button and popup ────────────────────────────────────── */

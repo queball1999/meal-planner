@@ -16,18 +16,26 @@
      submit-time interception fires once "Generate plan" is clicked - after
      the picker, not before it.
 
+     Two steps: step 1 is "anything you want to eat" (recipe picker + free
+     text), step 2 is "anything already in the fridge or pantry": a Choices.js
+     picker over /plan/pantry-options (on_hand_items) plus free text
+     (on_hand_text), merged by handlers_plan.go's parseOnHand. Only step 2
+     submits.
+
      The modal's own form always posts to /plan/generate. */}}
 {{define "partials/must_include_modal.html"}}
 {{template "partials/modal_open.html" dict "ID" "must-include-modal" "Title" "Anything you want to eat this week?" "Form" true}}
-  <p class="text-muted">
-    Pick from your saved recipes, or just describe something - the plan will
-    build the rest of the week around it. Leave both blank to let it decide
-    everything.
-  </p>
   <form method="POST" action="/plan/generate" id="must-include-form">
     {{.CSRFField}}
     <input type="hidden" name="week" id="must-include-week" value="">
     <input type="hidden" name="scope" id="must-include-scope" value="full">
+
+    <div id="must-include-step-1" tabindex="-1">
+    <p class="text-muted">
+      Pick from your saved recipes, or just describe something - the plan will
+      build the rest of the week around it. Leave both blank to let it decide
+      everything.
+    </p>
 
     <div class="field" id="must-include-scope-field" hidden>
       <span class="field-label">This week is already underway - what should it plan?</span>
@@ -60,9 +68,41 @@
                 placeholder="e.g. something with salmon on Friday"></textarea>
     </div>
 
-    <div class="modal-dialog__footer">
+    <div class="modal-dialog__footer modal-dialog__footer--sticky">
+      <span class="field-hint modal-dialog__step">Step 1 of 2</span>
       <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="button" class="btn btn-primary" id="must-include-next">Next {{icon "arrow-right"}}</button>
+    </div>
+    </div>
+
+    <div id="must-include-step-2" tabindex="-1" hidden>
+    <p class="text-muted">
+      List what's already in the fridge or pantry and the plan will use it up
+      first - leftovers, half-used veg, the chicken that needs eating. Leave it
+      blank to skip.
+    </p>
+
+    <div class="field">
+      <label class="field-label" for="must-include-pantry">Pick from items you already know</label>
+      <select class="field-input" id="must-include-pantry" name="on_hand_items" multiple></select>
+      <p class="field-hint">
+        Items with an amount are what your <a href="/pantry">Pantry</a> page
+        says is in stock.
+      </p>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="must-include-on-hand">Anything else? Type it in</label>
+      <textarea class="field-input" id="must-include-on-hand" name="on_hand_text" rows="3"
+                placeholder="e.g. half a rotisserie chicken, leftover chili"></textarea>
+      <p class="field-hint">One per line or comma-separated.</p>
+    </div>
+
+    <div class="modal-dialog__footer modal-dialog__footer--sticky">
+      <span class="field-hint modal-dialog__step">Step 2 of 2</span>
+      <button type="button" class="btn btn-ghost" id="must-include-back">{{icon "arrow-left"}} Back</button>
       <button type="submit" class="btn btn-primary">{{icon "chef-hat"}} Generate plan</button>
+    </div>
     </div>
   </form>
 {{template "partials/modal_close.html" .}}
@@ -83,6 +123,93 @@
     var empty = document.getElementById('must-include-empty');
     var selectedRow = document.getElementById('must-include-selected');
     var selected = {}; // id -> title
+
+    // Two steps in one form: "what do you want to eat" then "what's already
+    // in the fridge". Both halves stay in the DOM (just hidden), so every
+    // field posts together on the one submit from step 2.
+    var title = document.getElementById('must-include-modal-title');
+    var step1 = document.getElementById('must-include-step-1');
+    var step2 = document.getElementById('must-include-step-2');
+    var onHand = document.getElementById('must-include-on-hand');
+    var stepTitles = ['Anything you want to eat this week?', 'Anything already in the fridge or pantry?'];
+    var step = 1;
+
+    function showStep(n) {
+        step = n;
+        step1.hidden = n !== 1;
+        step2.hidden = n !== 2;
+        title.textContent = stepTitles[n - 1];
+        // The step itself, not its first field: on a phone, focusing a text
+        // field throws the keyboard up over the thing you were about to tap.
+        (n === 1 ? step1 : step2).focus();
+    }
+
+    // Step 2's "items you already know" picker. Built on first open, not
+    // here: choices.min.js loads with defer (layout.html), so it doesn't
+    // exist yet while this inline script runs. Not data-choices either -
+    // main.js's init would enhance it once at page load, and this one needs
+    // its options replaced on every open. If choices.js failed to load it
+    // stays a plain multi-select, which still posts the same on_hand_items.
+    var pantrySel = document.getElementById('must-include-pantry');
+    var pantryChoices = null;
+
+    function loadPantry() {
+        if (!pantryChoices && window.Choices) {
+            pantryChoices = new window.Choices(pantrySel, {
+                removeItemButton: true,
+                shouldSort: false,
+                searchResultLimit: 50,
+                // Plain substring matching, every hit scored alike. Fuse
+                // breaks score ties by list order, and the list comes back
+                // stocked-first - so "egg" puts Eggs (6) above Eggplant, and
+                // fuzzy noise like "English muffins" stays out.
+                fuseOptions: { includeScore: true, threshold: 0, ignoreLocation: true, ignoreFieldNorm: true },
+                itemSelectText: '',
+                placeholderValue: 'Search your pantry…',
+                noChoicesText: 'No more pantry items - type anything else below.',
+                noResultsText: 'Not in your pantry - type it in the box below.',
+                allowHTML: false,
+            });
+        }
+        fetch('/plan/pantry-options', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { fillPantry((d && d.items) || []); })
+            .catch(function () { fillPantry([]); });
+    }
+
+    function fillPantry(items) {
+        var stocked = [], known = [];
+        items.forEach(function (it) {
+            (it.stocked ? stocked : known).push({ value: it.label, label: it.label });
+        });
+        if (pantryChoices) {
+            pantryChoices.removeActiveItems();
+            var groups = [];
+            if (stocked.length) groups.push({ id: 1, label: 'In your pantry', choices: stocked });
+            if (known.length) groups.push({ id: 2, label: 'Other items you buy', choices: known });
+            pantryChoices.setChoices(groups, 'value', 'label', true);
+            return;
+        }
+        pantrySel.innerHTML = '';
+        stocked.concat(known).forEach(function (c) {
+            pantrySel.appendChild(new Option(c.label, c.value));
+        });
+    }
+
+    document.getElementById('must-include-next').addEventListener('click', function () { showStep(2); });
+    document.getElementById('must-include-back').addEventListener('click', function () { showStep(1); });
+
+    // Enter in step 1's search box would otherwise submit the whole form and
+    // skip the fridge question. stopPropagation as well as preventDefault:
+    // modal.js's document-level data-confirm handler doesn't check
+    // defaultPrevented, and would pop the "replace your plan?" confirm here.
+    form.addEventListener('submit', function (e) {
+        if (step === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            showStep(2);
+        }
+    });
 
     scopeChoices.forEach(function (r) {
         r.addEventListener('change', function () {
@@ -216,7 +343,13 @@
         renderSelected();
         q.value = '';
         document.getElementById('must-include-text').value = '';
+        onHand.value = '';
+        step = 1;
+        step1.hidden = false;
+        step2.hidden = true;
+        title.textContent = stepTitles[0];
         loadRecipes('');
+        loadPantry();
     });
 })();
 </script>

@@ -54,3 +54,22 @@
 .choices__placeholder { color: var(--text-muted); opacity: 1; }
 
 .choices__list--dropdown .choices__list { -webkit-overflow-scrolling: touch; }
+
+/* Inside a dialog an open dropdown must sit above the sticky footer bar
+   (modal.css .modal-dialog__footer--sticky, z-index 2). */
+.modal-dialog .choices.is-open { z-index: 3; }
+
+/* Group headings ("In your pantry" / "Other items you buy"). */
+.choices__heading {
+    color: var(--text-muted);
+    border-bottom-color: var(--border);
+    font-size: var(--text-xs);
+}
+
+/* A phone's dropdown shares the screen with the keyboard; 300px of list plus
+   the keyboard runs off the top of a bottom-sheet dialog. Options get
+   thumb-sized rows while at it. */
+@media (max-width: 640px) {
+    .choices__list--dropdown .choices__list { max-height: 35dvh; }
+    .choices__list--dropdown .choices__item { padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
+}

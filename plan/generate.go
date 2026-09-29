@@ -70,7 +70,7 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		return 0, fmt.Errorf("household not configured")
 	}
 	weekStart := nextSunday(time.Now().In(mustLocation(hh.Timezone)))
-	return generate(ctx, store, gen, householdID, weekStart, weekStart, pricer, checker, j, nil)
+	return generate(ctx, store, gen, householdID, weekStart, weekStart, pricer, checker, j, nil, nil)
 }
 
 // GenerateForWeek is Generate for one specific week rather than "whichever
@@ -87,10 +87,12 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 // to include" asks - each entry either a picked recipe (rendered with its
 // full ingredients/steps so the LLM reproduces it rather than reinventing
 // it) or free text the household typed - collected fresh by the caller
-// (handlePlanGenerate) rather than pulled from standing preferences. nil for
-// the auto-plan scheduler and any other caller with nothing to ask.
-func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested []string) (int64, error) {
-	return generate(ctx, store, gen, householdID, weekStart, fromDate, pricer, checker, j, requested)
+// (handlePlanGenerate) rather than pulled from standing preferences. onHand
+// is the "already in the fridge or pantry" list typed on the same form - food
+// the plan should use up before buying more. Both are nil for the auto-plan
+// scheduler and any other caller with nothing to ask.
+func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested, onHand []string) (int64, error) {
+	return generate(ctx, store, gen, householdID, weekStart, fromDate, pricer, checker, j, requested, onHand)
 }
 
 // generate is the shared implementation behind Generate and GenerateForWeek:
@@ -101,7 +103,7 @@ func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, hou
 // instead of sitting on "asking the AI" through pricing and budget repair,
 // which can run long after the LLM has already answered. See GenerateForWeek
 // for fromDate.
-func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested []string) (int64, error) {
+func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested, onHand []string) (int64, error) {
 	hh, err := store.GetHousehold(ctx, householdID)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
@@ -123,7 +125,7 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	weekEnd := weekStart.AddDate(0, 0, 6)
 	days := daysFrom(weekStart, fromDate)
 
-	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd, requested, days)
+	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd, requested, onHand, days)
 
 	aiRun, err := store.CreateAIRun(ctx, db.CreateAIRunParams{
 		HouseholdID: householdID,

@@ -2108,6 +2108,10 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     border-radius: var(--radius);
 }
 
+/* No recipes: the "no saved recipes match" hint says so; an empty bordered
+ * box above it just looks broken. */
+.recipe-picker:empty { display: none; }
+
 .recipe-picker__row + .recipe-picker__row {
     border-top: 1px solid var(--border);
 }
@@ -2141,6 +2145,16 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .recipe-picker__meta {
     font-size: var(--text-xs);
     white-space: nowrap;
+}
+
+/* On a phone the list is a short window inside an already-scrolling bottom
+ * sheet - at 22rem it filled the whole sheet and the page scroll got stuck
+ * inside it. Title and meta stack so a long title doesn't shove the meta
+ * off the edge. */
+@media (max-width: 640px) {
+    .recipe-picker { max-height: 35dvh; }
+    .recipe-picker__btn { flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+    .recipe-picker__meta { white-space: normal; }
 }
 
 .recipe-picker__btn:hover .recipe-picker__meta,

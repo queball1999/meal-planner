@@ -114,6 +114,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /chat/clear", edit(http.HandlerFunc(s.handleChatClear)))
 
 	mux.Handle("GET /plan/recipe-options", view(http.HandlerFunc(s.handleRecipeOptions)))
+	mux.Handle("GET /plan/pantry-options", view(http.HandlerFunc(s.handlePantryOptions)))
 	mux.Handle("POST /plan/days/{date}/{slot}/fill", edit(http.HandlerFunc(s.handleMealFill)))
 	mux.Handle("POST /plan/{id}/delete", edit(http.HandlerFunc(s.handlePlanDelete)))
 

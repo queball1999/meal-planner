@@ -71,6 +71,69 @@ func (s *Server) handleRecipeOptions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "recipes": out})
 }
 
+// pantryOption is one entry in the generate dialog's "already have it"
+// picker. Label is also what gets posted back and handed to the LLM, so a
+// stocked item carries its quantity ("Rice (2 kg)") and the plan knows how
+// much there is to use up.
+type pantryOption struct {
+	Label   string `json:"label"`
+	Stocked bool   `json:"stocked"` // on the Pantry page with a quantity, not just a known item
+}
+
+// handlePantryOptions lists what the household is known to keep: pantry
+// stock first (with quantities), then every other catalog item, for the
+// generate dialog's Choices.js picker. JSON for the same reason as
+// handleRecipeOptions - the dialog sits on several pages, and the catalog
+// runs to hundreds of items once the seed list is in.
+func (s *Server) handlePantryOptions(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	ctx := r.Context()
+
+	stock, err := s.store.ListPantryItems(ctx, hh.ID)
+	if err != nil {
+		log.Printf("pantry options: stock: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't load the pantry"})
+		return
+	}
+	items, err := s.store.ListItems(ctx, hh.ID)
+	if err != nil {
+		log.Printf("pantry options: items: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't load items"})
+		return
+	}
+
+	out := make([]pantryOption, 0, len(stock)+len(items))
+	// Catalog items already listed as stock are skipped below, matched by
+	// link first and name second (an unlinked pantry row still names it).
+	stockedIDs := map[int64]bool{}
+	stockedNames := map[string]bool{}
+	for _, pi := range stock {
+		if pi.QuantityOnHand <= 0 {
+			continue // an emptied row is a known item, not something on hand
+		}
+		qty := strconv.FormatFloat(pi.QuantityOnHand, 'f', -1, 64)
+		if pi.Unit != "" {
+			qty += " " + pi.Unit
+		}
+		out = append(out, pantryOption{Label: pi.Name + " (" + qty + ")", Stocked: true})
+		if pi.ItemID != nil {
+			stockedIDs[*pi.ItemID] = true
+		}
+		stockedNames[strings.ToLower(pi.Name)] = true
+	}
+	for _, it := range items {
+		if stockedIDs[it.ID] || stockedNames[strings.ToLower(it.Name)] {
+			continue
+		}
+		out = append(out, pantryOption{Label: it.Name})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "items": out})
+}
+
 // handleMealFill puts a saved recipe into one slot of the current plan,
 // scaled to whatever that day is feeding.
 //
