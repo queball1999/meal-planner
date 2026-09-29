@@ -1,0 +1,157 @@
+name: Build Manager
+
+# Desktop release pipeline (same shape as QSnippet's).
+#
+# Tag convention:
+#   v*.*.*-release  ->  full pipeline, stable release (must be cut from main)
+#   v*.*.*-dev      ->  full pipeline, prerelease (any branch)
+#   v*.*.*-windows  ->  desktop_windows.yaml alone, artifact only
+#   v*.*.*-linux    ->  desktop_linux.yaml alone, artifact only
+#
+# Every published file gets a detached GPG signature, and SHA256SUMS.txt lists
+# them all (itself signed). Secrets: GPG_PRIVATE_KEY (base64 of the armored
+# private key) and GPG_PASSPHRASE.
+
+on:
+  push:
+    tags:
+      - "v*.*.*-release"
+      - "v*.*.*-dev"
+  workflow_dispatch:
+
+jobs:
+  # Classifies the tag's channel, and for a release tag, enforces it was cut
+  # from main; a dev build may come from any branch.
+  guard:
+    runs-on: ubuntu-latest
+
+    outputs:
+      prerelease: ${{ steps.classify.outputs.prerelease }}
+      release_name: ${{ steps.classify.outputs.release_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # Full history: the reachability check needs the real commit graph.
+          fetch-depth: 0
+
+      - name: Classify tag
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          if [[ "$tag" == *-release ]]; then
+            echo "channel=release"             >> "$GITHUB_OUTPUT"
+            echo "prerelease=false"            >> "$GITHUB_OUTPUT"
+            echo "release_name=Go Eat $tag"    >> "$GITHUB_OUTPUT"
+          elif [[ "$tag" == *-dev ]]; then
+            echo "channel=dev"                         >> "$GITHUB_OUTPUT"
+            echo "prerelease=true"                     >> "$GITHUB_OUTPUT"
+            echo "release_name=Go Eat $tag (Dev build)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unrecognised tag suffix: $tag"
+            exit 1
+          fi
+
+      - name: Require release tags to come from main
+        if: steps.classify.outputs.channel == 'release'
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          if git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
+            echo "OK: $(git rev-parse --short ${{ github.sha }}) is reachable from main"
+          else
+            echo "::error::v*.*.*-release tags must be cut from a commit on main. Use a v*.*.*-dev tag for other branches."
+            exit 1
+          fi
+
+  # A tag can be cut from any commit, so the release path re-runs the tests
+  # rather than trusting that a PR ever did. Nothing is compiled for release
+  # until they pass.
+  test:
+    needs: guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+  build-windows:
+    needs: test
+    uses: ./.github/workflows/desktop_windows.yaml
+    secrets: inherit
+
+  build-linux:
+    needs: test
+    uses: ./.github/workflows/desktop_linux.yaml
+    secrets: inherit
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [guard, build-windows, build-linux]
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > private.asc
+          gpg --batch --import private.asc
+          rm -f private.asc
+          echo "trust-model always" >> ~/.gnupg/gpg.conf
+          gpg --list-secret-keys --keyid-format=long
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          find . -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.deb" -o -name "*.AppImage" \) \
+            -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Sign artifacts
+        run: |
+          cd dist
+          sign() {
+            gpg --batch --yes --pinentry-mode loopback \
+                --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+                --detach-sign "$1"
+          }
+          sign SHA256SUMS.txt
+          find . -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.deb" -o -name "*.AppImage" \) \
+            -print0 | while IFS= read -r -d '' file; do sign "$file"; done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.guard.outputs.release_name }}
+          prerelease: ${{ needs.guard.outputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            dist/**/*.exe
+            dist/**/*.zip
+            dist/**/*.deb
+            dist/**/*.AppImage
+            dist/**/*.sig
+            dist/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

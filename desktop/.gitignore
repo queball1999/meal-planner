@@ -1,0 +1,5 @@
+node_modules/
+src-tauri/target/
+# Built by cmd/build_sidecar before every dev/build run.
+src-tauri/binaries/goeat-*
+src-tauri/gen/

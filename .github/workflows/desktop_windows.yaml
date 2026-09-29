@@ -1,0 +1,67 @@
+name: Build Desktop For Windows
+
+# Windows installer (NSIS) + portable zip, via `make desktop-windows`.
+# Called by build_manager.yaml for releases; a v*.*.*-windows tag builds this
+# OS alone (artifact only, no release).
+
+on:
+  push:
+    tags:
+      - "v*.*.*-windows"
+  workflow_call:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install make
+        run: choco install make -y --no-progress
+
+      - name: Version from tag
+        # v1.2.3-release / -dev / -windows -> 1.2.3; anything else keeps
+        # tauri.conf.json's version.
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)- ]]; then
+            echo "DESKTOP_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build installer + portable zip
+        run: make desktop-windows
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-windows
+          path: |
+            output/windows/GoEat-*-windows-x64-setup.exe
+            output/windows/GoEat-*-windows-x64-portable.zip
+          if-no-files-found: error

@@ -63,3 +63,24 @@ func TestSetupTokenValidation(t *testing.T) {
 		}
 	}
 }
+
+// TestDesktopRequiresLoopback: desktop mode must never listen on the network.
+func TestDesktopRequiresLoopback(t *testing.T) {
+	t.Setenv("GOEAT_DESKTOP", "1")
+	for addr, isOK := range map[string]bool{
+		"127.0.0.1:0":    true,
+		"[::1]:8080":     true,
+		":8080":          false,
+		"0.0.0.0:8080":   false,
+		"192.168.1.5:80": false,
+	} {
+		t.Setenv("LISTEN_ADDR", addr)
+		cfg, err := config.Load()
+		if (err == nil) != isOK {
+			t.Errorf("LISTEN_ADDR=%q: err = %v, want ok=%v", addr, err, isOK)
+		}
+		if err == nil && !cfg.Desktop {
+			t.Errorf("LISTEN_ADDR=%q: Desktop not set", addr)
+		}
+	}
+}

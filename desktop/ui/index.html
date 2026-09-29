@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go Eat</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #f7f8f6; color: #1b5e20;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #121412; color: #a5d6a7; } }
+  svg { width: 72px; height: 72px; }
+  p { margin: 0; font-size: 1rem; }
+  #error { color: #c62828; max-width: 32rem; text-align: center; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <!-- Shown for the second or so the Go server takes to start; the shell then
+       navigates this window to it. On failure the shell swaps the message. -->
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16,14L18,8.5A6,6 0 0,0 12,3A6,6 0 0,0 6,8.5L8,14H16M12,1A8,8 0 0,1 20,9C20,11.38 18.81,13.47 17,14.74V17A1,1 0 0,1 16,18H8A1,1 0 0,1 7,17V14.74C5.19,13.47 4,11.38 4,9A8,8 0 0,1 12,1M8,20H16V22H8V20Z"/></svg>
+  <p id="status" role="status">Starting Go Eat…</p>
+  <p id="error" role="alert" hidden></p>
+  <script>
+    // The shell sends the window back here with ?error=... when the server
+    // fails to start or stops.
+    (function () {
+      var msg = new URLSearchParams(window.location.search).get('error');
+      if (!msg) return;
+      document.getElementById('status').hidden = true;
+      var e = document.getElementById('error');
+      e.textContent = msg;
+      e.hidden = false;
+    })();
+  </script>
+</body>
+</html>

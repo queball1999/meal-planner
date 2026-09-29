@@ -30,6 +30,36 @@ go run .
 
 The server binds to `:8080` by default. Visit `http://localhost:8080` to run the setup wizard, using the `Setup token: …` line printed to the terminal.
 
+## Desktop app (Windows + Linux)
+
+Go Eat also ships as a normal desktop app: no server, no Docker. It's the same Go server, run on `127.0.0.1` by a small [Tauri](https://tauri.app) shell (`desktop/`) that shows it in a native window. The setup token is filled in for you.
+
+| | Installer | Portable |
+|---|---|---|
+| Windows | `GoEat-<ver>-windows-x64-setup.exe` (per-user, no admin) | `GoEat-<ver>-windows-x64-portable.zip` |
+| Linux | `GoEat-<ver>-linux-amd64.deb` | `GoEat-<ver>-linux-amd64.AppImage` |
+
+- **Where data lives:** `%APPDATA%\com.goeat.desktop` on Windows, `~/.local/share/com.goeat.desktop` on Linux. The portable zip keeps everything in a `data` folder next to `Go Eat.exe` instead, because of the `portable.txt` beside it. `goeat.log` in that folder has the server's log.
+- **Prices:** the desktop app has no FlareSolverr/Browserless, so store scraping only works for sites that answer plain requests. Pricing falls back to the Kroger API, manual prices, and AI estimates.
+- **Windows SmartScreen** warns on first run: the builds are GPG-signed, not Authenticode-signed.
+
+**Verify a download:** every release file has a detached `.sig`, and `SHA256SUMS.txt` is signed too.
+
+```sh
+gpg --verify SHA256SUMS.txt.sig SHA256SUMS.txt
+sha256sum --check --ignore-missing SHA256SUMS.txt
+```
+
+**Build it yourself** (Go, Node and Rust; on Windows also the MSVC C++ build tools, or prefix with `RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu`). Run from a POSIX shell (Git Bash on Windows); each OS builds its own packages:
+
+```sh
+make desktop-windows   # -> output/windows/  installer + portable zip
+make desktop-linux     # -> output/linux/    .deb + AppImage (needs libwebkit2gtk-4.1-dev)
+make desktop-dev       # run from source
+```
+
+Releases are built by `.github/workflows/build_manager.yaml` on a `v*.*.*-release` (from `main`) or `v*.*.*-dev` tag.
+
 ## Configuration
 
 All options are set via environment variables (or `.env`). See [`.env.example`](.env.example) for the full reference. The important ones:

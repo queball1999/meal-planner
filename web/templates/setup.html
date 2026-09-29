@@ -384,6 +384,22 @@
 </div>
 
 <script>
+// Desktop app: the Tauri shell opens /setup#token=… with the per-launch setup
+// token, so nobody has to dig it out of a log. It rides in the fragment, which
+// browsers never send to the server, and is cleared from the address as soon
+// as it's read.
+(function () {
+    var m = /(?:^#|&)token=([0-9a-f]{24,})/i.exec(window.location.hash);
+    if (!m) return;
+    var field = document.getElementById('setup_token');
+    if (field) {
+        field.value = m[1];
+        field.closest('.field').hidden = true;
+    }
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+})();
+</script>
+<script>
 (function () {
     'use strict';
 

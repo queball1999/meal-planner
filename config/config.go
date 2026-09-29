@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -21,6 +22,10 @@ type Config struct {
 	PublicBaseURL string
 	DatabaseURL   string
 	SessionSecret string
+	// Desktop is set (GOEAT_DESKTOP=1) when the Tauri shell runs this binary
+	// as its sidecar: listen on loopback only, announce the bound address on
+	// stdout, accept only loopback Host headers, and exit when stdin closes.
+	Desktop bool
 	// SetupToken, when set, is the token the first-run wizard demands
 	// instead of a freshly generated one (QSS security design §15). At
 	// least 24 hex characters; Load rejects anything weaker.
@@ -234,6 +239,11 @@ func Load() (*Config, error) {
 
 	cfg.DeriveKrogerCredentials()
 
+	cfg.Desktop = os.Getenv("GOEAT_DESKTOP") == "1"
+	if cfg.Desktop && !loopbackAddr(cfg.ListenAddr) {
+		return nil, fmt.Errorf("GOEAT_DESKTOP=1 requires a loopback LISTEN_ADDR (e.g. 127.0.0.1:0), got %q", cfg.ListenAddr)
+	}
+
 	cfg.SetupToken = strings.TrimSpace(os.Getenv("SETUP_TOKEN"))
 	if cfg.SetupToken != "" && !validSetupToken(cfg.SetupToken) {
 		return nil, fmt.Errorf("SETUP_TOKEN must be at least 24 hex characters (generate one with: openssl rand -hex 16)")
@@ -251,6 +261,17 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// loopbackAddr reports whether a host:port listen address is a loopback IP -
+// a desktop app's server must never be reachable from the network.
+func loopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // validSetupToken: at least 24 hex characters (96 bits).

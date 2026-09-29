@@ -1,0 +1,9 @@
+Go Eat - portable mode
+
+Because this file sits next to "Go Eat.exe", Go Eat keeps everything in the
+"data" folder beside it: the database, recipe and item photos, the sign-in
+key, and the app window's own profile. Copy or move the whole folder to take
+Go Eat with you.
+
+Delete this file to use the normal per-user folder instead
+(%APPDATA%\com.goeat.desktop). Existing data is not moved automatically.

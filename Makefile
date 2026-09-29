@@ -2,6 +2,7 @@ BINARY  = bin/goeat
 GOWORK ?= off
 
 .PHONY: all deps check build run clean \
+        desktop-deps desktop-dev desktop-icons desktop-windows desktop-linux \
         docker-up docker-rebuild docker-build docker-restart docker-down docker-reset docker-logs docker-ps \
         docker-backup docker-restore trim-backup help
 
@@ -139,9 +140,91 @@ trim-backup:
 		echo "Trimmed $(BACKUP_DIR) to the $(BACKUP_KEEP) most recent backups."; \
 	fi
 
+# --- Desktop app (Tauri, desktop/) ---
+#
+# The desktop app is the unchanged Go server run as a sidecar by a small Tauri
+# shell (spec/commit-plan-phase14-09-28-26.md). Each OS target builds on that
+# OS - Tauri doesn't cross-compile installers - and writes both flavours to
+# output/<os>/:
+#
+#   output/windows/GoEat-<ver>-windows-x64-setup.exe     installer (NSIS, per-user)
+#   output/windows/GoEat-<ver>-windows-x64-portable.zip  portable (data/ beside the exe)
+#   output/linux/GoEat-<ver>-linux-amd64.deb             installer
+#   output/linux/GoEat-<ver>-linux-amd64.AppImage        portable
+#
+# Needs Go, Node and Rust - on Windows also the MSVC C++ build tools, or run
+# with RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu, which brings its own
+# linker. DESKTOP_VERSION defaults to tauri.conf.json's; CI passes the tag's.
+DESKTOP_DIR     := desktop
+TAURI_DIR       := $(DESKTOP_DIR)/src-tauri
+DESKTOP_VERSION ?= $(shell node -p "require('./$(TAURI_DIR)/tauri.conf.json').version")
+DESKTOP_RELEASE := $(TAURI_DIR)/target/release
+DESKTOP_NAME     = GoEat-$(DESKTOP_VERSION)
+OUT_WINDOWS     := output/windows
+OUT_LINUX       := output/linux
+
+ifdef RUSTUP_TOOLCHAIN
+export RUSTUP_TOOLCHAIN
+endif
+
+# tauri build runs cmd/build_sidecar first (beforeBuildCommand), which stamps
+# GOEAT_VERSION into the Go binary.
+export GOEAT_VERSION = v$(DESKTOP_VERSION)
+TAURI_BUILD = cd $(DESKTOP_DIR) && npx tauri build --config '{"version":"$(DESKTOP_VERSION)"}'
+
+## desktop-deps: install the Tauri CLI into desktop/node_modules
+desktop-deps:
+	cd $(DESKTOP_DIR) && npm ci --no-audit --no-fund
+
+## desktop-dev: run the desktop app from source
+desktop-dev: desktop-deps
+	cd $(DESKTOP_DIR) && npx tauri dev
+
+## desktop-icons: regenerate the Windows/Linux icons from desktop/icon.svg
+desktop-icons: desktop-deps
+	cd $(DESKTOP_DIR) && npx tauri icon icon.svg --output src-tauri/icons
+	rm -rf $(TAURI_DIR)/icons/android $(TAURI_DIR)/icons/ios $(TAURI_DIR)/icons/icon.icns \
+		$(TAURI_DIR)/icons/Square*.png $(TAURI_DIR)/icons/StoreLogo.png
+
+## desktop-windows: installer + portable zip into output/windows (run on Windows)
+desktop-windows: desktop-deps
+	$(TAURI_BUILD) --bundles nsis
+	@mkdir -p $(OUT_WINDOWS)
+	@for f in "$(DESKTOP_RELEASE)"/bundle/nsis/*_$(DESKTOP_VERSION)_*-setup.exe; do \
+		cp "$$f" "$(OUT_WINDOWS)/$(DESKTOP_NAME)-windows-x64-setup.exe"; \
+	done
+	@# The shell is "Go Eat.exe", not "GoEat.exe": Windows names are
+	@# case-insensitive, and the Go sidecar must be called goeat.exe.
+	@# WebView2Loader.dll only exists for GNU-toolchain builds (MSVC links it
+	@# statically); without it the shell exits silently at startup.
+	@stage="$(OUT_WINDOWS)/$(DESKTOP_NAME)-windows-x64-portable"; \
+	rm -rf "$$stage" "$$stage.zip" && mkdir -p "$$stage" && \
+	cp "$(DESKTOP_RELEASE)/goeat-desktop.exe" "$$stage/Go Eat.exe" && \
+	cp "$(DESKTOP_RELEASE)/goeat.exe" "$$stage/goeat.exe" && \
+	cp "$(DESKTOP_DIR)/portable.txt" "$$stage/portable.txt" && \
+	if [ -f "$(DESKTOP_RELEASE)/WebView2Loader.dll" ]; then \
+		cp "$(DESKTOP_RELEASE)/WebView2Loader.dll" "$$stage/"; \
+	fi && \
+	powershell -NoProfile -Command "Compress-Archive -Path '$$stage/*' -DestinationPath '$$stage.zip'" && \
+	rm -rf "$$stage"
+	@echo "==> $(OUT_WINDOWS):" && ls -1 $(OUT_WINDOWS)
+
+## desktop-linux: .deb installer + portable AppImage into output/linux (run on Linux)
+desktop-linux: desktop-deps
+	$(TAURI_BUILD) --bundles deb,appimage
+	@mkdir -p $(OUT_LINUX)
+	@for f in "$(DESKTOP_RELEASE)"/bundle/deb/*_$(DESKTOP_VERSION)_*.deb; do \
+		cp "$$f" "$(OUT_LINUX)/$(DESKTOP_NAME)-linux-amd64.deb"; \
+	done
+	@for f in "$(DESKTOP_RELEASE)"/bundle/appimage/*_$(DESKTOP_VERSION)_*.AppImage; do \
+		cp "$$f" "$(OUT_LINUX)/$(DESKTOP_NAME)-linux-amd64.AppImage" && \
+		chmod +x "$(OUT_LINUX)/$(DESKTOP_NAME)-linux-amd64.AppImage"; \
+	done
+	@echo "==> $(OUT_LINUX):" && ls -1 $(OUT_LINUX)
+
 ## clean: remove build artefacts (not the database)
 clean:
-	rm -rf bin/
+	rm -rf bin/ output/ $(TAURI_DIR)/target $(TAURI_DIR)/binaries/goeat-*
 
 ## help: list targets
 help:
@@ -150,6 +233,10 @@ help:
 	@echo "  check        - gofmt + vet + test"
 	@echo "  build        - compile to bin/goeat"
 	@echo "  run          - run in development mode"
+	@echo "  desktop-windows - Windows installer + portable zip -> output/windows"
+	@echo "  desktop-linux   - Linux .deb + portable AppImage -> output/linux"
+	@echo "  desktop-dev     - run the desktop app from source"
+	@echo "  desktop-icons   - regenerate icons from desktop/icon.svg"
 	@echo "  docker-up      - start the stack (no rebuild)"
 	@echo "  docker-rebuild - rebuild the image and restart"
 	@echo "  docker-build   - rebuild the image without starting"

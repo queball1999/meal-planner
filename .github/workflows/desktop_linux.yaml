@@ -1,0 +1,73 @@
+name: Build Desktop For Linux
+
+# Linux .deb installer + portable AppImage, via `make desktop-linux`.
+# Called by build_manager.yaml for releases; a v*.*.*-linux tag builds this OS
+# alone (artifact only, no release).
+
+on:
+  push:
+    tags:
+      - "v*.*.*-linux"
+  workflow_call:
+
+jobs:
+  build-linux:
+    # The oldest supported runner: an AppImage only runs on systems whose
+    # glibc is at least as new as the one it was built against.
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            file
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Version from tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)- ]]; then
+            echo "DESKTOP_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build .deb + AppImage
+        run: make desktop-linux
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-linux
+          path: |
+            output/linux/GoEat-*-linux-amd64.deb
+            output/linux/GoEat-*-linux-amd64.AppImage
+          if-no-files-found: error

@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -236,17 +238,30 @@ func (s *Server) buildHandler() http.Handler {
 
 // Run starts the HTTP server and blocks until ctx is cancelled. On
 // cancellation it performs a graceful shutdown (10 s deadline).
-func (s *Server) Run(ctx context.Context) error {
+//
+// It binds before serving so a LISTEN_ADDR of port 0 works: in desktop mode
+// the Tauri shell passes 127.0.0.1:0, and learns the real port from the
+// announce line written to announce (stdout in main) - see announceListening.
+func (s *Server) Run(ctx context.Context, announce io.Writer) error {
+	ln, err := net.Listen("tcp", s.cfg.ListenAddr)
+	if err != nil {
+		return err
+	}
+	handler := s.handler
+	if s.cfg.Desktop {
+		handler = desktopHostGuard(ln.Addr().(*net.TCPAddr).Port, handler)
+		announceListening(announce, ln.Addr())
+	}
+
 	srv := &http.Server{
-		Addr:         s.cfg.ListenAddr,
-		Handler:      s.handler,
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ListenAndServe() }()
+	go func() { errCh <- srv.Serve(ln) }()
 
 	select {
 	case err := <-errCh:

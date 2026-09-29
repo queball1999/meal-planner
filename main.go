@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -87,6 +88,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Desktop sidecar: the Tauri shell holds our stdin open for as long as it
+	// runs. If it crashes or is killed without stopping us, the pipe closes -
+	// shut down then rather than linger as an orphan holding the port and DB.
+	if cfg.Desktop {
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			log.Printf("desktop: stdin closed, shutting down")
+			stop()
+		}()
+	}
+
 	// Home Assistant shopping-list pull loop; no-ops until HA is configured
 	// with a non-zero interval.
 	go srv.RunHAScheduler(ctx)
@@ -101,7 +113,7 @@ func main() {
 	go srv.RunImageBackfillScheduler(ctx)
 
 	log.Printf("go-eat %s listening on %s", version, cfg.ListenAddr)
-	if err := srv.Run(ctx); err != nil {
+	if err := srv.Run(ctx, os.Stdout); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }
