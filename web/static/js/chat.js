@@ -3,9 +3,9 @@
  *
  * The assistant makes real changes to the household's plan, so two things
  * matter more than the chat feel: every tool call it makes is shown as it
- * happens, and the page is reloaded once a turn that changed something
- * finishes - otherwise the user is looking at a plan that no longer matches
- * the database and does not know it.
+ * happens, and the page is reloaded (panel reopened) as soon as a turn that
+ * changed something finishes - otherwise the user is looking at a plan that
+ * no longer matches the database and does not know it.
  */
 
 'use strict';
@@ -27,6 +27,12 @@
     // Set when a turn calls a tool that changes data, so the page can be
     // refreshed once rather than after every step.
     let dirty = false;
+
+    // Set just before turnEnded reloads the page, so the panel comes back
+    // open on the fresh page. Timestamped so a stale key (a reload that never
+    // happened, a tab restored days later) does not pop the panel open.
+    const REOPEN_KEY = 'goeat.chat.reopen';
+    const REOPEN_WINDOW_MS = 30 * 1000;
 
     // Which tools alter the household's data. Kept here as well as on the
     // server because the client needs it for one thing only - deciding whether
@@ -59,11 +65,41 @@
         log.scrollTop = log.scrollHeight;
     }
 
+    // The "working on it" indicator: a lightbulb in a spinning ring, kept as
+    // the last thing in the log for as long as a turn is running. Built once
+    // and moved, so it does not restart its animation on every step.
+    let thinking = null;
+
+    function showThinking() {
+        if (!thinking) {
+            thinking = el('div', 'chat-thinking');
+            thinking.setAttribute('role', 'status');
+            const orb = el('span', 'chat-thinking__orb');
+            // Static markup (mdi-lightbulb-outline), no model output in it.
+            orb.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+                '<path d="M12,2A7,7 0 0,1 19,9C19,11.38 17.81,13.47 16,14.74V17A1,1 0 0,1 15,18H9A1,1 0 0,1 8,17V14.74C6.19,13.47 5,11.38 5,9A7,7 0 0,1 12,2M9,21V20H15V21A1,1 0 0,1 14,22H10A1,1 0 0,1 9,21M12,4A5,5 0 0,0 7,9C7,11.05 8.23,12.81 10,13.58V16H14V13.58C15.77,12.81 17,11.05 17,9A5,5 0 0,0 12,4Z"/></svg>';
+            thinking.appendChild(orb);
+            thinking.appendChild(el('span', null, 'Thinking…'));
+        }
+        log.appendChild(thinking);
+        scrollDown();
+    }
+
+    function hideThinking() {
+        if (thinking) thinking.remove();
+    }
+
+    // Anything added to the log mid-turn goes above the indicator.
+    function append(node) {
+        if (thinking && thinking.isConnected) log.insertBefore(node, thinking);
+        else log.appendChild(node);
+        scrollDown();
+    }
+
     function addMessage(role, text) {
         const wrap = el('div', 'chat-msg chat-msg--' + role);
         wrap.appendChild(el('div', 'chat-msg__body', text));
-        log.appendChild(wrap);
-        scrollDown();
+        append(wrap);
         return wrap;
     }
 
@@ -74,8 +110,7 @@
         const row = el('div', 'chat-step' + (entry.error ? ' chat-step--error' : ''));
         row.appendChild(el('span', 'chat-step__tool', entry.tool));
         row.appendChild(el('span', 'chat-step__text', entry.error || entry.summary || ''));
-        log.appendChild(row);
-        scrollDown();
+        append(row);
         if (MUTATING.has(entry.tool) && !entry.error) dirty = true;
     }
 
@@ -99,6 +134,7 @@
             // Replace the box with what was decided, so the transcript still
             // reads correctly after a reload.
             box.replaceWith(el('div', 'chat-step', approve ? 'Applied.' : 'Left it alone.'));
+            showThinking();
             confirmAnswer(approve);
         }
         no.addEventListener('click', function () { answer(false); });
@@ -132,7 +168,7 @@
             .catch(function (err) {
                 addStep({ tool: 'error', error: err.message || 'Something went wrong.' });
             })
-            .finally(function () { setBusy(false); input.focus(); });
+            .finally(function () { turnEnded(); });
     }
 
     function setBusy(on) {
@@ -140,6 +176,29 @@
         sendBtn.disabled = on;
         input.disabled = on;
         sendBtn.textContent = on ? 'Working…' : 'Send';
+        if (on) showThinking(); else hideThinking();
+    }
+
+    // A turn is over - unless it is paused on a confirmation, in which case
+    // the run is held mid-flight on the server and letting another message
+    // start would abandon it (confirmAnswer ends it instead).
+    //
+    // A finished turn that changed data leaves the page behind the panel
+    // stale, so it is reloaded right away and the panel reopens itself with
+    // the conversation (history comes from the server). A full reload rather
+    // than swapping <main> in place: pages carry inline nonce'd scripts and
+    // main.js wires its handlers once on load, so a swapped-in page would
+    // look right and half of it would not work.
+    function turnEnded() {
+        if (log.querySelector('.chat-confirm')) return;
+        setBusy(false);
+        if (dirty) {
+            dirty = false;
+            try { sessionStorage.setItem(REOPEN_KEY, String(Date.now())); } catch (_) { /* private mode */ }
+            window.location.reload();
+            return;
+        }
+        input.focus();
     }
 
     function renderHistory(messages) {
@@ -206,10 +265,6 @@
     function close() {
         panel.hidden = true;
         launcher.setAttribute('aria-expanded', 'false');
-        // A turn that changed data leaves the page behind it stale. Reload on
-        // close rather than mid-conversation, so the panel does not vanish
-        // out from under someone who is still typing.
-        if (dirty) window.location.reload();
     }
 
     // Exposed so other UI can hand the assistant a specific job instead of
@@ -230,6 +285,12 @@
         if (panel.hidden) open(); else close();
     });
     closeBtn.addEventListener('click', close);
+
+    try {
+        const at = Number(sessionStorage.getItem(REOPEN_KEY));
+        sessionStorage.removeItem(REOPEN_KEY);
+        if (at && Date.now() - at < REOPEN_WINDOW_MS) open();
+    } catch (_) { /* private mode */ }
 
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !panel.hidden && !busy) close();
@@ -289,15 +350,7 @@
             .catch(function (err) {
                 addStep({ tool: 'error', error: err.message || 'Something went wrong.' });
             })
-            .finally(function () {
-                // A turn paused on a confirmation is not over: the run is held
-                // mid-flight on the server, and letting another message start
-                // would abandon it. confirmAnswer releases the panel instead.
-                if (!log.querySelector('.chat-confirm')) {
-                    setBusy(false);
-                    input.focus();
-                }
-            });
+            .finally(turnEnded);
     });
 
     // Minimal SSE reader: events arrive as "event: X\ndata: {...}\n\n".
@@ -335,8 +388,8 @@
         try { payload = JSON.parse(data); } catch (_) { return; }
 
         if (name === 'step') addStep(payload);
-        else if (name === 'done') addMessage('assistant', payload.content);
-        else if (name === 'confirm') addConfirm(payload);
+        else if (name === 'done') { hideThinking(); addMessage('assistant', payload.content); }
+        else if (name === 'confirm') { hideThinking(); addConfirm(payload); }
         else if (name === 'error') addStep({ tool: 'error', error: payload.error });
     }
 })();

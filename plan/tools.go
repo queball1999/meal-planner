@@ -100,6 +100,9 @@ func genSearchRecipes(ctx context.Context, gc *genToolCtx, args json.RawMessage)
 	if err != nil {
 		return genToolResult{}, err
 	}
+	// A leftovers entry offered back to the model would get "reused" as a
+	// fresh meal - it is not a recipe (Search already skips them).
+	recipes = db.ExcludeLeftoverRecipes(recipes)
 
 	// Capped for the same reason agent.tools_shopping's search_recipes caps:
 	// a household with hundreds of saved recipes should not spend the whole

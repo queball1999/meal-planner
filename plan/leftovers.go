@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"goeat/db"
@@ -21,23 +20,16 @@ var slotOrder = map[string]int{
 // consecutive days. Spec §4.3 is "the next day's lunch or dinner".
 const leftoverMaxDayGap = 1
 
-// isLeftoverTitle reports whether the model titled this meal as an
-// intentional leftover night - the prompt (BuildPrompt, §4.6) explicitly
-// asks it to "note in the title when a meal is intentional leftovers", e.g.
-// "Chili (leftovers)". This is the only source of truth for *which* meals
-// are leftovers: the model decides that when it plans the week, not a
-// heuristic re-deriving it after the fact from portion counts. Matching on
-// cooked_portions vs servings alone was marking every next-day lunch as a
-// leftover the moment any earlier meal had a couple of spare portions - which
-// is what a household batch-cooking dinner "just in case" does routinely,
-// whether or not that lunch was ever meant to be dinner's leftovers.
-func isLeftoverTitle(title string) bool {
-	return strings.Contains(strings.ToLower(title), "leftover")
-}
-
 // PlanLeftovers ties each meal the model titled as leftovers back to the
 // nearest earlier meal that actually cooked a surplus (§5.6), so the "this
-// meal feeds another one" UI has a real parent to point at. No-op when
+// meal feeds another one" UI has a real parent to point at.
+//
+// The title (db.IsLeftoverTitle) is the only source of truth for *which*
+// meals are leftovers - the prompt (BuildPrompt, §4.6) asks the model to
+// "note in the title when a meal is intentional leftovers". Matching on
+// cooked_portions vs servings alone was marking every next-day lunch as a
+// leftover the moment any earlier meal had a couple of spare portions, which
+// is what a household batch-cooking dinner "just in case" does routinely. No-op when
 // tolerance is false. Breakfast is never eligible, matching the prompt (nobody
 // plans last night's stir-fry for breakfast) even if the model's title
 // suggests otherwise.
@@ -95,7 +87,7 @@ func PlanLeftovers(ctx context.Context, store db.Store, planID int64, tolerance 
 		}
 		dropStale(day)
 
-		wantsLeftover := m.Slot != "breakfast" && m.Day != firstDay && isLeftoverTitle(m.Title)
+		wantsLeftover := m.Slot != "breakfast" && m.Day != firstDay && db.IsLeftoverTitle(m.Title)
 
 		if wantsLeftover {
 			// Tie it to the nearest still-warm surplus, if one exists. The

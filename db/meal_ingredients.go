@@ -58,6 +58,11 @@ func (s *store) ListIngredientsByMeal(ctx context.Context, mealID int64) ([]*Mea
 // through here, so a day or meal taken off the plan disappears from the list
 // whichever of them runs next.
 //
+// Leftover meals (meals.is_leftover, set by plan.PlanLeftovers) are excluded
+// too: they eat an earlier meal's surplus, so nothing is bought for them, and
+// the model tends to list pseudo-ingredients for them anyway ("chicken rice
+// bake mix") that would otherwise land on the list as real items.
+//
 // LEFT JOIN, not JOIN, on plan_days: a plan generated before day rows existed
 // (or one whose seed failed) has meals with no matching plan_days row, and an
 // inner join would silently drop every ingredient in the plan.
@@ -70,6 +75,7 @@ func (s *store) ListIngredientsByPlan(ctx context.Context, planID int64) ([]*Mea
 		WHERE m.plan_id = ?
 		  AND COALESCE(pd.status, 'cooking') = 'cooking'
 		  AND m.status = 'cooking'
+		  AND m.is_leftover = 0
 		ORDER BY mi.meal_id, mi.id`, planID)
 	if err != nil {
 		return nil, err

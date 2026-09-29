@@ -450,7 +450,8 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 	for _, m := range meals {
 		key := m.Day + "|" + m.Slot
 		cost := ""
-		if len(shoppingLines) > 0 {
+		// Leftovers were paid for by their source meal - see mealCostLabel.
+		if len(shoppingLines) > 0 && !m.IsLeftover {
 			ings, _ := s.store.ListIngredientsByMeal(ctx, m.ID)
 			if cents := mealCostCentsFromLines(shoppingLines, ings); cents > 0 {
 				cost = fmt.Sprintf("$%.2f", float64(cents)/100)

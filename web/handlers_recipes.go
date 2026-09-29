@@ -126,23 +126,6 @@ type recipesPageData struct {
 	Page      Pagination
 }
 
-// excludeLeftoverRecipes drops any catalog recipe whose title marks it as an
-// intentional leftovers meal (plan/prompt.go's leftover-tolerance rules have
-// the generator note this in the title) from a user-facing recipe list.
-// These are meal-plan artifacts of a specific batch-cook, not something
-// anyone picks to cook standalone - the recipe catalog, the slot-filling
-// picker, and the account page's recipe count should all skip them.
-func excludeLeftoverRecipes(recipes []*db.CatalogRecipe) []*db.CatalogRecipe {
-	out := recipes[:0]
-	for _, rc := range recipes {
-		if strings.Contains(strings.ToLower(rc.Title), "leftover") {
-			continue
-		}
-		out = append(out, rc)
-	}
-	return out
-}
-
 func (s *Server) handleRecipesPage(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
@@ -161,7 +144,7 @@ func (s *Server) handleRecipesPage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		list, _ = s.store.ListCatalogRecipes(r.Context(), hh.ID)
 	}
-	list = excludeLeftoverRecipes(list)
+	list = db.ExcludeLeftoverRecipes(list)
 
 	list, page := paginate(r, list)
 

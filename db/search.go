@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// SearchCatalogRecipes matches title or tags. Leftovers-titled recipes are
+// never returned: every caller (global search, the recipe picker, the chat
+// agent, the plan generator's search_recipes tool) wants recipes to cook.
 func (s *store) SearchCatalogRecipes(ctx context.Context, householdID int64, q string) ([]*CatalogRecipe, error) {
 	like := "%" + q + "%"
 	rows, err := s.db.QueryContext(ctx, `
@@ -14,6 +17,7 @@ func (s *store) SearchCatalogRecipes(ctx context.Context, householdID int64, q s
 		FROM catalog_recipes
 		WHERE household_id = ?
 		  AND (lower(title) LIKE lower(?) OR lower(tags) LIKE lower(?))
+		  AND lower(title) NOT LIKE '%leftover%' -- IsLeftoverTitle, before the LIMIT
 		ORDER BY title COLLATE NOCASE
 		LIMIT 20`,
 		householdID, like, like)

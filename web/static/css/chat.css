@@ -286,3 +286,58 @@
   gap: var(--sp-2);
   margin-top: var(--sp-3);
 }
+
+/* ── Thinking ──────────────────────────────────────────────────────────────
+ * Shown at the bottom of the log while a turn is running: a lightbulb inside
+ * a ring whose highlight sweeps round. A model call plus tool round-trips can
+ * sit silent for many seconds, and a disabled Send button alone reads as
+ * "stuck". The global reduced-motion rule (base.css) stops the sweep.
+ */
+
+.chat-thinking {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.chat-thinking__orb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  color: var(--accent);
+}
+
+/* The ring: a faint full circle with a bright arc on it, cut to a band with a
+   radial mask so only the edge shows. */
+.chat-thinking__orb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 55%, var(--accent) 90%, transparent 100%),
+              var(--accent-bg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: chat-thinking-spin 1s linear infinite;
+}
+
+.chat-thinking__orb svg {
+  width: 16px;
+  height: 16px;
+  animation: chat-thinking-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes chat-thinking-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes chat-thinking-glow {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}

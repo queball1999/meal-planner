@@ -180,3 +180,64 @@ func TestListIngredientsByPlanSkipsNonCookingDays(t *testing.T) {
 		t.Errorf("got %d ingredients back, want %d", len(restored), len(before))
 	}
 }
+
+// A leftover meal eats an earlier meal's surplus, so nothing is bought for it -
+// even when the model listed pseudo-ingredients like "chili mix" for it.
+func TestListIngredientsByPlanSkipsLeftoverMeals(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newPlansTestStore(t)
+	planID, srcID := seedScalableDay(t, store, hh.ID)
+
+	before, _ := store.ListIngredientsByPlan(ctx, planID)
+
+	m, err := store.CreateMeal(ctx, db.CreateMealParams{
+		PlanID: planID, Day: "2026-01-06", Slot: "lunch", Title: "Chili (leftovers)",
+		Effort: "quick", Servings: 1, CookedPortions: 1,
+	})
+	if err != nil {
+		t.Fatalf("create meal: %v", err)
+	}
+	if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
+		MealID: m.ID, Name: "chili mix", Quantity: 1, Unit: "each",
+	}); err != nil {
+		t.Fatalf("create ingredient: %v", err)
+	}
+	if err := store.UpdateMealLeftover(ctx, m.ID, true, &srcID); err != nil {
+		t.Fatalf("mark leftover: %v", err)
+	}
+
+	after, err := store.ListIngredientsByPlan(ctx, planID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(after) != len(before) {
+		t.Errorf("got %d ingredients, want %d (leftover meal's lines excluded)", len(after), len(before))
+	}
+}
+
+// Leftovers-titled catalog recipes are not recipes to cook: search never
+// returns them and ExcludeLeftoverRecipes drops them, case-insensitively.
+func TestLeftoverRecipesExcluded(t *testing.T) {
+	ctx := context.Background()
+	store, hh := newPlansTestStore(t)
+	for _, title := range []string{"Weeknight Chili", "Chili (Leftovers)", "LEFTOVER Chili Bowls"} {
+		if _, err := store.CreateCatalogRecipe(ctx, db.CreateCatalogRecipeParams{
+			HouseholdID: hh.ID, Title: title, SourceKind: "ai",
+		}); err != nil {
+			t.Fatalf("create %q: %v", title, err)
+		}
+	}
+
+	found, err := store.SearchCatalogRecipes(ctx, hh.ID, "chili")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(found) != 1 || found[0].Title != "Weeknight Chili" {
+		t.Errorf("search = %+v, want only Weeknight Chili", found)
+	}
+
+	all, _ := store.ListCatalogRecipes(ctx, hh.ID)
+	if kept := db.ExcludeLeftoverRecipes(all); len(kept) != 1 || kept[0].Title != "Weeknight Chili" {
+		t.Errorf("ExcludeLeftoverRecipes = %+v, want only Weeknight Chili", kept)
+	}
+}

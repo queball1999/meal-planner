@@ -448,9 +448,12 @@ func persistPlan(ctx context.Context, store db.Store, householdID, planID int64,
 // week, and twenty copies of "Weeknight Chili" would make /recipes useless;
 // the existing entry is left alone rather than overwritten, because it may
 // have been edited by hand since.
+//
+// Skips a leftovers meal too: it eats an earlier meal's surplus, so there is
+// no recipe to keep - just the model's placeholder "ingredients" for it.
 func saveGeneratedRecipe(ctx context.Context, store db.Store, householdID int64, gm GeneratedMeal) error {
 	title := strings.TrimSpace(gm.Title)
-	if title == "" {
+	if title == "" || db.IsLeftoverTitle(title) {
 		return nil
 	}
 	existing, err := store.GetCatalogRecipeByTitle(ctx, householdID, title)

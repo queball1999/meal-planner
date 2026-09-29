@@ -414,6 +414,7 @@ func RegisterPantryTools(r *Registry) {
 			if err != nil {
 				return Result{}, err
 			}
+			recipes = db.ExcludeLeftoverRecipes(recipes)
 
 			// Capped: a household with hundreds of recipes would otherwise
 			// spend the whole context window on a list nobody reads.

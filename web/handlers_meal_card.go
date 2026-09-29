@@ -114,8 +114,12 @@ func (s *Server) handleMealCard(w http.ResponseWriter, r *http.Request) {
 // onions would each claim the whole bag. The line is split evenly across the
 // meals that reference it, which is an approximation, and the card says
 // "about" rather than presenting it as exact.
+//
+// A leftover meal has no cost: it eats a surplus the source meal already paid
+// for. Its ingredients are off the shopping list (ListIngredientsByPlan), but a
+// list seeded before that rule still references them, hence the explicit check.
 func (s *Server) mealCostLabel(ctx context.Context, meal *db.Meal, ings []*db.MealIngredient) string {
-	if len(ings) == 0 {
+	if meal.IsLeftover || len(ings) == 0 {
 		return ""
 	}
 	lines, err := s.store.ListShoppingListItems(ctx, meal.PlanID)

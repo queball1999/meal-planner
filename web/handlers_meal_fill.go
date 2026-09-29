@@ -50,7 +50,7 @@ func (s *Server) handleRecipeOptions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't load recipes"})
 		return
 	}
-	recipes = excludeLeftoverRecipes(recipes)
+	recipes = db.ExcludeLeftoverRecipes(recipes)
 
 	// Capped: the picker is a short list to scan, not a browsable catalog -
 	// /recipes is that. A household past the cap searches instead.

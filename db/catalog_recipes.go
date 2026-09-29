@@ -5,8 +5,32 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
+
+// IsLeftoverTitle reports whether a meal or recipe title marks it as an
+// intentional leftovers meal - the generation prompt (plan.BuildPrompt) has
+// the model note this in the title, e.g. "Chili (leftovers)". Such a meal eats
+// an earlier meal's surplus: it is not a recipe to cook, and whatever
+// "ingredients" the model lists for it ("chicken rice bake mix") are not
+// things to buy.
+func IsLeftoverTitle(title string) bool {
+	return strings.Contains(strings.ToLower(title), "leftover")
+}
+
+// ExcludeLeftoverRecipes drops leftovers-titled catalog recipes from a
+// user- or model-facing recipe list. Filtered in place.
+func ExcludeLeftoverRecipes(recipes []*CatalogRecipe) []*CatalogRecipe {
+	out := recipes[:0]
+	for _, rc := range recipes {
+		if IsLeftoverTitle(rc.Title) {
+			continue
+		}
+		out = append(out, rc)
+	}
+	return out
+}
 
 func (s *store) CreateCatalogRecipe(ctx context.Context, p CreateCatalogRecipeParams) (*CatalogRecipe, error) {
 	tags, _ := json.Marshal(p.Tags)
