@@ -92,17 +92,62 @@ input, textarea, select, button {
 
 /* ── Focus ──────────────────────────────────────────────────────────────── */
 
-/* Global :focus-visible ring - non-negotiable (§8.6). */
-:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm);
+/* Focus and current/selected state: a bottom bar, never a ring (QSS style
+ * guide §4.11). A 2px, square-ended bar drawn as a no-repeat background
+ * gradient, inset from each side by the element's corner radius so it stops
+ * before the rounded corners. No outline, no box-shadow ring, no inset
+ * shadow (it curves up into the corners), no side bars.
+ *
+ *   --bar-inset   how far the bar stays clear of each side. Defaults to
+ *                 --radius; pills and circles set their horizontal padding
+ *                 (or about a third of the width) instead.
+ *   --bar-color   the bar's colour. Focus uses --clr-focus; solid-fill
+ *                 buttons switch it to currentColor to keep contrast on the
+ *                 fill. Current/selected state uses currentColor (list below).
+ *
+ * Hover rules must set background-color, never the `background` shorthand,
+ * which would wipe the bar. Form fields don't get the bar: their focus is the
+ * accent border (§4.2). */
+:focus-visible { outline: none; }
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+    background-image: linear-gradient(var(--bar-color, var(--clr-focus)), var(--bar-color, var(--clr-focus))) !important;
+    background-size: calc(100% - 2 * var(--bar-inset, var(--radius))) 2px !important;
+    background-position: center bottom !important;
+    background-repeat: no-repeat !important;
 }
 
-/* Remove default outline when :focus-visible is supported. */
-:focus:not(:focus-visible) {
-    outline: none;
+/* Current/selected state: the same bar in the element's own text colour.
+ * !important so a component's `background` shorthand (a hover rule, a
+ * later file) can't wipe it. Add new selected/current states here. */
+.nav-link--active,
+.user-menu__name--active,
+.popover__item--active,
+.pager__link.is-current,
+.recipe-picker__btn.is-selected,
+.ai-picker__opt.is-selected,
+.meal-status-btn--active,
+.have-btn--on,
+.checkbox-chip:has(input:checked),
+.store-chip:has(input:checked),
+.cal-cell--today,
+.wizard-progress__step--active .wizard-step-label {
+    background-image: linear-gradient(currentColor, currentColor) !important;
+    background-size: calc(100% - 2 * var(--bar-inset, var(--radius))) 2px !important;
+    background-position: center bottom !important;
+    background-repeat: no-repeat !important;
 }
+/* Pills and circles: keep the bar clear of the round ends - the pill's
+ * horizontal padding, or about a third of a circle's width. */
+.checkbox-chip,
+.chat-suggestion { --bar-inset: var(--sp-3); }
+.chat-launcher   { --bar-inset: 1.1rem; }
+.tooltip-btn     { --bar-inset: .5rem; }
+.link-chip       { --bar-inset: .45rem; }
+.wizard-step-label { --bar-inset: 0px; }
 
 /* ── Utilities ──────────────────────────────────────────────────────────── */
 

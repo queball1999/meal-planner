@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -22,6 +24,10 @@ type Config struct {
 	PublicBaseURL string
 	DatabaseURL   string
 	SessionSecret string
+	// EphemeralSecret is set when SESSION_SECRET was missing and Load made up
+	// a one-boot secret. Anything sealed with it is unreadable after a
+	// restart, so secret settings are then stored unsealed.
+	EphemeralSecret bool
 	// Desktop is set (GOEAT_DESKTOP=1) when the Tauri shell runs this binary
 	// as its sidecar: listen on loopback only, announce the bound address on
 	// stdout, accept only loopback Host headers, and exit when stdin closes.
@@ -31,6 +37,18 @@ type Config struct {
 	// least 24 hex characters; Load rejects anything weaker.
 	SetupToken      string
 	SessionTTLHours int // default 168 (7 days)
+	// SessionIdleMinutes (SESSION_IDLE_MINUTES, default 1440) signs a session
+	// out after this long with no page loads, enforced by the server. 0 turns
+	// the idle limit off; SessionTTLHours still caps the session's life.
+	SessionIdleMinutes int
+	// TrustedProxies (TRUSTED_PROXIES) are the CIDRs of reverse proxies whose
+	// X-Forwarded-For is believed. Empty: clients connect directly and the
+	// header is ignored, so nobody can claim someone else's IP (QSS §5.4).
+	TrustedProxies []netip.Prefix
+	// AllowedHosts (ALLOWED_HOSTS) are extra Host header values accepted
+	// besides PUBLIC_BASE_URL's host. Any other Host is refused, so a
+	// DNS-rebinding page can't read this server's responses (QSS §9.3).
+	AllowedHosts []string
 	// MultiTenant (ENABLE_MULTI_TENANT, default off) allows more than one
 	// household on this server: the household switcher, and creating and
 	// deleting households. Off, everyone works in the one household setup
@@ -260,9 +278,36 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("GOEAT_DESKTOP=1 requires a loopback LISTEN_ADDR (e.g. 127.0.0.1:0), got %q", cfg.ListenAddr)
 	}
 
+	cfg.SessionIdleMinutes = 1440
+	if v, err := strconv.Atoi(os.Getenv("SESSION_IDLE_MINUTES")); err == nil && v >= 0 {
+		cfg.SessionIdleMinutes = v
+	}
+
+	proxies, err := ParseTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+	if err != nil {
+		return nil, err
+	}
+	cfg.TrustedProxies = proxies
+	if len(proxies) > 0 {
+		log.Printf("config: trusting X-Forwarded-For from %v", proxies)
+	}
+
+	for _, h := range splitList(os.Getenv("ALLOWED_HOSTS")) {
+		if h = strings.ToLower(strings.TrimSuffix(h, "/")); h != "" {
+			cfg.AllowedHosts = append(cfg.AllowedHosts, h)
+		}
+	}
+
 	cfg.SetupToken = strings.TrimSpace(os.Getenv("SETUP_TOKEN"))
 	if cfg.SetupToken != "" && !validSetupToken(cfg.SetupToken) {
 		return nil, fmt.Errorf("SETUP_TOKEN must be at least 24 hex characters (generate one with: openssl rand -hex 16)")
+	}
+
+	// The .env.example placeholder is public, so a server started with it has
+	// a secret anyone can read: it keys the session cookies and the sealed
+	// API keys (QSS security design §19). Refuse it outright.
+	if cfg.SessionSecret == sessionSecretPlaceholder {
+		return nil, fmt.Errorf("SESSION_SECRET is still the .env.example placeholder - set a random one (generate with: openssl rand -hex 32)")
 	}
 
 	if cfg.SessionSecret == "" {
@@ -273,10 +318,52 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("SESSION_SECRET not set and could not generate one: %w", err)
 		}
 		cfg.SessionSecret = hex.EncodeToString(b)
+		cfg.EphemeralSecret = true
 		log.Println("WARNING: SESSION_SECRET not set - using an ephemeral secret. Sessions will not survive restarts. Set SESSION_SECRET in .env.")
 	}
 
 	return cfg, nil
+}
+
+// sessionSecretPlaceholder is the SESSION_SECRET value shipped in
+// .env.example. Keep the two in step.
+const sessionSecretPlaceholder = "change-me-to-a-random-32-char-secret"
+
+// ParseTrustedProxies parses a comma-separated CIDR list. A bare IP is
+// taken as a single-address prefix. Any bad entry fails startup, since a
+// typo here would silently trust (or distrust) the wrong peer.
+func ParseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, part := range splitList(raw) {
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "/") {
+			addr, err := netip.ParseAddr(part)
+			if err != nil {
+				return nil, fmt.Errorf("TRUSTED_PROXIES: %q is not an IP or CIDR", part)
+			}
+			out = append(out, netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen()))
+			continue
+		}
+		p, err := netip.ParsePrefix(part)
+		if err != nil {
+			return nil, fmt.Errorf("TRUSTED_PROXIES: %q is not an IP or CIDR", part)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
+}
+
+// HostAllowlist returns every Host header value the server answers to:
+// PUBLIC_BASE_URL's host plus ALLOWED_HOSTS. Empty means no list has been
+// configured, and Host isn't checked.
+func (c *Config) HostAllowlist() []string {
+	var out []string
+	if u, err := url.Parse(strings.TrimSpace(c.PublicBaseURL)); err == nil && u.Host != "" {
+		out = append(out, strings.ToLower(u.Host))
+	}
+	return append(out, c.AllowedHosts...)
 }
 
 // loopbackAddr reports whether a host:port listen address is a loopback IP -

@@ -47,7 +47,7 @@
         <input type="hidden" name="{{$k}}" value="{{$v}}">
         {{end}}
         <label for="per_page-{{.Param}}">Per page</label>
-        <select class="field-input" id="per_page-{{.Param}}" name="per_page" onchange="this.form.submit()">
+        <select class="field-input" id="per_page-{{.Param}}" name="per_page" data-autosubmit>
             {{$cur := .PerPage}}
             {{range .PerPageOpts}}
             <option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{.}}</option>

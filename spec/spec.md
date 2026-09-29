@@ -12,8 +12,10 @@ The name is a pun: it tells you to *go eat*, and it's written in **Go**.
 
 This document is the build spec. It does not contain code. It defines scope, architecture, data model, the pricing subsystem, the AI subsystem, security posture, UI, and the phased build plan. It follows two house references:
 
-- **`qss_security_design.md`** — auth, sessions, audit, rate limiting, CSRF, threat model.
-- **`qss_style_guide.md`** — CSS architecture, tokens, components, layout, accessibility.
+- **`qss_security_design_v2.md`** — auth, sessions, audit, rate limiting, CSRF, threat model.
+- **`qss_style_guide_v2.md`** — CSS architecture, tokens, components, layout, accessibility.
+
+**Go Eat is Built to WCAG 2.1 AA** (style guide v2 §5); see §8.6.
 
 Architecture patterns (OpenAI-compatible LLM client, settings read-through, server-rendered Go with `html/template`, all-SQL-in-`db`) are modeled on the **slack-llm-proxy** codebase. **UI components** — the `(?)` help tooltip, the `data-table` refresh/export toolbar, and skeleton loading — are ported from slack-llm-proxy; **search, table filters, and barcode scanning** are ported from **QInventory2.0**; **web recipe import** copies **Mealie**'s `recipe-scrapers` method (schema.org/JSON-LD → microdata → OpenGraph). **Icons** are Material Design Icons ([pictogrammers.com/library/mdi](https://pictogrammers.com/library/mdi/)), rendered inline-SVG via slack-llm-proxy's `web/icons.go` pattern (§8.4e).
 
@@ -423,7 +425,7 @@ Per style guide §2, define the full palette as `:root` custom properties. Go Ea
 
 ### 8.4 Components (reuse house patterns)
 
-*(House-pattern references below point at **`qss_style_guide.md`** sections, not this spec's §4.)*
+*(House-pattern references below point at **`qss_style_guide_v2.md`** sections, not this spec's §4.)*
 
 - **Buttons** `.btn` + modifier; primary = accent, danger = destructive (clear feedback, delete plan). (style guide §4.1) **Icon-first** with MDI inline-SVG glyphs (§8.4e); icon-only variants (`.btn-icon`) carry `title`/`aria-label`.
 - **Cards** for meals and setup steps.
@@ -512,7 +514,7 @@ The user asked for fun, inviting animations. The style guide caps UI-chrome moti
 
 ### 8.6 Accessibility
 
-Full style-guide §5 baseline: focus rings, skip link, `.sr-only`, `title`/`aria-label` on icon buttons, WCAG-AA contrast (with the before/after comment convention when tuning a dark-theme color). `prefers-reduced-motion` disables §8.5's flourishes.
+Built to WCAG 2.1 AA. Full style-guide §5 baseline: the §4.11 focus bar (a square-ended 2px bottom bar in `--clr-focus`, never a rounded ring or outline; form fields get the accent border), skip link, `.sr-only`, `title`/`aria-label` on icon buttons, WCAG-AA contrast (with the before/after comment convention when tuning a dark-theme color). `prefers-reduced-motion` disables §8.5's flourishes.
 
 ---
 
@@ -531,8 +533,6 @@ Deployment is self-hosted, single household → the security doc's **LAN-only re
 
 Per security doc §9.3, on a private household deployment these are off by default, gated behind a single flag each so a public build turns them on:
 
-- **Account lockout** (`LOCKOUT_ENABLED`, default false) — table + logic present, dormant.
-- **Rate limiter** (`RATE_LIMIT_ENABLED`, default false) — in-memory per-IP middleware present.
 - **CAPTCHA** (`CAPTCHA_ENABLED`, default false) — pluggable provider interface present (Turnstile/reCAPTCHA/none).
 - **Bot detection** (`BOT_PROTECTION_ENABLED`, default false) — UA classifier present, scoped to auth routes.
 
@@ -542,12 +542,16 @@ Keeping the code present-but-dormant matches the doc's intent: "public deploymen
 
 These are cheap and non-negotiable regardless of deployment:
 
-- **CSRF protection** (security doc §6): hidden-token on every state-changing form (generate, save, delete, settings). Scoped to `/…` mutating routes; `/auth/login` exempt. `gorilla/csrf` with `PlaintextHTTPRequest` when served over plain HTTP on the LAN (note the slack-llm-proxy finding: `Secure(false)` alone is not enough).
+- **CSRF protection** (security doc §6): `filippo.io/csrf/gorilla` cross-origin check on every non-GET request, login and setup included, no exemptions; `TrustedOrigins` from `PUBLIC_BASE_URL` with its scheme, plus a scheme guard.
+- **Sign-in rate limit and lockout** (security doc §2.1–§2.2): per-IP in-memory limit (10/min) on sign-in and the password-change step-up; persistent lockout in `login_attempts`, keyed by the submitted username string — 5 failures from one (username, IP) pair or 20 from one IP in 5 minutes lock for 10 minutes; a username failing from many IPs is slowed, never hard-locked.
+- **Sessions** (security doc §1.4): fixed `SESSION_TTL_HOURS` from sign-in plus a server-enforced idle limit (`SESSION_IDLE_MINUTES`, default 1440) that background polling doesn't refresh.
+- **Headers** (security doc §10): nonce-based CSP (no `'unsafe-inline'` scripts, no inline event handlers), `frame-ancestors 'none'`, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS on https, `Cache-Control: no-store` on signed-in pages.
+- **Host allowlist** (security doc §9.3): host names other than `PUBLIC_BASE_URL`'s and `ALLOWED_HOSTS` get 421 (DNS rebinding); IP literals and localhost always pass.
 - **SSRF protection on all server-side fetches** (§16.1): recipe import, the scrape tool/scraper, and image downloads all go through one `safefetch` helper that blocks private/loopback/link-local IPs, pins the vetted IP, and caps redirects. On a home LAN this is the highest-value control in the app.
-- **Audit logging** (security doc §5): `app_events(id, occurred_at, actor_user_id, actor_label, action, target_type, target_id, metadata, ip_address, user_agent, status)`. Log auth events, settings changes, plan generation, provider config changes. **Secrets never rendered back** — API keys logged as `(set)`, never by value (§5.3). IP extraction per §5.4 (`X-Forwarded-For` → `X-Real-IP` → `RemoteAddr`).
+- **Audit logging** (security doc §5): `app_events(id, occurred_at, actor_user_id, actor_label, action, target_type, target_id, metadata, ip_address, user_agent, status)`. Log auth events, settings changes, plan generation, provider config changes. **Secrets never rendered back** — API keys logged as `(set)`, never by value (§5.3). IP extraction per §5.4: `X-Forwarded-For` is believed only from `TRUSTED_PROXIES`, read right to left; otherwise the peer address.
 - **Secret handling**: all keys (AI provider keys, retailer API secrets, session secret, DB creds) live in `.env` (gitignored), never in the DB in plaintext, never in a log, never rendered back into the settings UI (write-only fields showing `(set)`/`(empty)`, per slack-llm-proxy's `Definition.Secret`).
 - **Password change flow** (security doc §7.3): step-up (re-enter current), validate, hash, single-transaction update, audit, optional session invalidation.
-- **Cookies**: `HttpOnly` always; `SameSite=Lax`; `Secure` when TLS present.
+- **Cookies**: `HttpOnly` always; `SameSite=Lax`; on an https `PUBLIC_BASE_URL` the session cookie is `Secure` with the `__Host-` prefix.
 - **Session lifecycle** (security doc §1.4): fixed-at-issue expiry; optional idle-timeout warning modal with a real `/api/session/extend` POST (style guide §4.6 pattern).
 
 ### 9.4 Roles

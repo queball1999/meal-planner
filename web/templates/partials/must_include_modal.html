@@ -107,7 +107,7 @@
   </form>
 {{template "partials/modal_close.html" .}}
 
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     var modal = document.getElementById('must-include-modal');
     if (!modal || modal.dataset.wired) return;

@@ -27,13 +27,13 @@ func (s *store) CreateSession(ctx context.Context, userID int64, tokenHash, ipAd
 func (s *store) GetSessionByTokenHash(ctx context.Context, hash string) (*Session, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, user_id, token_hash, expires_at, ip_address, user_agent, created_at,
-		        COALESCE(active_household_id, 0)
+		        COALESCE(active_household_id, 0), COALESCE(last_seen_at, '')
 		   FROM sessions WHERE token_hash = ?`,
 		hash)
 	var sess Session
-	var expiresAt, createdAt string
+	var expiresAt, createdAt, lastSeen string
 	err := row.Scan(&sess.ID, &sess.UserID, &sess.TokenHash, &expiresAt, &sess.IPAddress, &sess.UserAgent, &createdAt,
-		&sess.ActiveHouseholdID)
+		&sess.ActiveHouseholdID, &lastSeen)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -42,7 +42,18 @@ func (s *store) GetSessionByTokenHash(ctx context.Context, hash string) (*Sessio
 	}
 	sess.ExpiresAt, _ = time.Parse(time.RFC3339, expiresAt)
 	sess.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	sess.LastSeenAt = sess.CreatedAt
+	if t, err := time.Parse(time.RFC3339Nano, lastSeen); err == nil {
+		sess.LastSeenAt = t
+	}
 	return &sess, nil
+}
+
+// TouchSession records activity on a session for the idle timeout.
+func (s *store) TouchSession(ctx context.Context, id int64, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at = ? WHERE id = ?`,
+		at.UTC().Format(time.RFC3339Nano), id)
+	return err
 }
 
 func (s *store) DeleteSession(ctx context.Context, id int64) error {

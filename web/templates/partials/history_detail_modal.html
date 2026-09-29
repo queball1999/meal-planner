@@ -19,7 +19,7 @@
   <div class="modal-dialog__footer" id="history-detail-actions"></div>
 {{template "partials/modal_close.html" .}}
 
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     var modal = document.getElementById('history-detail-modal');
     if (!modal || modal.dataset.wired) return;

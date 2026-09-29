@@ -109,8 +109,18 @@ func toFloat(v any) float64 {
 // templateFuncs is the function map every page template is parsed with. It
 // lives in one place so the template parse test can use the exact same map -
 // a func added here can never go missing from the test and blow up at runtime.
+// nonceFuncs gives templates this request's CSP nonce: every inline
+// <script> is written <script nonce="{{cspNonce}}"> (see securityHeaders).
+func nonceFuncs(r *http.Request) template.FuncMap {
+	n := cspNonceFrom(r)
+	return template.FuncMap{"cspNonce": func() string { return n }}
+}
+
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
+		// cspNonce is replaced per request (nonceFuncs); this stub lets the
+		// templates parse anywhere else, e.g. in tests.
+		"cspNonce": func() string { return "" },
 		"icon":     iconFunc,
 		"stepText": stripStepNumber,
 		// qtyLabel renders "4 each" as "4", "2 slice" as "2 slices", and
@@ -268,6 +278,7 @@ func (s *Server) renderWithPage(w http.ResponseWriter, r *http.Request, name, pa
 	templateStart := time.Now()
 	tmpl, err := template.New("").
 		Funcs(templateFuncs()).
+		Funcs(nonceFuncs(r)).
 		ParseFS(templateFS,
 			"templates/layout.html",
 			"templates/partials/*.html",
@@ -314,6 +325,7 @@ func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, template
 
 	tmpl, err := template.New("").
 		Funcs(templateFuncs()).
+		Funcs(nonceFuncs(r)).
 		ParseFS(templateFS, "templates/partials/*.html")
 	if err != nil {
 		log.Printf("render fragment %s: parse: %v", templateName, err)

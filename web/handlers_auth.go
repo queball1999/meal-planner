@@ -43,12 +43,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
+	// Rate limit and lockout come first, before any bcrypt work, and treat
+	// unknown usernames exactly like real ones (QSS §2.1, §2.2).
+	lockKey := normUsername(username)
+	if msg := s.checkLoginThrottle(r, lockKey, "auth.login"); msg != "" {
+		s.setNotify(w, NotifyDanger, msg)
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		return
+	}
+
 	user, err := s.store.GetUserByUsername(ctx, username)
 	if err != nil || user == nil {
 		s.logEvent(r, nil, "auth.login.failed", "user", "", `{"reason":"user_not_found"}`)
-		// Deliberate constant-time response: do a dummy bcrypt compare so
-		// timing doesn't reveal whether the username exists.
-		_ = auth.CheckPassword("$2a$12$notavalidhashXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", password)
+		// Spend a real bcrypt compare so timing doesn't reveal whether the
+		// username exists.
+		auth.CheckPasswordDummy(password)
+		s.recordLoginResult(r, lockKey, false)
 		s.setNotify(w, NotifyDanger, "Invalid username or password")
 		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 		return
@@ -57,10 +67,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := auth.CheckPassword(user.PasswordHash, password); err != nil {
 		id := user.ID
 		s.logEvent(r, &id, "auth.login.failed", "user", fmt.Sprintf("%d", id), `{"reason":"wrong_password"}`)
+		s.recordLoginResult(r, lockKey, false)
 		s.setNotify(w, NotifyDanger, "Invalid username or password")
 		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 		return
 	}
+	s.recordLoginResult(r, lockKey, true)
 
 	token, err := auth.GenerateToken()
 	if err != nil {
@@ -76,7 +88,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.setSessionCookie(w, token, expiresAt)
+	s.setSessionCookie(w, r, token, expiresAt)
 	id := user.ID
 	s.logEvent(r, &id, "auth.login", "user", fmt.Sprintf("%d", id), "")
 
@@ -87,7 +99,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromCtx(r)
 
-	cookie, err := r.Cookie(middleware.SessionCookieName)
+	name, _ := s.sessionOpts().CookieFor(r)
+	cookie, err := r.Cookie(name)
 	if err == nil {
 		sess, err := s.store.GetSessionByTokenHash(r.Context(), auth.HashToken(cookie.Value))
 		if err == nil && sess != nil {
@@ -95,7 +108,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.clearSessionCookie(w)
+	s.clearSessionCookie(w, r)
 
 	if user != nil {
 		id := user.ID

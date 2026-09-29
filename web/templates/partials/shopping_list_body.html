@@ -18,7 +18,7 @@
     <a class="btn btn-primary btn-sm" href="/list/shop"
        title="Shopping mode" aria-label="Open shopping mode">{{icon "cart"}} Shop</a>
     {{end}}
-    <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()"
+    <button type="button" class="btn btn-ghost btn-sm" data-print
             title="Print" aria-label="Print shopping list">{{icon "printer"}} Print</button>
     <a class="btn btn-ghost btn-sm" href="/list/export?format=csv"
        title="Export CSV" aria-label="Export shopping list as CSV">{{icon "download"}} Export</a>
@@ -112,8 +112,7 @@
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
                        {{if .Checked}}checked{{end}}
-                       {{if $root.Data.ReadOnly}}disabled{{end}}
-                       onchange="toggleCheck(this)">
+                       {{if $root.Data.ReadOnly}}disabled{{end}}>
                 <span class="shopping-item__name-wrap">
                     <span class="shopping-item__name-row">
                         <span class="shopping-item__name">{{.DisplayName}}</span>
@@ -199,8 +198,7 @@
                 <input type="checkbox" class="shopping-item__checkbox"
                        data-id="{{.ID}}"
                        {{if .Checked}}checked{{end}}
-                       {{if $root.Data.ReadOnly}}disabled{{end}}
-                       onchange="toggleCheck(this)">
+                       {{if $root.Data.ReadOnly}}disabled{{end}}>
                 <span class="shopping-item__name-wrap">
                     <span class="shopping-item__name-row">
                         <span class="shopping-item__name">{{.DisplayName}}</span>
@@ -293,7 +291,7 @@
 {{template "partials/modal_close.html" $root}}
 
 <form id="csrf-form" hidden>{{$root.CSRFField}}</form>
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     var csrfInput = document.querySelector('#csrf-form input[name]');
     var csrfToken = csrfInput ? csrfInput.value : '';
@@ -326,6 +324,17 @@
             }
         });
         el.textContent = '$' + (cents / 100).toFixed(2);
+    }
+
+    // Delegated rather than onchange="" (the CSP refuses inline handlers),
+    // and bound on document so rows swapped in by the pricing poll still
+    // work. Bound once even if this partial renders twice.
+    if (!window.__shoppingCheckBound) {
+        window.__shoppingCheckBound = true;
+        document.addEventListener('change', function (e) {
+            var cb = e.target;
+            if (cb.matches && cb.matches('.shopping-item__checkbox')) window.toggleCheck(cb);
+        });
     }
 
     window.toggleCheck = function(cb) {

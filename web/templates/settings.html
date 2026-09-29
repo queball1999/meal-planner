@@ -403,7 +403,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     function csrfToken() {
         var f = document.getElementById('csrf-token');
@@ -728,7 +728,7 @@
 </script>
 
 {{if .Data.HasLLM}}
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     /* ── Test AI ─────────────────────────────────────────────────────── */
     var btn = document.getElementById('testAIBtn');

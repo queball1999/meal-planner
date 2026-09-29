@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -28,13 +29,39 @@ func CheckPassword(hash, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 }
 
+// MaxPasswordBytes is bcrypt's input limit. Longer passwords are refused
+// here with a clear message rather than failing inside the hasher.
+const MaxPasswordBytes = 72
+
 // ValidatePassword enforces the minimum password policy (§9.1): at least 8
-// characters. Complexity is off by default on LAN.
+// characters and at most 72 bytes - bytes, not characters, since bcrypt
+// counts UTF-8 bytes (QSS security design §7.1). Complexity is off by
+// default on LAN.
 func ValidatePassword(password string) error {
 	if len(password) < 8 {
 		return errors.New("password must be at least 8 characters")
 	}
+	if len(password) > MaxPasswordBytes {
+		return fmt.Errorf("password must be at most %d bytes (fewer characters if it uses accents, emoji or other non-ASCII letters)", MaxPasswordBytes)
+	}
 	return nil
+}
+
+var (
+	dummyOnce sync.Once
+	dummyHash []byte
+)
+
+// CheckPasswordDummy spends the same bcrypt time as a real CheckPassword,
+// against a hash made once at the real cost. Call it when the username
+// doesn't exist, so response time can't tell the two cases apart (QSS
+// security design §7.1). A hard-coded hash doesn't work: a malformed one
+// fails instantly, and one at a different cost takes a different time.
+func CheckPasswordDummy(password string) {
+	dummyOnce.Do(func() {
+		dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy password"), bcryptCost)
+	})
+	_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 }
 
 // GenerateToken returns 32 cryptographically random bytes as a hex string.

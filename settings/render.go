@@ -45,7 +45,8 @@ func LiveRenderConfig(ctx context.Context, store db.Store, cfg *config.Config) s
 		if err != nil || row == nil || row.Source != "admin" {
 			return "", false
 		}
-		return strings.TrimSpace(row.Value), true
+		v, ok := openValue(row.Value)
+		return strings.TrimSpace(v), ok
 	}
 	if v, ok := admin("RENDER_BACKEND"); ok {
 		rc.Backend = v

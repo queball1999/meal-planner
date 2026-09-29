@@ -28,9 +28,11 @@
         box-shadow var(--dur) var(--ease);
 }
 
-.btn:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+/* Focus is the global §4.11 bottom bar (base.css). On a solid fill the bar
+ * takes the button's text colour, so it keeps contrast against the fill. */
+.btn-primary,
+.btn-danger {
+    --bar-color: currentColor;
 }
 
 .btn:disabled,
@@ -59,37 +61,13 @@
     color: var(--text-inverse);
 }
 
-/* ── Pink themes: hand-drawn "sticker" border ─────────────────────────────
- * All the cute lives in the border, not emoji: a dashed ring, roughed up
- * with the SVG turbulence filter defined once in layout.html (#kawaii-
- * wobble), floats just outside every button. Skips icon-only buttons (too
- * small to carry it) and :not(.is-loading) so it never fights the busy-
- * spinner's own ::before above. */
+/* ── Pink themes ──────────────────────────────────────────────────────────
+ * The dashed "sticker" ring that used to float around every button here was
+ * removed: it traced the button's rounded outline, which QSS style guide
+ * §4.11 rules out. Buttons stay positioned for the bubble cluster below. */
 :root[data-theme="pink-light"] .btn:not(.btn-icon),
 :root[data-theme="pink-dark"] .btn:not(.btn-icon) {
     position: relative;
-}
-:root[data-theme="pink-light"] .btn:not(.btn-icon):not(.is-loading)::before,
-:root[data-theme="pink-dark"] .btn:not(.btn-icon):not(.is-loading)::before {
-    content: "";
-    position: absolute;
-    inset: -4px;
-    border: 2px dashed var(--accent);
-    border-radius: inherit;
-    opacity: .7;
-    pointer-events: none;
-}
-/* Buttons in table rows are packed into ~36-40px of height. Even pulled in,
- * the ring's filter-blurred dashed edge still reaches the row's
- * border-bottom and paints over it, breaking the separator line right where
- * the buttons sit - there's no inset small enough to fix that without the
- * ring basically disappearing anyway, so skip it in tables entirely. Plain
- * ghost buttons (their look in every other theme too) read fine at this
- * density. Scoped to `.data-table`, not `.data-table__actions`, so a row
- * whose action cell is missing that class can't reintroduce the ring. */
-:root[data-theme="pink-light"] .data-table .btn:not(.btn-icon):not(.is-loading)::before,
-:root[data-theme="pink-dark"] .data-table .btn:not(.btn-icon):not(.is-loading)::before {
-    content: none;
 }
 
 /* The primary action also gets a tiny hand-drawn bubble cluster in its
@@ -354,9 +332,17 @@
     background: var(--accent);
 }
 
-.toggle-wrap input:focus-visible + .toggle-track {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+/* §4.11: focus is a square-ended bar under the track, clear of its rounded
+ * ends - not an outline around the pill. (The input itself is visually
+ * hidden, so the bar goes on the track.) */
+.toggle-wrap input:focus-visible + .toggle-track::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -6px;
+    height: 2px;
+    background-color: var(--clr-focus);
 }
 
 .toggle-track::after {
@@ -522,13 +508,13 @@
     background: var(--surface);
     color: var(--text);
     font-size: var(--text-sm);
-    transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+    transition: border-color var(--dur) var(--ease);
 }
 
+/* §4.2/§4.11: focus is the border colour only - no glow ring. */
 .field-input:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(67, 160, 71, 0.15);
+    border-color: var(--border-focus);
 }
 
 .field-hint {
@@ -714,7 +700,7 @@
 
 .user-menu__name:hover,
 .user-menu__name--active {
-    background: var(--accent-bg);
+    background-color: var(--accent-bg);
     color: var(--accent-text);
     text-decoration: none;
 }
@@ -1084,12 +1070,11 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .ai-picker__opt:hover,
 .ai-picker__opt:focus-visible {
-    background: var(--surface-2, rgba(127, 127, 127, .12));
-    outline: none;
+    background-color: var(--surface-2, rgba(127, 127, 127, .12));
 }
 
 .ai-picker__opt.is-selected {
-    background: var(--surface-2, rgba(127, 127, 127, .12));
+    background-color: var(--surface-2, rgba(127, 127, 127, .12));
 }
 
 .ai-picker__label {
@@ -1190,7 +1175,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .pager__link:hover { border-color: var(--accent); }
 
 .pager__link.is-current {
-    background: var(--accent);
+    background-color: var(--accent);
     border-color: var(--accent);
     color: var(--accent-contrast, #fff);
     font-weight: var(--weight-semi);
@@ -1515,11 +1500,11 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .cal-grid--week .cal-cell { min-height: 132px; }
 .cal-cell--muted { opacity: .4; }
 
-/* Today: a solid highlighted cell (opaque accent tint), not just an outline,
- * with the date sitting in a filled accent chip. */
+/* Today: a solid highlighted cell (opaque accent tint) with the date in a
+ * filled accent chip, and the §4.11 current-state bar (base.css) - no inset
+ * ring. */
 .cal-cell--today {
-    background: var(--accent-bg);
-    box-shadow: inset 0 0 0 2px var(--accent);
+    background-color: var(--accent-bg);
 }
 .cal-cell--today .cal-cell__num {
     display: inline-flex;
@@ -1774,7 +1759,13 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .meal-card--lunch     { border-left-color: #10b981; }
 .meal-card--dinner    { border-left-color: #6366f1; }
 .meal-card--empty { background: transparent; border-style: dashed; justify-content: flex-start; }
-.meal-card--locked { box-shadow: inset 0 0 0 1px var(--accent-border); }
+/* Locked: an accent border, not an inset ring (§4.11). The left edge keeps
+ * its meal-slot colour. */
+.meal-card--locked {
+    border-top-color: var(--accent-border);
+    border-right-color: var(--accent-border);
+    border-bottom-color: var(--accent-border);
+}
 
 .meal-card__slot {
     font-size: var(--text-lg);
@@ -1899,7 +1890,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .have-btn--on,
 .have-btn--on:hover {
     color: var(--success);
-    background: var(--success-bg);
+    background-color: var(--success-bg);
 }
 
 /* Dimmed, not struck through - the line is still worth reading, it just is
@@ -2136,7 +2127,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
  * carries its own .text-muted color, so it needs the override repeated. */
 .recipe-picker__btn:hover,
 .recipe-picker__btn.is-selected {
-    background: var(--accent-bg);
+    background-color: var(--accent-bg);
     color: var(--accent-text);
 }
 
@@ -2264,7 +2255,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     cursor: pointer;
 }
 
-.match-list__btn:hover { background: var(--accent-bg); }
+.match-list__btn:hover { background-color: var(--accent-bg); }
 
 .match-list__meta { font-size: var(--text-xs); white-space: nowrap; }
 
@@ -2540,25 +2531,26 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 }
 .hovercard__act:hover,
 .hovercard__act:focus-visible {
-    background: var(--accent-bg);
+    background-color: var(--accent-bg);
     color: var(--accent-text);
-    outline: none;
 }
 .hovercard__act svg { width: 16px; height: 16px; }
 
 /* A meal jumped to from the pinned card's "show on the week plan" button. */
+/* Two pulses of accent tint on the background - not a ring around the card
+ * (§4.11). Reduced motion gets a steady tint for as long as .is-flash stays
+ * on. */
 .cal-meal.is-flash,
 .meal-card.is-flash {
-    border-radius: var(--radius-sm);
     animation: meal-flash 1.6s var(--ease, ease-out);
 }
 @keyframes meal-flash {
-    0%, 40%, 80%, 100% { box-shadow: 0 0 0 0 transparent; }
-    20%, 60%           { box-shadow: 0 0 0 3px var(--accent); }
+    0%, 40%, 80%, 100% { background-color: var(--surface); }
+    20%, 60%           { background-color: var(--accent-bg); }
 }
 @media (prefers-reduced-motion: reduce) {
     .cal-meal.is-flash,
-    .meal-card.is-flash { animation: none; box-shadow: 0 0 0 3px var(--accent); }
+    .meal-card.is-flash { animation: none; background-color: var(--accent-bg); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2905,8 +2897,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .match-list__view:hover,
 .match-list__view:focus-visible {
     color: var(--accent-text);
-    background: var(--accent-bg);
-    outline: none;
+    background-color: var(--accent-bg);
 }
 .match-list__view svg { width: 16px; height: 16px; }
 .match-list__btn--new { color: var(--accent-text); font-weight: var(--weight-medium); }
@@ -2963,7 +2954,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 .meal-status-btn--active {
     color: var(--accent-text);
-    background: var(--accent-bg);
+    background-color: var(--accent-bg);
 }
 
 /* ── "Ask AI" escape hatch inside an action modal ────────────────────────── */
@@ -2984,9 +2975,18 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 /* ── Plan history: click-a-row "quick details" modal ─────────────────────── */
 .data-table__row-link { cursor: pointer; }
-.data-table__row-link:hover td { background: var(--accent-bg); color: var(--accent-text); }
+.data-table__row-link:hover td { background-color: var(--accent-bg); color: var(--accent-text); }
 .data-table__row-link:hover td .text-muted { color: inherit; }
-.data-table__row-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* §4.11: a keyboard-focused row gets the bottom bar straight across its
+ * cells, not an outline or a left-edge bar. The bar goes on the cells (row
+ * backgrounds sit under them), so the row's own global bar is switched off. */
+.data-table tr.data-table__row-link[tabindex]:focus-visible { background-image: none !important; }
+.data-table tr.data-table__row-link[tabindex]:focus-visible td {
+    background-image: linear-gradient(var(--clr-focus), var(--clr-focus));
+    background-size: 100% 2px;
+    background-position: center bottom;
+    background-repeat: no-repeat;
+}
 
 .history-detail__summary {
     font-size: var(--text-lg);

@@ -123,7 +123,7 @@ func newRBACFixtureWith(t *testing.T, tweak func(*config.Config)) *rbacFixture {
 	// who may do what, and a CSRF 403 would mask a role 403.
 	mux := http.NewServeMux()
 	s.routes(mux)
-	f.h = middleware.LoadSession(store, cfg.MultiTenant)(mux)
+	f.h = middleware.LoadSession(store, middleware.SessionOptions{MultiTenant: cfg.MultiTenant})(mux)
 	return f
 }
 

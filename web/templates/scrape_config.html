@@ -78,7 +78,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     function csrfToken() {
         var f = document.getElementById('csrf-token');
@@ -397,7 +397,7 @@
 
 <form id="csrf-form" hidden>{{.CSRFField}}</form>
 
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     var csrf = (document.querySelector('#csrf-form input[name]') || {}).value || '';
 

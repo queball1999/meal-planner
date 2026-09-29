@@ -142,9 +142,10 @@
     opacity: 1;
     transform: scale(1);
 }
+/* No halo ring around the dot (§4.11): the active dot is picked out by its
+ * accent border and scale, and its label by the current-state bar. */
 .wizard-progress__step--active .wizard-step-dot {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-bg);
 }
 .wizard-progress__step--active .wizard-step-label {
     color: var(--accent-text);
@@ -156,7 +157,6 @@
  * bar (web/templates/plan_generate.html), never during setup. */
 .wizard-progress__step--error .wizard-step-dot {
     border-color: var(--danger, #ef4444);
-    box-shadow: 0 0 0 3px var(--danger-bg, #ef444422);
 }
 .wizard-progress__step--error .wizard-step-label {
     color: var(--danger, #ef4444);
@@ -219,7 +219,7 @@
 }
 .checkbox-chip input[type="checkbox"] { accent-color: var(--accent); }
 .checkbox-chip:has(input:checked) {
-    background: var(--accent-bg);
+    background-color: var(--accent-bg);
     border-color: var(--accent-border);
     color: var(--accent-text);
 }
@@ -241,13 +241,14 @@
     cursor: pointer;
     border-radius: var(--radius);
     border: 1px solid var(--border);
-    transition: border-color .15s, box-shadow .15s, background .15s;
+    transition: border-color .15s, background .15s;
     position: relative;
 }
+/* Picked: accent border, tint and the current-state bar (base.css) - no
+ * ring outside the border (§4.11). */
 .store-chip:has(input:checked) {
     border-color: var(--accent);
-    background: var(--accent-bg);
-    box-shadow: 0 0 0 2px var(--accent-bg);
+    background-color: var(--accent-bg);
 }
 .store-chip__check {
     position: absolute;
@@ -451,7 +452,7 @@ details[open] > .llm-log-summary::before { transform: rotate(90deg); }
 
 .wizard-step-dot {
     position: relative;
-    transition: background .25s, border-color .25s, box-shadow .25s, transform .25s;
+    transition: background .25s, border-color .25s, transform .25s;
 }
 .wizard-progress__step--active .wizard-step-dot {
     transform: scale(1.15);
@@ -480,7 +481,7 @@ details[open] > .llm-log-summary::before { transform: rotate(90deg); }
 }
 
 /* Store chips pop when picked and dim when unavailable near the ZIP. */
-.store-chip { transition: border-color .15s, box-shadow .15s, background .15s, transform .15s; }
+.store-chip { transition: border-color .15s, background .15s, transform .15s; }
 .store-chip:hover { transform: translateY(-2px); }
 .store-chip:has(input:checked) { animation: chipPop .22s ease; }
 

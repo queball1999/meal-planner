@@ -305,7 +305,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.setSessionCookie(w, token, expiresAt)
+	s.setSessionCookie(w, r, token, expiresAt)
 
 	id := user.ID
 	s.logEvent(r, &id, "setup.complete", "household", strconv.FormatInt(hh.ID, 10), "")

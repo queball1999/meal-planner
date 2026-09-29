@@ -327,7 +327,7 @@
         </form>
 {{template "partials/modal_close.html" .}}
 
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     // Out-of-area chains are hidden, not removed: a household near a state
     // line can still opt in.

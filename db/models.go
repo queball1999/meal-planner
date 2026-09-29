@@ -77,6 +77,9 @@ type Session struct {
 	IPAddress string
 	UserAgent string
 	CreatedAt time.Time
+	// LastSeenAt is the last page load that counted as activity (at most once
+	// a minute; background polling doesn't count). Idle timeout reads it.
+	LastSeenAt time.Time
 
 	// ActiveHouseholdID is the household this session is looking at; 0 means
 	// "none chosen yet" and middleware falls back to the first membership.

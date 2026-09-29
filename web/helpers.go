@@ -23,26 +23,43 @@ const (
 
 // ── Session cookies ──────────────────────────────────────────────────────────
 
-func (s *Server) setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
+func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
+	name, secure := s.sessionOpts().CookieFor(r)
 	http.SetCookie(w, &http.Cookie{
-		Name:     middleware.SessionCookieName,
+		Name:     name,
 		Value:    token,
 		Path:     "/",
 		Expires:  expires,
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func (s *Server) clearSessionCookie(w http.ResponseWriter) {
+func (s *Server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	name, secure := s.sessionOpts().CookieFor(r)
 	http.SetCookie(w, &http.Cookie{
-		Name:     middleware.SessionCookieName,
+		Name:     name,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// sessionOpts is how LoadSession reads sessions and how the handlers above
+// write them: idle limit, tenancy, and which cookie the request's host gets.
+func (s *Server) sessionOpts() middleware.SessionOptions {
+	opts := middleware.SessionOptions{
+		MultiTenant: s.cfg.MultiTenant,
+		IdleTimeout: time.Duration(s.cfg.SessionIdleMinutes) * time.Minute,
+	}
+	if o := publicOrigin(s.cfg.PublicBaseURL); o != nil && o.Scheme == "https" {
+		opts.SecureHost = o.Host
+	}
+	return opts
 }
 
 // ── Notify messages ──────────────────────────────────────────────────────────

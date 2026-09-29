@@ -95,7 +95,7 @@
 
     <main class="site-main" id="main-content" tabindex="-1">
         {{if .Notify}}
-        <script>window.__notify = { msg: "{{.Notify}}", kind: "{{.NotifyKind}}" };</script>
+        <script nonce="{{cspNonce}}">window.__notify = { msg: "{{.Notify}}", kind: "{{.NotifyKind}}" };</script>
         {{end}}
 
         {{block "content" .}}{{end}}

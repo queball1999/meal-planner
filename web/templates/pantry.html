@@ -94,7 +94,7 @@
     <input type="hidden" id="hid-scan-code" name="barcode">
 </form>
 <script src="/static/js/barcode-hid.js" defer></script>
-<script>
+<script nonce="{{cspNonce}}">
 document.addEventListener('barcode:scanned', function(e) {
     document.getElementById('hid-scan-code').value = e.detail.code;
     document.getElementById('hid-scan-form').submit();

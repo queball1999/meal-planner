@@ -398,7 +398,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{cspNonce}}">
 // Desktop app: the Tauri shell opens /setup#token=… with the per-launch setup
 // token, so nobody has to dig it out of a log. It rides in the fragment, which
 // browsers never send to the server, and is cleared from the address as soon
@@ -414,7 +414,7 @@
     history.replaceState(null, '', window.location.pathname + window.location.search);
 })();
 </script>
-<script>
+<script nonce="{{cspNonce}}">
 (function () {
     'use strict';
 

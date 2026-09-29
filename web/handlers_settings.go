@@ -384,12 +384,22 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.SetSetting(r.Context(), def.Key, body.Value); err != nil {
+	stored, err := settings.SealValue(def, body.Value)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "encrypt failed"})
+		return
+	}
+	if err := s.store.SetSetting(r.Context(), def.Key, stored); err != nil {
 		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "save failed"})
 		return
 	}
 
-	s.logSettingsEvent(r, "setting.changed", def.Key, "set to "+body.Value)
+	// A secret is never written to the audit log by value (QSS §5.3).
+	detail := "set to " + body.Value
+	if def.Kind == settings.KindSecret {
+		detail = "secret updated"
+	}
+	s.logSettingsEvent(r, "setting.changed", def.Key, detail)
 	// Provider/model/key/sampling changes take effect immediately - see
 	// reloadLLM. Every other setting on this page still needs a restart.
 	if def.Category == "AI Provider" {

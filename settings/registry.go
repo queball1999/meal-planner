@@ -267,7 +267,11 @@ func Validate(d Definition, value string) error {
 // before Apply.
 func Seed(ctx context.Context, store db.Store, cfg *config.Config) error {
 	for _, d := range Defs {
-		if err := store.SeedSetting(ctx, d.Key, d.FromConfig(cfg)); err != nil {
+		v, err := SealValue(d, d.FromConfig(cfg))
+		if err != nil {
+			return err
+		}
+		if err := store.SeedSetting(ctx, d.Key, v); err != nil {
 			return err
 		}
 	}
@@ -294,7 +298,11 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 		if r == nil || r.Source != "admin" {
 			return "", false
 		}
-		return r.Value, true
+		v, ok := openValue(r.Value)
+		if !ok {
+			warn("settings: stored value for %s can't be decrypted (SESSION_SECRET changed?), keeping .env default - re-enter it on the Settings page", key)
+		}
+		return v, ok
 	}
 	warnBad := func(key, value string, err error) {
 		warn("settings: stored value for %s (%q) is invalid, keeping .env default: %v", key, value, err)

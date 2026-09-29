@@ -36,6 +36,13 @@ type Store interface {
 	DeleteSession(ctx context.Context, id int64) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
 	SetSessionHousehold(ctx context.Context, sessionID, householdID int64) error
+	TouchSession(ctx context.Context, id int64, at time.Time) error
+
+	// ── Sign-in attempts / lockout (00034_login_attempts.sql) ─────────────
+
+	RecordLoginAttempt(ctx context.Context, username, clientIP string, success bool, at time.Time) error
+	FailedLoginTimes(ctx context.Context, username, clientIP string, since time.Time) ([]time.Time, error)
+	ClearLoginFailures(ctx context.Context, username, clientIP string) error
 
 	// ── Household (§10.1) ─────────────────────────────────────────────────
 

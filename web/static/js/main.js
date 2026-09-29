@@ -323,6 +323,17 @@ document.addEventListener('keydown', function (e) {
     button.click();
 });
 
+// ── Declarative actions (the CSP refuses inline onclick/onchange) ─────────
+// data-autosubmit on a control submits its form when it changes (the pager's
+// rows-per-page select); data-print on a button prints the page.
+document.addEventListener('change', function (e) {
+    const el = e.target;
+    if (el.matches && el.matches('[data-autosubmit]') && el.form) el.form.submit();
+});
+document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-print]')) window.print();
+});
+
 // ── CSRF token helper (shared by autosave and fetch calls) ────────────────
 
 function goeatCSRF() {

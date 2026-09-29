@@ -73,9 +73,17 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/account", http.StatusSeeOther)
 	}
 
+	// The current-password check is a password oracle for whoever holds the
+	// session, so it shares sign-in's rate limit and lockout (QSS §7.3).
+	lockKey := normUsername(user.Username)
+	if msg := s.checkLoginThrottle(r, lockKey, "account.password"); msg != "" {
+		fail(msg)
+		return
+	}
 	if auth.CheckPassword(user.PasswordHash, current) != nil {
 		id := user.ID
 		s.logEvent(r, &id, "account.password.failed", "user", fmt.Sprintf("%d", id), `{"reason":"wrong_current"}`)
+		s.recordLoginResult(r, lockKey, false)
 		fail("Current password is incorrect.")
 		return
 	}
@@ -107,7 +115,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.DeleteUserSessions(r.Context(), user.ID)
 	id := user.ID
 	s.logEvent(r, &id, "account.password.changed", "user", fmt.Sprintf("%d", id), "")
-	s.clearSessionCookie(w)
+	s.clearSessionCookie(w, r)
 	s.setNotify(w, NotifySuccess, "Password changed. Please sign in again.")
 	http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 }

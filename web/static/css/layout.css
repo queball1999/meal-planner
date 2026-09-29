@@ -31,7 +31,6 @@ body {
 
 .skip-link:focus {
     top: 0;
-    outline-offset: 0;
 }
 
 /* ── Site header ────────────────────────────────────────────────────────── */
@@ -95,13 +94,13 @@ body {
     white-space: nowrap;
     text-decoration: none;
     transition:
-        background var(--dur) var(--ease),
+        background-color var(--dur) var(--ease),
         color var(--dur) var(--ease);
 }
 
 .nav-link:hover,
 .nav-link--active {
-    background: var(--accent-bg);
+    background-color: var(--accent-bg);
     color: var(--accent-text);
 }
 
@@ -229,7 +228,7 @@ body {
 }
 
 .header-search-form:focus-within {
-    border-color: var(--accent);
+    border-color: var(--border-focus);
 }
 
 .header-search-form__icon {

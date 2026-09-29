@@ -84,6 +84,10 @@ type Server struct {
 	// it per IP (see setup_token.go).
 	setup        setupClaim
 	setupLimiter *attemptLimiter
+
+	// loginLimiter throttles sign-in and step-up password checks per IP;
+	// the persistent lockout is in login_attempts (see lockout.go).
+	loginLimiter *attemptLimiter
 }
 
 // NewServer wires up routes, session loading, and CSRF middleware, then
@@ -110,6 +114,7 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		pendingChat:    make(map[int64]*agent.Pending),
 		resumableGen:   make(map[int64]*plan.TruncatedError),
 		setupLimiter:   newAttemptLimiter(10, 15*time.Minute),
+		loginLimiter:   newAttemptLimiter(loginRateMax, time.Minute),
 	}
 	s.handler = s.buildHandler()
 	return s
@@ -215,7 +220,8 @@ func buildChain(cfg *config.Config, store db.Store, gen llm.Generator) *pricing.
 
 // buildHandler composes the middleware stack around the route mux:
 //
-//	Timing → scheme guard → CSRF → LoadSession → mux
+//	Timing → RealIP → Host guard → security headers → scheme guard → CSRF →
+//	LoadSession → no-store → mux
 //
 // CSRF is filippo.io/csrf/gorilla (QSS security design §6.1): a cross-origin
 // check on Sec-Fetch-Site / Origin, the same one as Go's
@@ -229,7 +235,8 @@ func (s *Server) buildHandler() http.Handler {
 	s.routes(mux)
 
 	var h http.Handler = mux
-	h = middleware.LoadSession(s.store, s.cfg.MultiTenant)(h)
+	h = noStoreSignedIn(h)
+	h = middleware.LoadSession(s.store, s.sessionOpts())(h)
 
 	csrfOpts := []csrf.Option{csrf.ErrorHandler(http.HandlerFunc(s.handleCSRFError))}
 	// Trust the external origin declared in PUBLIC_BASE_URL - with its
@@ -242,6 +249,11 @@ func (s *Server) buildHandler() http.Handler {
 	}
 	h = csrf.Protect(nil, csrfOpts...)(h)
 	h = csrfSchemeGuard(public, h)
+	h = securityHeaders(public != nil && public.Scheme == "https", h)
+	if !s.cfg.Desktop { // desktop mode has its own loopback-only guard (Run)
+		h = hostGuard(s.cfg.HostAllowlist(), h)
+	}
+	h = middleware.RealIP(s.cfg.TrustedProxies)(h)
 	h = middleware.Timing(h) // outermost: footer's "Page" time includes CSRF + session overhead
 
 	return h

@@ -65,7 +65,7 @@
 
 .popover__item:hover,
 .popover__item:focus-visible {
-    background: var(--surface-2, var(--surface));
+    background-color: var(--surface-2, var(--surface));
 }
 
 .popover__item--active {

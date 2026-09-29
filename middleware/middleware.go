@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -18,8 +19,54 @@ import (
 )
 
 // SessionCookieName is the name of the session cookie, shared with the web
-// package so both read and write the same cookie.
+// package so both read and write the same cookie. On the https origin it
+// becomes SecureSessionCookieName instead (see SessionOptions.CookieFor).
 const SessionCookieName = "goeat_session"
+
+// SecureSessionCookieName carries the __Host- prefix: the browser only
+// accepts it with Secure, Path=/ and no Domain, so a sibling subdomain can't
+// set or overwrite it (QSS security design §1.1).
+const SecureSessionCookieName = "__Host-goeat_session"
+
+// SessionOptions configures LoadSession.
+type SessionOptions struct {
+	// MultiTenant is ENABLE_MULTI_TENANT - see withActiveHousehold.
+	MultiTenant bool
+	// IdleTimeout signs a session out after this long without activity
+	// (SESSION_IDLE_MINUTES). 0 = no idle limit.
+	IdleTimeout time.Duration
+	// SecureHost is PUBLIC_BASE_URL's host when that URL is https. Requests
+	// for that host get the Secure __Host- cookie; any other host (a LAN
+	// address over plain http) keeps the plain one, which a browser would
+	// refuse to store with Secure set.
+	SecureHost string
+}
+
+// CookieFor returns the session cookie name for r and whether it is Secure.
+func (o SessionOptions) CookieFor(r *http.Request) (name string, secure bool) {
+	if o.SecureHost != "" && strings.EqualFold(r.Host, o.SecureHost) {
+		return SecureSessionCookieName, true
+	}
+	return SessionCookieName, false
+}
+
+// touchEvery bounds last_seen_at writes to one a minute per session.
+const touchEvery = time.Minute
+
+// isActivity reports whether r is something the user did - a page load or a
+// form post - rather than background traffic (SSE streams, status polls,
+// fragment refreshes). Only activity refreshes last_seen_at, or an open tab
+// would keep the session alive forever (QSS security design §1.4).
+func isActivity(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return true
+	}
+	if mode := r.Header.Get("Sec-Fetch-Mode"); mode != "" {
+		return mode == "navigate"
+	}
+	// Browsers too old to send Sec-Fetch-*: a request for a page counts.
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
 
 // ── Context keys ────────────────────────────────────────────────────────────
 
@@ -113,10 +160,12 @@ func RequestStart(r *http.Request) (time.Time, bool) {
 // copied from login time, so a demotion or a removal from a household takes
 // effect on the victim's very next click (QSS security design §1.4, §8.5).
 //
-// multiTenant is ENABLE_MULTI_TENANT: when false the instance has one
-// household (the oldest) and every request acts on it - see
-// withActiveHousehold.
-func LoadSession(store db.Store, multiTenant bool) func(http.Handler) http.Handler {
+// With MultiTenant off the instance has one household (the oldest) and
+// every request acts on it - see withActiveHousehold.
+//
+// A session is refused once it passes its fixed expiry or has been idle for
+// longer than opts.IdleTimeout; an idle one is deleted on the spot.
+func LoadSession(store db.Store, opts SessionOptions) func(http.Handler) http.Handler {
 	// Once an account exists setup is done for good (the last admin can't be
 	// deleted), so stop counting users after the first yes.
 	var setupDone atomic.Bool
@@ -131,16 +180,27 @@ func LoadSession(store db.Store, multiTenant bool) func(http.Handler) http.Handl
 			}
 			ctx = context.WithValue(ctx, ctxKeySetupDone, setupDone.Load())
 
-			cookie, err := r.Cookie(SessionCookieName)
+			name, _ := opts.CookieFor(r)
+			cookie, err := r.Cookie(name)
 			if err == nil && cookie.Value != "" {
 				tokenHash := auth.HashToken(cookie.Value)
 				sess, err := store.GetSessionByTokenHash(ctx, tokenHash)
-				if err == nil && sess != nil && time.Now().Before(sess.ExpiresAt) {
+				now := time.Now()
+				if err == nil && sess != nil && opts.IdleTimeout > 0 && now.Sub(sess.LastSeenAt) > opts.IdleTimeout {
+					_ = store.DeleteSession(ctx, sess.ID)
+					sess = nil
+				}
+				if err == nil && sess != nil && now.Before(sess.ExpiresAt) {
 					user, err := store.GetUserByID(ctx, sess.UserID)
 					if err == nil && user != nil {
+						if isActivity(r) && now.Sub(sess.LastSeenAt) >= touchEvery {
+							if err := store.TouchSession(ctx, sess.ID, now); err == nil {
+								sess.LastSeenAt = now
+							}
+						}
 						ctx = context.WithValue(ctx, ctxKeyUser, user)
 						ctx = context.WithValue(ctx, ctxKeySession, sess)
-						ctx = withActiveHousehold(ctx, store, user, sess, multiTenant)
+						ctx = withActiveHousehold(ctx, store, user, sess, opts.MultiTenant)
 					}
 				}
 			}
@@ -279,20 +339,87 @@ func RequireInstanceAdmin(next http.Handler) http.Handler {
 
 // ── ClientIP ─────────────────────────────────────────────────────────────────
 
-// ClientIP extracts the real client IP from the request, following the chain
-// X-Forwarded-For → X-Real-IP → RemoteAddr (§9.3).
-func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if idx := strings.IndexByte(xff, ','); idx >= 0 {
-			return strings.TrimSpace(xff[:idx])
+// RealIP rewrites r.RemoteAddr to the real client address, believing
+// X-Forwarded-For only when the direct peer is one of trusted (the reverse
+// proxies in TRUSTED_PROXIES). It then walks the header right to left and
+// takes the first address that isn't itself a trusted proxy - the leftmost
+// entry is whatever the client chose to write (QSS security design §5.4).
+// With no trusted proxies the header is ignored entirely.
+//
+// Wrap the outermost layer so rate limiting, lockout and the audit log all
+// see the same address.
+func RealIP(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if len(trusted) == 0 {
+			return next
 		}
-		return strings.TrimSpace(xff)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if ip, ok := forwardedClient(r, trusted); ok {
+				r2 := r.Clone(r.Context())
+				r2.RemoteAddr = net.JoinHostPort(ip.String(), "0")
+				r = r2
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+}
+
+// forwardedClient returns the client address from X-Forwarded-For when the
+// peer is a trusted proxy, or ok=false to keep the peer address.
+func forwardedClient(r *http.Request, trusted []netip.Prefix) (netip.Addr, bool) {
+	peer, ok := parseAddr(r.RemoteAddr)
+	if !ok || !inPrefixes(peer, trusted) {
+		return netip.Addr{}, false
 	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if host == "" {
+	var hops []string
+	for _, h := range r.Header.Values("X-Forwarded-For") {
+		hops = append(hops, strings.Split(h, ",")...)
+	}
+	var last netip.Addr
+	for i := len(hops) - 1; i >= 0; i-- {
+		addr, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+		if err != nil {
+			break // garbage: stop at the last address we could trust
+		}
+		addr = addr.Unmap()
+		if !inPrefixes(addr, trusted) {
+			return addr, true
+		}
+		last = addr
+	}
+	if last.IsValid() {
+		return last, true // every hop was a proxy
+	}
+	return netip.Addr{}, false
+}
+
+func parseAddr(hostport string) (netip.Addr, bool) {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return netip.Addr{}, false
+	}
+	return addr.Unmap(), true
+}
+
+func inPrefixes(addr netip.Addr, prefixes []netip.Prefix) bool {
+	for _, p := range prefixes {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// ClientIP returns the client's IP: the direct peer address, which RealIP
+// has already replaced with the forwarded client when a trusted proxy sent
+// the request. Request headers are never read here.
+func ClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil || host == "" {
 		return r.RemoteAddr
 	}
 	return host

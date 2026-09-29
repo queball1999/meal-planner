@@ -17,7 +17,8 @@
     --surface:        #ffffff;
     --surface-raised: #ffffff;
     --border:         #e0e0e0;
-    --border-focus:   var(--accent);
+    --border-focus:   var(--clr-focus); /* form fields' focus border (§4.2), same ≥3:1 colour as the bar */
+    --clr-focus:      #2e7d32;   /* §4.11 focus bar: 5.13:1 on --surface, 4.56:1 on --accent-bg (--accent #43a047 is only 3.03:1 on --bg) */
     --text:           #212121;
     --text-muted:     #757575;
     --text-inverse:   #ffffff;
@@ -120,6 +121,7 @@
         --text-muted:     #9e9e9e;
 
         --accent-bg:      #1a2e1b;
+        --clr-focus:      #a5d6a7;   /* 10.14:1 on --surface */
         --accent-text:    #a5d6a7;
         --accent-border:  #2e5c30;
 
@@ -153,6 +155,7 @@
     --text-muted:     #9e9e9e;
 
     --accent-bg:      #1a2e1b;
+    --clr-focus:      #a5d6a7;   /* 10.14:1 on --surface */
     --accent-text:    #a5d6a7;
     --accent-border:  #2e5c30;
 
@@ -182,6 +185,7 @@
     --accent:         #5e81ac;
     --accent-hover:   #81a1c1;
     --accent-bg:      #242e3d;
+    --clr-focus:      #88c0d0;   /* 5.03:1 on --surface */
     --accent-text:    #88c0d0;
     --accent-border:  #3b4252;
 
@@ -230,6 +234,7 @@
     --accent:         #ff6fa5;
     --accent-hover:   #ff4d8d;
     --accent-bg:      #ffe0ec;
+    --clr-focus:      #c2185b;   /* 5.87:1 on --surface, 4.79:1 on --accent-bg (--accent #ff6fa5 is 2.6:1) */
     --accent-text:    #c2185b;
     --accent-border:  #ffb3d1;
 
@@ -287,6 +292,7 @@
     --accent:         #ff6fa5;
     --accent-hover:   #ff4d8d;
     --accent-bg:      #ffe0ec;
+    --clr-focus:      #ff6fa5;   /* 6.41:1 on --surface */
     --accent-text:    #c2185b;
     --accent-border:  #ffb3d1;
 

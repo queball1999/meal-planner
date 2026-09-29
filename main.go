@@ -39,6 +39,15 @@ func main() {
 	// admin-edited values from a past Settings-page save on top of cfg -
 	// same one-time, before-subsystems-are-built timing .env itself gets.
 	seedCtx := context.Background()
+	box := cryptbox.New(cfg.SessionSecret)
+	// Secret settings (API keys) are sealed at rest - unless the secret is
+	// made up fresh each boot, when sealing would lose them on restart.
+	if !cfg.EphemeralSecret {
+		settings.UseBox(box)
+		if err := settings.SealStoredSecrets(seedCtx, store); err != nil {
+			log.Fatalf("settings: seal stored secrets: %v", err)
+		}
+	}
 	if err := settings.Seed(seedCtx, store, cfg); err != nil {
 		log.Fatalf("settings: seed: %v", err)
 	}
@@ -76,7 +85,6 @@ func main() {
 		}
 	}
 
-	box := cryptbox.New(cfg.SessionSecret)
 	srv := web.NewServer(cfg, store, gen, version, box)
 
 	// First-run claim: with no account yet, the setup wizard demands a token

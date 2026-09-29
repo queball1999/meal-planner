@@ -39,6 +39,15 @@ func TestSessionSecretRequired(t *testing.T) {
 	}
 }
 
+// TestSessionSecretPlaceholderRefused: the .env.example value is public, so
+// starting with it must fail rather than run with a known secret (QSS §19).
+func TestSessionSecretPlaceholderRefused(t *testing.T) {
+	t.Setenv("SESSION_SECRET", "change-me-to-a-random-32-char-secret")
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load accepted the .env.example placeholder SESSION_SECRET")
+	}
+}
+
 // TestSetupTokenValidation: SETUP_TOKEN must be 24+ hex characters, so a weak
 // operator-chosen token fails at boot instead of guarding the wizard.
 func TestSetupTokenValidation(t *testing.T) {
