@@ -180,7 +180,7 @@ const TOAST_ICONS = {
     success: ICONS.check,
     info:    ICONS.information,
     warning: ICONS.alert,
-    error:   ICONS.close,
+    error:   ICONS.alert, // not ICONS.close - that would duplicate the dismiss X
 };
 
 (function initToast() {
@@ -202,7 +202,7 @@ const TOAST_ICONS = {
 
     function showToast(msg, type, duration) {
         type = (type && TOAST_ICONS[type]) ? type : 'info';
-        duration = duration === undefined ? 4000 : duration;
+        duration = duration === undefined ? 10000 : duration;
 
         const t = document.createElement('div');
         t.className = 'toast toast--' + type;
@@ -236,9 +236,15 @@ const TOAST_ICONS = {
             dismiss();
         });
 
+        // Hovering pauses the countdown so a toast can be read; leaving
+        // restarts it, so every toast still dismisses itself eventually.
         if (duration > 0) {
-            const timer = setTimeout(dismiss, duration);
+            let timer = setTimeout(dismiss, duration);
             t.addEventListener('mouseenter', function () { clearTimeout(timer); });
+            t.addEventListener('mouseleave', function () {
+                clearTimeout(timer);
+                timer = setTimeout(dismiss, duration);
+            });
         }
 
         return { dismiss: dismiss };
@@ -254,12 +260,10 @@ const TOAST_ICONS = {
     // window.__notify from layout.html and funnel through the same toasts as
     // client-side ones, so there's a single notification system, not two.
     // Notify kind uses "danger" (server-side naming); toasts use "error" -
-    // map it. Danger/warning stay until dismissed since they often carry an
-    // action ("Check Settings -> AI Logs...").
+    // map it.
     if (window.__notify && window.__notify.msg) {
         var kind = window.__notify.kind === 'danger' ? 'error' : (window.__notify.kind || 'info');
-        var duration = (kind === 'error' || kind === 'warning') ? 0 : 4000;
-        showToast(window.__notify.msg, kind, duration);
+        showToast(window.__notify.msg, kind);
     }
 })();
 

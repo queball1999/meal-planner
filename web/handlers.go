@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -238,8 +239,19 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 				p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, from)
 			}
 		}
+		// A failed run for a later week must not hide this week's plan.
+		latestWeek := ""
+		if p != nil {
+			latestWeek = p.WeekStart
+		}
+		p = s.usableDashPlan(ctx, hh.ID, p)
+		if p == nil && latestWeek != "" && latestWeek != from {
+			cur, _ := s.store.GetPlanByWeekStart(ctx, hh.ID, from)
+			p = s.usableDashPlan(ctx, hh.ID, cur)
+		}
 	} else {
 		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, from)
+		p = s.usableDashPlan(ctx, hh.ID, p)
 	}
 
 	// The live-week view: if the latest plan is for a week other than the one
@@ -259,7 +271,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	if p != nil {
 		data.HasPlan = true
-		data.PlanStatus = s.reconcilePlanStatus(ctx, hh.ID, p)
+		data.PlanStatus = p.Status // already reconciled by usableDashPlan
 		data.WeekLabel = fmt.Sprintf("%s - %s",
 			fmtMonthDay(p.WeekStart), fmtMonthDay(p.WeekEnd))
 		data.BudgetLabel = fmt.Sprintf("$%.0f", float64(p.BudgetCents)/100)
@@ -306,6 +318,28 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	data.Calendar = buildDashCalendar(r, s.store, hh.ID, s.cfg.WeekStartDay, now, calRef)
 
 	s.render(w, r, "index", data)
+}
+
+// usableDashPlan reconciles p's status and returns the plan the dashboard card
+// should show for p's week. A failed generation ("error") has no meals to view,
+// so it is skipped in favour of the newest still-active plan for the same week
+// that did succeed - a failed regenerate leaves the previous plan un-canceled.
+// Returns nil when the week has no usable plan, so the card shows "No plan
+// yet"; the failed run stays retryable from the recent-plans strip.
+func (s *Server) usableDashPlan(ctx context.Context, hhID int64, p *db.Plan) *db.Plan {
+	if p == nil || s.reconcilePlanStatus(ctx, hhID, p) != "error" {
+		return p
+	}
+	all, _ := s.store.ListPlans(ctx, hhID)
+	for _, q := range all {
+		if q.ID == p.ID || q.Canceled || q.WeekStart != p.WeekStart || q.Status == "error" {
+			continue
+		}
+		if s.reconcilePlanStatus(ctx, hhID, q) != "error" {
+			return q
+		}
+	}
+	return nil
 }
 
 func fmtMonthDay(isoDate string) string {

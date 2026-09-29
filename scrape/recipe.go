@@ -56,6 +56,7 @@ func ParseRecipe(htmlBody, sourceURL string) (*Recipe, error) {
 		parseMicrodata(htmlBody, r)
 	}
 
+	decodeRecipeText(r)
 	r.Title = cleanTitle(r.Title)
 
 	if r.Title == "" && len(r.Ingredients) == 0 {
@@ -252,10 +253,43 @@ func cleanText(s string) string {
 		return ""
 	}
 	s = htmlTagRE.ReplaceAllString(s, " ")
-	s = html.UnescapeString(s)
+	s = decodeEntities(s)
 	s = strings.ReplaceAll(s, " ", " ")
 	fields := strings.Fields(s)
 	return strings.Join(fields, " ")
+}
+
+// decodeEntities unescapes HTML entities ("Steve&#39;s" -> "Steve's").
+// Recipe sites often encode twice ("&amp;#39;"), so it repeats until the text
+// stops changing - capped, so a pathological "&amp;amp;amp;..." terminates.
+func decodeEntities(s string) string {
+	for i := 0; i < 3 && strings.Contains(s, "&"); i++ {
+		next := html.UnescapeString(s)
+		if next == s {
+			break
+		}
+		s = next
+	}
+	return s
+}
+
+// decodeRecipeText runs decodeEntities over every text field, whichever
+// parser filled it. The title, tags, and microdata text bypass cleanText, and
+// entities left in any of them would show literally once saved.
+func decodeRecipeText(r *Recipe) {
+	fix := func(s string) string { return strings.TrimSpace(decodeEntities(s)) }
+	r.Title = fix(r.Title)
+	r.Description = fix(r.Description)
+	for i := range r.Tags {
+		r.Tags[i] = fix(r.Tags[i])
+	}
+	for i := range r.Ingredients {
+		r.Ingredients[i].Raw = fix(r.Ingredients[i].Raw)
+		r.Ingredients[i].Name = fix(r.Ingredients[i].Name)
+	}
+	for i := range r.Steps {
+		r.Steps[i] = fix(r.Steps[i])
+	}
 }
 
 // anyToString renders a JSON value that may be a string, number, or list of
@@ -336,7 +370,7 @@ var ogImageRE = regexp.MustCompile(`(?i)<meta[^>]+property=["']og:image["'][^>]+
 func parseOGFallback(body string, r *Recipe) {
 	if r.Title == "" {
 		if m := ogTitleRE.FindStringSubmatch(body); m != nil {
-			r.Title = html.UnescapeString(m[1])
+			r.Title = m[1] // entities decoded by decodeRecipeText
 		}
 	}
 	if r.ImageURL == "" {

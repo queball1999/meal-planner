@@ -90,3 +90,29 @@ func TestParseRecipeGraphWrapped(t *testing.T) {
 		t.Errorf("Steps = %#v, want 2 lines", r.Steps)
 	}
 }
+
+// Entities - including double-encoded ones - must be decoded on import, or
+// "Steve&#39;s" shows literally on the saved recipe.
+func TestParseRecipeDecodesEntities(t *testing.T) {
+	page := `<script type="application/ld+json">{"@type":"Recipe",
+		"name":"Steve&#39;s Chili",
+		"keywords":"Tex-Mex &amp; Southwest",
+		"recipeIngredient":["1 cup Frank&amp;#39;s hot sauce"],
+		"recipeInstructions":["Stir &amp; serve"]}</script>`
+	r, err := ParseRecipe(page, "https://example.com/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Title != "Steve's Chili" {
+		t.Errorf("title = %q", r.Title)
+	}
+	if len(r.Tags) != 1 || r.Tags[0] != "Tex-Mex & Southwest" {
+		t.Errorf("tags = %q", r.Tags)
+	}
+	if len(r.Ingredients) != 1 || r.Ingredients[0].Raw != "1 cup Frank's hot sauce" {
+		t.Errorf("ingredients = %+v", r.Ingredients)
+	}
+	if len(r.Steps) != 1 || r.Steps[0] != "Stir & serve" {
+		t.Errorf("steps = %q", r.Steps)
+	}
+}

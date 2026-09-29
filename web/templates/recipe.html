@@ -45,11 +45,8 @@
         {{if .Data.Ingredients}}
         <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem">
             {{range .Data.Ingredients}}
-            <li style="display:flex;gap:0.4rem">
-                <span style="color:var(--text-muted);min-width:4rem;text-align:right;flex-shrink:0">
-                    {{if .Quantity}}{{.Quantity}}{{end}}{{if .Unit}} {{.Unit}}{{end}}
-                </span>
-                <span>{{.Name}}</span>
+            <li style="text-align:left">
+                {{if or .Quantity .Unit}}<span style="color:var(--text-muted)">{{if .Quantity}}{{.Quantity}}{{end}}{{if and .Quantity .Unit}} {{end}}{{if .Unit}}{{.Unit}}{{end}}</span> {{end}}<span>{{.Name}}</span>
             </li>
             {{end}}
         </ul>
