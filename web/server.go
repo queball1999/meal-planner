@@ -93,6 +93,7 @@ type Server struct {
 // NewServer wires up routes, session loading, and CSRF middleware, then
 // returns a ready-to-run Server.
 func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string, box *cryptbox.Box) *Server {
+	SetAppTimezone(cfg.Timezone)
 	if gen != nil {
 		gen = llm.NewDebugLogger(gen)        // captures every call into llm.GlobalDebugLog
 		gen = llm.NewRunRecorder(gen, store) // one ai_runs row per call

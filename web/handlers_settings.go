@@ -401,11 +401,17 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logSettingsEvent(r, "setting.changed", def.Key, detail)
 	// Provider/model/key/sampling changes take effect immediately - see
-	// reloadLLM. Every other setting on this page still needs a restart.
+	// reloadLLM - and so does the display timezone. Every other setting on
+	// this page still needs a restart.
 	if def.Category == "AI Provider" {
 		s.reloadLLM(r.Context())
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	live := def.Category == "AI Provider"
+	if def.Key == "APP_TIMEZONE" {
+		SetAppTimezone(body.Value)
+		live = true
+	}
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "live": live})
 }
 
 // logSettingsEvent records a Settings-page change to the audit log. Settings
@@ -560,7 +566,7 @@ func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			entries = append(entries, auditLogEntry{
-				Kind: "llm", At: e.At, atSort: parseLogTime(e.At),
+				Kind: "llm", At: e.At, atSort: e.at,
 				System: e.System, Prompt: e.Prompt, Response: e.Response,
 				Provider: e.Provider, Model: e.Model,
 				InputToks: e.InputToks, OutputToks: e.OutputToks,
@@ -579,7 +585,7 @@ func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			entries = append(entries, auditLogEntry{
-				Kind: "scrape", At: e.At.Format("2006-01-02 15:04:05"), atSort: e.At,
+				Kind: "scrape", At: inAppTZ(e.At).Format("2006-01-02 15:04:05"), atSort: e.At,
 				URL: e.URL, Host: e.Host, Backend: e.Backend, Challenge: e.Challenge,
 				StatusCode: e.StatusCode, Bytes: e.Bytes, ViaProxy: e.ViaProxy,
 				Error: e.Error, DurationMS: e.DurationMS,
@@ -611,24 +617,18 @@ func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// parseLogTime reads back the timestamp llmDebugEntries formats, for merge-sort
-// against the scrape log's native time.Time.
-func parseLogTime(s string) time.Time {
-	t, _ := time.Parse("2006-01-02 15:04:05", s)
-	return t
-}
-
 type llmDebugEntry struct {
-	At         string `json:"at"`
-	System     string `json:"system,omitempty"`
-	Prompt     string `json:"prompt"`
-	Response   string `json:"response,omitempty"`
-	Error      string `json:"error,omitempty"`
-	DurationMS int64  `json:"duration_ms"`
-	InputToks  int    `json:"input_tokens,omitempty"`
-	OutputToks int    `json:"output_tokens,omitempty"`
-	Provider   string `json:"provider,omitempty"`
-	Model      string `json:"model,omitempty"`
+	At         string    `json:"at"`
+	at         time.Time // unformatted At, for merge-sorting against scrape entries
+	System     string    `json:"system,omitempty"`
+	Prompt     string    `json:"prompt"`
+	Response   string    `json:"response,omitempty"`
+	Error      string    `json:"error,omitempty"`
+	DurationMS int64     `json:"duration_ms"`
+	InputToks  int       `json:"input_tokens,omitempty"`
+	OutputToks int       `json:"output_tokens,omitempty"`
+	Provider   string    `json:"provider,omitempty"`
+	Model      string    `json:"model,omitempty"`
 }
 
 func llmDebugEntries() []llmDebugEntry {
@@ -640,7 +640,8 @@ func llmDebugEntries() []llmDebugEntry {
 	for i, e := range raw {
 		// Reverse so newest is first
 		out[len(raw)-1-i] = llmDebugEntry{
-			At:         e.At.Format("2006-01-02 15:04:05"),
+			At:         inAppTZ(e.At).Format("2006-01-02 15:04:05"),
+			at:         e.At,
 			System:     e.System,
 			Prompt:     e.Prompt,
 			Response:   e.Response,

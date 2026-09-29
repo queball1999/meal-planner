@@ -58,7 +58,7 @@ func (s *Server) handleAdminEventsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		view[i] = adminEventRow{
 			AppEventRow: e,
-			At:          e.OccurredAt.Format("Jan 2, 2006 3:04pm"),
+			At:          inAppTZ(e.OccurredAt).Format("Jan 2, 2006 3:04pm"),
 			Target:      target,
 		}
 	}

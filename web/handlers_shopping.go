@@ -736,7 +736,7 @@ func (s *Server) handleShoppingItemPriceGet(w http.ResponseWriter, r *http.Reque
 			resp.History = append(resp.History, shoppingPriceHistoryRow{
 				PriceLabel: fmt.Sprintf("$%.2f / %s", float64(h.PriceCents)/100, h.PurchaseUnit),
 				RecordedBy: h.RecordedBy,
-				RecordedAt: h.RecordedAt.Format("Jan 2, 2006 3:04pm"),
+				RecordedAt: inAppTZ(h.RecordedAt).Format("Jan 2, 2006 3:04pm"),
 			})
 		}
 	}

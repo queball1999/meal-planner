@@ -288,7 +288,7 @@ func (s *Server) handleFinanceAI(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, run := range recent {
 		data.RecentRuns = append(data.RecentRuns, financeRunRow{
-			When:         run.CreatedAt.Format("Jan 2, 15:04"),
+			When:         inAppTZ(run.CreatedAt).Format("Jan 2, 15:04"),
 			Purpose:      run.Purpose,
 			Provider:     run.Provider,
 			Model:        run.Model,
@@ -371,7 +371,7 @@ func (s *Server) handleFinancePrices(w http.ResponseWriter, r *http.Request) {
 			Unit:             row.PurchaseUnit,
 			AmountPerPackage: row.AmountPerPackage,
 			Preferred:        row.Preferred,
-			UpdatedAt:        row.UpdatedAt.Format("Jan 2, 2006"),
+			UpdatedAt:        inAppTZ(row.UpdatedAt).Format("Jan 2, 2006"),
 		}
 		if len(row.History) >= 2 {
 			fr.SparkPoints = buildPriceSparkline(row.History)

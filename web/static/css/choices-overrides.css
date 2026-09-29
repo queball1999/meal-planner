@@ -51,6 +51,24 @@
 
 .choices[data-type*="select-one"] .choices__inner { padding-bottom: var(--sp-2); }
 
+/* A single select's search box: the vendor rule at this specificity paints
+   it white with a light divider, which the plain .choices__input rule above
+   can't beat. */
+.choices[data-type*="select-one"] .choices__input {
+    background: var(--surface);
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    padding: var(--sp-2) var(--sp-3);
+}
+.choices__input::placeholder { color: var(--text-muted); }
+
+/* Vendor caret is hard-coded #333 - invisible in dark mode. */
+.choices[data-type*="select-one"]::after { border-top-color: var(--text-muted); }
+.choices[data-type*="select-one"].is-open::after {
+    border-top-color: transparent;
+    border-bottom-color: var(--text-muted);
+}
+
 .choices__placeholder { color: var(--text-muted); opacity: 1; }
 
 .choices__list--dropdown .choices__list { -webkit-overflow-scrolling: touch; }

@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/static/css/choices.min.css">
     <link rel="stylesheet" href="/static/css/choices-overrides.css">
 </head>
-<body{{if .HouseholdRole}} data-role="{{.HouseholdRole}}"{{end}}{{if .IsAdmin}} data-admin{{end}}>
+<body data-app-tz="{{appTZ}}"{{if .HouseholdRole}} data-role="{{.HouseholdRole}}"{{end}}{{if .IsAdmin}} data-admin{{end}}>
 
     <a href="#main-content" class="skip-link">Skip to content</a>
 

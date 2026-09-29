@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -92,6 +93,10 @@ type Config struct {
 
 	// Calendar (SS11.1)
 	WeekStartDay string // "sunday" (default) | "monday"
+	// Timezone is the IANA zone (e.g. "America/Chicago") every timestamp in
+	// the UI is shown in. Default "UTC". Households keep their own zone for
+	// the auto-plan schedule; this one is only for display.
+	Timezone string
 	// AutoPlanHour is the local hour (0-23, household timezone) the night
 	// before the week starts to automatically generate next week's plan.
 	// -1 (default) disables auto-generation; the manual generate/regenerate
@@ -253,6 +258,13 @@ func Load() (*Config, error) {
 		}(),
 		HAItemFormat: getenv("HA_ITEM_FORMAT", "name_qty"),
 
+		Timezone: func() string {
+			tz := getenv("APP_TIMEZONE", "UTC")
+			if _, err := time.LoadLocation(tz); err != nil {
+				return "UTC"
+			}
+			return tz
+		}(),
 		WeekStartDay: func() string {
 			d := os.Getenv("WEEK_START_DAY")
 			if d == "monday" {

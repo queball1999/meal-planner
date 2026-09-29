@@ -79,7 +79,7 @@
                 <td data-label="Tags">
                     {{range .Tags}}<span class="badge">{{.}}</span> {{end}}
                 </td>
-                <td data-label="Added">{{.CreatedAt.Format "Jan 2"}}</td>
+                <td data-label="Added">{{(local .CreatedAt).Format "Jan 2"}}</td>
                 <td data-label="" class="data-table__actions">
                     <a href="/recipes/{{.ID}}" class="btn btn-ghost btn-sm" aria-label="View {{.Title}}">
                         {{icon "eye"}}

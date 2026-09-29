@@ -211,7 +211,13 @@ func templateFuncs() template.FuncMap {
 			}
 			return max
 		},
-		"dur": formatDurationMs,
+		// local converts a timestamp to the APP_TIMEZONE for display:
+		// {{(local .UpdatedAt).Format "Jan 2, 2006"}}.
+		"local": inAppTZ,
+		// appTZ is the APP_TIMEZONE name, exposed on <body data-app-tz> so
+		// browser-formatted times use it too.
+		"appTZ": appTZName,
+		"dur":   formatDurationMs,
 		"truncate": func(s string, n int) string {
 			r := []rune(s)
 			if len(r) <= n {

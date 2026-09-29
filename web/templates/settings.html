@@ -241,7 +241,7 @@
         </label>
 
         {{if eq .Kind "select"}}
-        <select class="field-input" id="set-{{.Key}}" data-setting-key="{{.Key}}">
+        <select class="field-input" id="set-{{.Key}}" data-setting-key="{{.Key}}"{{if gt (len .Options) 10}} data-choices{{end}}>
             {{$val := .Value}}
             {{range .Options}}
             <option value="{{.}}"{{if eq . $val}} selected{{end}}>{{.}}</option>
@@ -436,7 +436,7 @@
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (d.ok) {
-                    window.showToast && window.showToast('Saved - restart to apply', 'success');
+                    window.showToast && window.showToast(d.live ? 'Saved' : 'Saved - restart to apply', 'success');
                     if (input.type === 'password') { input.value = ''; baseline = ''; }
                     else { baseline = value; }
                 } else {

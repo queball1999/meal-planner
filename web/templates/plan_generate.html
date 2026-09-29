@@ -292,7 +292,7 @@
 
             var html = entries.map(function (e, i) {
                 var isErr = !!e.error;
-                var time  = new Date(e.at).toLocaleTimeString();
+                var time  = new Date(e.at).toLocaleTimeString([], { timeZone: document.body.dataset.appTz || undefined });
                 var border = isErr ? 'var(--color-danger,#ef4444)' : 'var(--accent)';
                 var key = String(e.at) + '|' + i;
                 return '<details class="llm-debug-entry" data-key="' + esc(key) + '" style="border-left-color:' + border + '">' +

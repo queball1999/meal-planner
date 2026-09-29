@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"goeat/config"
 	"goeat/db"
@@ -79,6 +80,10 @@ var Defs = []Definition{
 	{Key: "SESSION_TTL_HOURS", Label: "Session lifetime (hours)", Category: "General", Kind: KindInt,
 		Help:       "How long a signed-in session stays valid. Default 168 (7 days).",
 		FromConfig: func(c *config.Config) string { return strconv.Itoa(c.SessionTTLHours) }},
+	{Key: "APP_TIMEZONE", Label: "Timezone", Category: "General", Kind: KindSelect,
+		Options:    Timezones,
+		Help:       "Every date and time in the app (logs, price updates, recipe dates) is shown in this zone. Takes effect immediately.",
+		FromConfig: func(c *config.Config) string { return c.Timezone }},
 
 	{Key: "PROVIDER", Label: "Default provider", Category: "AI Provider", Kind: KindSelect,
 		Options:    []string{"anthropic", "openai", "google", "openai_compatible"},
@@ -313,6 +318,13 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 	}
 	if v, ok := get("PUBLIC_BASE_URL"); ok {
 		cfg.PublicBaseURL = v
+	}
+	if v, ok := get("APP_TIMEZONE"); ok {
+		if _, err := time.LoadLocation(v); err == nil {
+			cfg.Timezone = v
+		} else {
+			warnBad("APP_TIMEZONE", v, err)
+		}
 	}
 	if v, ok := get("SESSION_TTL_HOURS"); ok {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
