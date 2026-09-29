@@ -10,6 +10,7 @@ import (
 	"goeat/db"
 	"goeat/middleware"
 	"goeat/plan"
+	"goeat/pricing"
 )
 
 // recipeOption is one entry in the "pick a replacement" list.
@@ -115,7 +116,7 @@ func (s *Server) handlePantryOptions(w http.ResponseWriter, r *http.Request) {
 		if pi.QuantityOnHand <= 0 {
 			continue // an emptied row is a known item, not something on hand
 		}
-		qty := strconv.FormatFloat(pi.QuantityOnHand, 'f', -1, 64)
+		qty := pricing.FormatQty(pi.QuantityOnHand)
 		if pi.Unit != "" {
 			qty += " " + pi.Unit
 		}

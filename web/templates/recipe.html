@@ -46,7 +46,7 @@
         <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem">
             {{range .Data.Ingredients}}
             <li style="text-align:left">
-                {{if or .Quantity .Unit}}<span style="color:var(--text-muted)">{{if .Quantity}}{{.Quantity}}{{end}}{{if and .Quantity .Unit}} {{end}}{{if .Unit}}{{.Unit}}{{end}}</span> {{end}}<span>{{.Name}}</span>
+                {{if or .Quantity .Unit}}<span style="color:var(--text-muted)">{{if .Quantity}}{{fmtQty .Quantity}}{{end}}{{if and .Quantity .Unit}} {{end}}{{if .Unit}}{{.Unit}}{{end}}</span> {{end}}<span>{{.Name}}</span>
             </li>
             {{end}}
         </ul>
@@ -125,7 +125,7 @@
             <div class="field">
                 <label class="field-label" for="e-ings">Ingredients</label>
                 <textarea class="field-input" id="e-ings" name="ingredients" rows="10"
-                          placeholder="2 tablespoons butter">{{range .Data.Ingredients}}{{if .Quantity}}{{.Quantity}} {{end}}{{if .Unit}}{{.Unit}} {{end}}{{.Name}}
+                          placeholder="2 tablespoons butter">{{range .Data.Ingredients}}{{if .Quantity}}{{fmtQty .Quantity}} {{end}}{{if .Unit}}{{.Unit}} {{end}}{{.Name}}
 {{end}}</textarea>
                 <span class="field-hint">One per line. Quantity and unit are parsed from the front of each line.</span>
             </div>

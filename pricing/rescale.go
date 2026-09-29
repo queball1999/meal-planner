@@ -51,10 +51,7 @@ func RescaleShoppingList(
 		return nil, fmt.Errorf("aggregate ingredients: %w", err)
 	}
 
-	deducted, perr := ApplyPantry(ctx, store, household.ID, items)
-	if perr != nil {
-		log.Printf("costing: pantry deduction: %v", perr)
-	}
+	deducted := deductHave(ctx, store, household.ID, planID, items, existing)
 
 	exByKey := indexExistingItems(existing)
 
@@ -95,7 +92,7 @@ func RescaleShoppingList(
 		}
 	}
 
-	return recomputePlanTotal(ctx, store, planID)
+	return RecomputePlanTotal(ctx, store, planID)
 }
 
 // itemKey is the matching key between an aggregated ingredient line and an
@@ -118,17 +115,20 @@ func itemKey(itemID *int64, normalizedTerm string) string {
 func indexExistingItems(existing []*db.ShoppingListItem) map[string]*db.ShoppingListItem {
 	out := make(map[string]*db.ShoppingListItem, len(existing))
 	for _, e := range existing {
-		var k string
-		if e.ItemID != nil {
-			k = itemKey(e.ItemID, "")
-		} else {
-			k = itemKey(nil, Normalize(e.DisplayName))
-		}
+		k := existingKey(e)
 		if _, dup := out[k]; !dup {
 			out[k] = e
 		}
 	}
 	return out
+}
+
+// existingKey is itemKey for a stored row - see indexExistingItems.
+func existingKey(e *db.ShoppingListItem) string {
+	if e.ItemID != nil {
+		return itemKey(e.ItemID, "")
+	}
+	return itemKey(nil, Normalize(e.DisplayName))
 }
 
 // rescaleInPlace rewrites one already-priced row for a new required quantity
@@ -173,11 +173,11 @@ func rescaleInPlace(ctx context.Context, store db.Store, ex *db.ShoppingListItem
 	return true
 }
 
-// recomputePlanTotal re-reads a plan's shopping list and writes its total and
+// RecomputePlanTotal re-reads a plan's shopping list and writes its total and
 // confidence summary from what is actually stored, rather than threading a
 // running total through both the in-place rescale pass and the fresh-pricing
 // pass above - simpler, and correct by construction however the two split.
-func recomputePlanTotal(ctx context.Context, store db.Store, planID int64) (*CostResult, error) {
+func RecomputePlanTotal(ctx context.Context, store db.Store, planID int64) (*CostResult, error) {
 	items, err := store.ListShoppingListItems(ctx, planID)
 	if err != nil {
 		return nil, fmt.Errorf("list shopping items: %w", err)

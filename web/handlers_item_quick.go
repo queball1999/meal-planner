@@ -100,7 +100,7 @@ func (s *Server) quickAddToPantry(w http.ResponseWriter, r *http.Request, hh *db
 		_ = s.store.SetPantryItemItem(ctx, pi.ID, &item.ID)
 	}
 
-	s.setNotify(w, NotifySuccess, fmt.Sprintf("Added %.4g %s of %s to the pantry.", qty, item.StockUnit, item.Name))
+	s.setNotify(w, NotifySuccess, fmt.Sprintf("Added %s %s of %s to the pantry.", pricing.FormatQty(qty), item.StockUnit, item.Name))
 	http.Redirect(w, r, r.FormValue("redirect_to"), http.StatusSeeOther)
 }
 
@@ -144,7 +144,7 @@ func (s *Server) quickAddToList(w http.ResponseWriter, r *http.Request, hh *db.H
 		return
 	}
 
-	msg := fmt.Sprintf("Added %.4g %s of %s to the shopping list.", qty, item.StockUnit, item.Name)
+	msg := fmt.Sprintf("Added %s %s of %s to the shopping list.", pricing.FormatQty(qty), item.StockUnit, item.Name)
 	if cents == 0 {
 		msg += " No price found - set one from the list."
 	}

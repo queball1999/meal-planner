@@ -95,6 +95,10 @@ func SeedShoppingList(ctx context.Context, store db.Store, planID int64, househo
 		return nil, fmt.Errorf("list ingredients: %w", err)
 	}
 
+	// Read before the wipe, so a reprice keeps the lines the household ticked
+	// "I already have this" on (deductHave). Empty on a first seed.
+	prior, _ := store.ListShoppingListItems(ctx, planID)
+
 	if err := store.DeleteShoppingListItems(ctx, planID); err != nil {
 		return nil, fmt.Errorf("clear shopping list: %w", err)
 	}
@@ -105,13 +109,8 @@ func SeedShoppingList(ctx context.Context, store db.Store, planID int64, househo
 	}
 
 	// Subtract what the household already has, before anything is priced -
-	// see ApplyPantry. Non-fatal: a plan that over-buys is worse than one that
-	// does not, but it is still a usable plan, and losing the whole costing
-	// run over a pantry read would be a bad trade.
-	deducted, perr := ApplyPantry(ctx, store, household.ID, items)
-	if perr != nil {
-		log.Printf("costing: pantry deduction: %v", perr)
-	}
+	// see deductHave.
+	deducted := deductHave(ctx, store, household.ID, planID, items, prior)
 
 	return seedItems(ctx, store, planID, items, deducted)
 }
@@ -553,15 +552,20 @@ func EnsureShoppingList(ctx context.Context, store db.Store, planID int64, house
 		return 0, fmt.Errorf("aggregate ingredients: %w", err)
 	}
 
+	deducted := deductHave(ctx, store, household.ID, planID, items, nil)
+
 	var written int
 	var totalCents int64
-	for _, item := range items {
+	for idx, item := range items {
 		refsJSON, _ := json.Marshal(item.IngredientIDs)
 		// No pack maths is possible without a resolved package, so the line
 		// buys exactly the recipe quantity and carries the LLM's guess (if any)
 		// as the line total.
 		lineTotal := item.EstPriceCents
-		totalCents += lineTotal
+		ded := deducted[idx]
+		if !ded.Covered {
+			totalCents += lineTotal
+		}
 		if _, cerr := store.CreateShoppingListItem(ctx, db.CreateShoppingListItemParams{
 			PlanID:             planID,
 			ItemID:             item.ItemID,
@@ -574,6 +578,8 @@ func EnsureShoppingList(ctx context.Context, store db.Store, planID int64, house
 			LineTotalCents:     lineTotal,
 			PriceSource:        "estimate",
 			Confidence:         ConfidenceEstimate,
+			PantryQtyUsed:      ded.Used,
+			InPantry:           ded.Covered,
 		}); cerr != nil {
 			log.Printf("costing: fallback shopping line %q: %v", item.DisplayName, cerr)
 			continue

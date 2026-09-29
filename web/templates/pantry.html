@@ -54,7 +54,7 @@
                         {{.Name}}
                     </span>
                 </td>
-                <td data-label="Quantity">{{.QuantityOnHand}}</td>
+                <td data-label="Quantity">{{fmtQty .QuantityOnHand}}</td>
                 <td data-label="Unit">{{if .Unit}}<span class="badge {{pill "unit" .Unit}}">{{.Unit}}</span>{{end}}</td>
                 <td data-label="Updated">{{(local .UpdatedAt).Format "Jan 2, 2006"}}</td>
                 <td data-label="" class="data-table__actions">

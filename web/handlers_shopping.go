@@ -400,9 +400,9 @@ func pantryNote(item *db.ShoppingListItem) string {
 		unit = "on hand"
 	}
 	if item.InPantry {
-		return fmt.Sprintf("all %.4g %s already in your pantry", item.PantryQtyUsed, unit)
+		return fmt.Sprintf("all %s %s already in your pantry", pricing.FormatQty(item.PantryQtyUsed), unit)
 	}
-	return fmt.Sprintf("%.4g %s already in your pantry", item.PantryQtyUsed, unit)
+	return fmt.Sprintf("%s %s already in your pantry", pricing.FormatQty(item.PantryQtyUsed), unit)
 }
 
 // mealTagsFor resolves a shopping-list line's meal_ingredient_refs (a JSON
@@ -499,7 +499,7 @@ func (s *Server) handleShoppingListExport(w http.ResponseWriter, r *http.Request
 		_ = cw.Write([]string{
 			store,
 			it.DisplayName,
-			fmt.Sprintf("%.4g", qty),
+			pricing.FormatQty(qty),
 			unit,
 			fmt.Sprintf("%.2f", float64(it.LineTotalCents)/100),
 			checked,
@@ -563,6 +563,14 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't save that"})
 		return
 	}
+	// A line marked "have" is not bought, so the plan's stored total (shown on
+	// the dashboard and plan header) changes with it. The list itself sums its
+	// lines live; this keeps everything else in step without a reprice.
+	if row, _ := s.store.GetShoppingListItem(ctx, id); row != nil {
+		if _, terr := pricing.RecomputePlanTotal(ctx, s.store, row.PlanID); terr != nil {
+			log.Printf("list have: recompute total for plan %d: %v", row.PlanID, terr)
+		}
+	}
 	if !have {
 		// Un-ticking does not take anything back out of the pantry: you did
 		// have it, and how much is left is the pantry page's business.
@@ -617,7 +625,7 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "have": true, "pantry": "added",
-		"message": fmt.Sprintf("Added %.4g %s of %s to your pantry.", qty, unit, line.DisplayName),
+		"message": fmt.Sprintf("Added %s %s of %s to your pantry.", pricing.FormatQty(qty), unit, line.DisplayName),
 	})
 }
 

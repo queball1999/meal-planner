@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
@@ -132,6 +131,16 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create plan: %w", err)
+	}
+
+	// The prompt asks the model to use this food up, and it lists it as normal
+	// ingredients - kept on the plan so the shopping list can mark those lines
+	// already-have instead of buying them again (pricing.ApplyOnHand).
+	// Non-fatal: the plan is still worth generating without it.
+	if len(onHand) > 0 {
+		if err := store.SetPlanOnHand(ctx, plan.ID, onHand); err != nil {
+			log.Printf("plan: save on-hand list for plan %d: %v", plan.ID, err)
+		}
 	}
 
 	// Retire whatever plan(s) this household already had for this week the
@@ -479,8 +488,9 @@ func saveGeneratedRecipe(ctx context.Context, store db.Store, householdID int64,
 
 	for i, ing := range gm.Ingredients {
 		// Catalog recipes store quantity as free text (that is what an import
-		// gives you); %g keeps "1" as "1" rather than "1.0000".
-		qty := strconv.FormatFloat(ing.Quantity, 'g', -1, 64)
+		// gives you); FormatQty keeps "1" as "1" and a converted "907.18471..."
+		// to two decimals, since this text is what the recipe page shows.
+		qty := pricing.FormatQty(ing.Quantity)
 		if err := store.AddCatalogRecipeIngredient(ctx, recipe.ID, ing.Name, qty, ing.Unit, i); err != nil {
 			return err
 		}

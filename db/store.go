@@ -227,6 +227,10 @@ type Store interface {
 
 	UpdatePlanTotal(ctx context.Context, planID int64, totalCents int64, confidenceSummary string) error
 
+	// On-hand food named at generation time (00036_plan_on_hand.sql).
+	SetPlanOnHand(ctx context.Context, planID int64, names []string) error
+	GetPlanOnHand(ctx context.Context, planID int64) ([]string, error)
+
 	// ── Spend stats (§5.5) ────────────────────────────────────────────────────
 
 	GetSpendStats(ctx context.Context, householdID int64, from, to string) (*SpendStats, error)

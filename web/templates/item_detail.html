@@ -60,7 +60,7 @@
                 <div class="field field--sm">
                     <label class="field-label" for="d-qty">Default buy qty</label>
                     <input class="field-input" id="d-qty" name="default_purchase_qty"
-                           type="number" min="0.01" step="0.01" value="{{.Data.Item.DefaultPurchaseQty}}">
+                           type="number" min="0.01" step="0.01" value="{{fmtQty .Data.Item.DefaultPurchaseQty}}">
                 </div>
             </div>
             <div class="field">
@@ -88,7 +88,7 @@
             <tr>
                 <td data-label="Store">{{.StoreName}}</td>
                 <td data-label="Purchase unit"><span class="badge {{pill "unit" .PurchaseUnit}}">{{.PurchaseUnit}}</span></td>
-                <td data-label="Amount / package">{{.AmountPerPackage}}</td>
+                <td data-label="Amount / package">{{fmtQty .AmountPerPackage}}</td>
                 <td data-label="Price">{{.PriceLabel}}</td>
                 <td data-label="We buy here">
                     <form method="POST" action="/pantry/items/{{$.Data.Item.ID}}/stores/{{.StoreID}}/preferred" style="display:inline">
@@ -132,11 +132,11 @@
             <div class="field field--sm">
                 <label class="field-label" for="p-amt">Amount / package</label>
                 <input class="field-input" id="p-amt" name="amount_per_package" type="number" min="0.01" step="0.01"
-                       value="{{.Data.Item.DefaultPurchaseQty}}" list="amount-opts">
+                       value="{{fmtQty .Data.Item.DefaultPurchaseQty}}" list="amount-opts">
                 <datalist id="amount-opts">
                     <option value="1"></option><option value="2"></option><option value="3"></option>
                     <option value="4"></option><option value="6"></option><option value="12"></option>
-                    <option value="{{.Data.Item.DefaultPurchaseQty}}"></option>
+                    <option value="{{fmtQty .Data.Item.DefaultPurchaseQty}}"></option>
                 </datalist>
             </div>
             <div class="field field--sm">

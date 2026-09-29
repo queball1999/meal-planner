@@ -79,7 +79,7 @@ func displayQtyLabel(qty float64, unit, system string) string {
 // yields just the unit (or ""), so callers can guard on the empty string.
 func qtyLabel(qty float64, unit string) string {
 	u := pricing.CanonUnit(unit)
-	num := trimNum(qty)
+	num := pricing.FormatQty(qty)
 
 	if qty <= 0 {
 		if countableUnits[u] {
@@ -101,28 +101,24 @@ func qtyLabel(qty float64, unit string) string {
 	return num + " " + u
 }
 
-// trimNum formats a float without a trailing ".0" and without runaway
-// precision: 4 -> "4", 1.5 -> "1.5", 0.3333333 -> "0.33", 680.4 -> "680".
-func trimNum(f float64) string {
-	if f == 0 {
-		return "0"
+// fmtQty is the template side of pricing.FormatQty. It also takes a string,
+// because catalog recipes keep quantities as text ("2", "1 1/2", "to taste")
+// and older generated ones were saved at full float precision
+// ("907.1847412751217"): a plain number is rounded, anything else is shown as
+// written.
+func fmtQty(v any) string {
+	switch q := v.(type) {
+	case float64:
+		return pricing.FormatQty(q)
+	case int:
+		return strconv.Itoa(q)
+	case int64:
+		return strconv.FormatInt(q, 10)
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(q), 64); err == nil {
+			return pricing.FormatQty(f)
+		}
+		return q
 	}
-	abs := f
-	if abs < 0 {
-		abs = -abs
-	}
-	var s string
-	switch {
-	case abs >= 100:
-		s = strconv.FormatFloat(f, 'f', 0, 64)
-	case abs >= 10:
-		s = strconv.FormatFloat(f, 'f', 1, 64)
-	default:
-		s = strconv.FormatFloat(f, 'f', 2, 64)
-	}
-	if strings.Contains(s, ".") {
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-	}
-	return s
+	return ""
 }

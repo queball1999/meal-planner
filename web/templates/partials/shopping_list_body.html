@@ -168,7 +168,7 @@
             {{if not $root.Data.ReadOnly}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm have-btn no-print{{if .InPantry}} have-btn--on{{end}}"
                     data-id="{{.ID}}" data-name="{{.DisplayName}}"
-                    data-qty="{{.BuyQuantity}}" data-unit="{{.Unit}}"
+                    data-qty="{{fmtQty .BuyQuantity}}" data-unit="{{.Unit}}"
                     data-have="{{if .InPantry}}1{{else}}0{{end}}"
                     title="{{if .InPantry}}Already in the pantry - not being bought{{else}}I already have this{{end}}"
                     aria-pressed="{{if .InPantry}}true{{else}}false{{end}}"
@@ -236,7 +236,7 @@
             {{if not $root.Data.ReadOnly}}
             <button type="button" class="btn btn-ghost btn-icon btn-sm have-btn no-print{{if .InPantry}} have-btn--on{{end}}"
                     data-id="{{.ID}}" data-name="{{.DisplayName}}"
-                    data-qty="{{.BuyQuantity}}" data-unit="{{.Unit}}"
+                    data-qty="{{fmtQty .BuyQuantity}}" data-unit="{{.Unit}}"
                     data-have="{{if .InPantry}}1{{else}}0{{end}}"
                     title="{{if .InPantry}}Already in the pantry - not being bought{{else}}I already have this{{end}}"
                     aria-pressed="{{if .InPantry}}true{{else}}false{{end}}"
@@ -556,6 +556,22 @@
         recomputeActualSpend();
     }
 
+    // Re-render the summary, store subtotals and rows from the server after a
+    // change that moves money (marking a line "have" takes it out of the
+    // total). Same fragment and swap as pollPricing; every row control is
+    // delegated, so swapped-in rows work unwired.
+    function refreshLive() {
+        return fetch('/plan/list/fragment' + window.location.search, { headers: { Accept: 'text/html' } })
+            .then(function (r) { return r.text(); })
+            .then(function (html) {
+                var fresh = new DOMParser().parseFromString(html, 'text/html')
+                    .getElementById('shopping-list-live');
+                var current = document.getElementById('shopping-list-live');
+                if (fresh && current) current.replaceWith(fresh);
+                if (pricingStopped) hidePricingNote();
+            });
+    }
+
     function postHave(btn, on, quantity) {
         var body = 'have=' + (on ? '1' : '0');
         if (on && quantity) {
@@ -577,7 +593,12 @@
         // is no quantity to ask about when un-marking.
         if (btn.dataset.have === '1') {
             setHaveState(btn, false);
-            postHave(btn, false).catch(function () { setHaveState(btn, true); });
+            postHave(btn, false)
+                .then(function (d) {
+                    if (!d || !d.ok) { setHaveState(btn, true); return; }
+                    refreshLive().catch(function () {});
+                })
+                .catch(function () { setHaveState(btn, true); });
             return;
         }
         haveTarget = btn;
@@ -602,6 +623,9 @@
                         return;
                     }
                     if (d.message) toast(d.message, d.pantry === 'failed' ? 'warning' : 'success');
+                    // Not in the .catch chain below: a failed refresh leaves
+                    // the saved mark in place, it just shows old totals.
+                    refreshLive().catch(function () {});
                 })
                 .catch(function () {
                     setHaveState(btn, false);
@@ -864,23 +888,12 @@
 
         setTimeout(function () {
             if (pricingStopped) return;
-            fetch('/plan/list/fragment' + window.location.search, { headers: { Accept: 'text/html' } })
-                .then(function (r) { return r.text(); })
-                .then(function (html) {
-                    var fresh = new DOMParser().parseFromString(html, 'text/html')
-                        .getElementById('shopping-list-live');
-                    var current = document.getElementById('shopping-list-live');
-                    if (fresh && current) current.replaceWith(fresh);
-                    // The fragment just swapped in was rendered from whatever
-                    // the backend had at request time - if pricing was
-                    // stopped after that render started, it can still carry
-                    // the "still pricing" banner. Never let it reappear once
-                    // the user has asked to stop.
-                    if (pricingStopped) {
-                        hidePricingNote();
-                        return;
-                    }
-                    pollPricing();
+            // refreshLive re-hides the "still pricing" banner if pricing was
+            // stopped after the fragment's render started - never let it
+            // reappear once the user has asked to stop.
+            refreshLive()
+                .then(function () {
+                    if (!pricingStopped) pollPricing();
                 })
                 // A transient fetch error just retries on the next tick rather
                 // than leaving the list stuck on stale skeleton rows.

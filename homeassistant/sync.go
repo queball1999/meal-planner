@@ -37,7 +37,7 @@ func label(it *db.ShoppingListItem, format string) string {
 	if format != "name_qty" || it.BuyQuantity <= 0 {
 		return name
 	}
-	qty := fmt.Sprintf("%.4g", it.BuyQuantity)
+	qty := pricing.FormatQty(it.BuyQuantity)
 	unit := strings.TrimSpace(it.PurchaseUnit)
 	if unit == "" || unit == "each" {
 		return fmt.Sprintf("%s %s", qty, name)

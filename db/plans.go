@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -18,6 +19,40 @@ func (s *store) CreatePlan(ctx context.Context, p CreatePlanParams) (*Plan, erro
 	}
 	id, _ := res.LastInsertId()
 	return s.getPlanByID(ctx, id)
+}
+
+// SetPlanOnHand records the food the household said it already has when it
+// generated this plan, so every later shopping-list build can honour it.
+func (s *store) SetPlanOnHand(ctx context.Context, planID int64, names []string) error {
+	if names == nil {
+		names = []string{}
+	}
+	raw, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE plans SET on_hand = ? WHERE id = ?`, string(raw), planID)
+	return err
+}
+
+// GetPlanOnHand returns SetPlanOnHand's list; empty (not an error) for a plan
+// generated before it existed or without one.
+func (s *store) GetPlanOnHand(ctx context.Context, planID int64) ([]string, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT on_hand FROM plans WHERE id = ?`, planID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &names); err != nil {
+			return nil, err
+		}
+	}
+	return names, nil
 }
 
 func (s *store) UpdatePlanStatus(ctx context.Context, planID int64, status string) error {

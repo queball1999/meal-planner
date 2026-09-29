@@ -167,7 +167,7 @@ func RegisterShoppingTools(r *Registry) {
 			}); err != nil {
 				return Result{}, err
 			}
-			summary := fmt.Sprintf("Added %g %s of %s to the shopping list.", qty, unit, name)
+			summary := fmt.Sprintf("Added %s %s of %s to the shopping list.", pricing.FormatQty(qty), unit, name)
 			if cents > 0 {
 				summary += " at " + dollars(cents) + " each"
 			}
@@ -373,7 +373,7 @@ func RegisterPantryTools(r *Registry) {
 				}); err != nil {
 					return Result{}, err
 				}
-				return Result{Summary: fmt.Sprintf("%s is now %g %s on hand.", existing.Name, a.Quantity, unit)}, nil
+				return Result{Summary: fmt.Sprintf("%s is now %s %s on hand.", existing.Name, pricing.FormatQty(a.Quantity), unit)}, nil
 			}
 
 			pi, err := s.Store.CreatePantryItem(ctx, db.CreatePantryItemParams{
@@ -386,7 +386,7 @@ func RegisterPantryTools(r *Registry) {
 			if it, _ := catalog.EnsureItem(ctx, s.Store, s.HouseholdID, name); it != nil && pi != nil {
 				_ = s.Store.SetPantryItemItem(ctx, pi.ID, &it.ID)
 			}
-			return Result{Summary: fmt.Sprintf("Added %g %s of %s to the pantry.", a.Quantity, unit, name)}, nil
+			return Result{Summary: fmt.Sprintf("Added %s %s of %s to the pantry.", pricing.FormatQty(a.Quantity), unit, name)}, nil
 		},
 	})
 

@@ -8,6 +8,7 @@ import (
 
 	"goeat/db"
 	"goeat/middleware"
+	"goeat/pricing"
 )
 
 // aisleOrder is the order a shop is walked, not the order a database returns.
@@ -186,7 +187,7 @@ func (s *Server) handleInStore(w http.ResponseWriter, r *http.Request) {
 		b.aisle.Lines = append(b.aisle.Lines, instoreLine{
 			ID:      ln.ID,
 			Name:    ln.DisplayName,
-			Qty:     strings.TrimSpace(fmt.Sprintf("%.4g %s", qty, unit)),
+			Qty:     strings.TrimSpace(pricing.FormatQty(qty) + " " + unit),
 			Price:   fmt.Sprintf("$%.2f", float64(ln.LineTotalCents)/100),
 			Checked: ln.Checked,
 			Store:   store,
