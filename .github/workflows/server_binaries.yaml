@@ -1,0 +1,74 @@
+name: Build Server Binaries
+
+# Standalone Go Eat server for every OS/arch, cross-compiled from one Linux
+# runner (modernc.org/sqlite is pure Go, so CGO stays off). Each archive holds
+# the binary plus .env.example:
+#
+#   GoEat-<ver>-server-linux-amd64.tar.gz     GoEat-<ver>-server-windows-amd64.zip
+#   GoEat-<ver>-server-linux-arm64.tar.gz     GoEat-<ver>-server-windows-arm64.zip
+#   GoEat-<ver>-server-darwin-amd64.tar.gz    GoEat-<ver>-server-darwin-arm64.tar.gz
+#
+# Called by build_manager.yaml for releases; a v*.*.*-server tag builds these
+# alone (artifact only, no release).
+
+on:
+  push:
+    tags:
+      - "v*.*.*-server"
+  workflow_call:
+
+jobs:
+  build-server:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Version from tag
+        # v1.2.3 / v1.2.3-dev -> VERSION=1.2.3, GOEAT_VERSION=<the tag>.
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-|$) ]]; then
+            echo "VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+            echo "GOEAT_VERSION=$tag"         >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0"                         >> "$GITHUB_ENV"
+            echo "GOEAT_VERSION=dev-${GITHUB_SHA::7}"    >> "$GITHUB_ENV"
+          fi
+
+      - name: Cross-compile
+        run: |
+          set -euo pipefail
+          mkdir -p output/server
+          for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            name="GoEat-${VERSION}-server-${os}-${arch}"
+            stage="output/server/$name"
+            bin="goeat"; [[ "$os" == windows ]] && bin="goeat.exe"
+            mkdir -p "$stage"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -tags timetzdata \
+              -ldflags "-s -w -X main.version=${GOEAT_VERSION}" -o "$stage/$bin" .
+            cp .env.example "$stage/.env.example"
+            if [[ "$os" == windows ]]; then
+              (cd output/server && zip -rq "$name.zip" "$name")
+            else
+              tar -czf "output/server/$name.tar.gz" -C output/server "$name"
+            fi
+            rm -rf "$stage"
+          done
+          ls -l output/server
+
+      - name: Upload server artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: server
+          path: |
+            output/server/*.tar.gz
+            output/server/*.zip
+          if-no-files-found: error

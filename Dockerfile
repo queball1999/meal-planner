@@ -1,6 +1,13 @@
 # syntax=docker/dockerfile:1
 # ── Stage 1: build ──────────────────────────────────────────────────────────
-FROM golang:1.26-alpine AS builder
+# Builds on the runner's own platform and cross-compiles to TARGETARCH, so a
+# multi-arch build never runs the Go toolchain under QEMU emulation.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+
+ARG TARGETOS=linux
+ARG TARGETARCH
+# Stamped into main.version (shown on the About page). CI passes the git tag.
+ARG VERSION=dev
 
 WORKDIR /src
 
@@ -13,7 +20,8 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 # does not need the tzdata package.
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-	CGO_ENABLED=0 GOOS=linux go build -trimpath -tags timetzdata -ldflags="-s -w" -o /goeat .
+	CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -tags timetzdata \
+	-ldflags="-s -w -X main.version=${VERSION}" -o /goeat .
 
 # ── Stage 2: runtime ────────────────────────────────────────────────────────
 FROM alpine:3.22

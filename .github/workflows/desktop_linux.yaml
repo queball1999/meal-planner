@@ -56,8 +56,9 @@ jobs:
       - name: Version from tag
         run: |
           tag="${GITHUB_REF_NAME}"
-          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)- ]]; then
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-|$) ]]; then
             echo "DESKTOP_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+            echo "GOEAT_VERSION=$tag"                 >> "$GITHUB_ENV"
           fi
 
       - name: Build .deb + AppImage

@@ -60,7 +60,7 @@ make desktop-linux     # -> output/linux/    .deb + AppImage (needs libwebkit2gt
 make desktop-dev       # run from source
 ```
 
-Releases are built by `.github/workflows/build_manager.yaml` on a `v*.*.*-release` (from `main`) or `v*.*.*-dev` tag.
+Releases are built by `.github/workflows/build_manager.yaml` on a `vX.Y.Z` tag (stable, from `main`) or `vX.Y.Z-dev` tag (prerelease). One tag builds the desktop apps, standalone servers (Linux/Windows/macOS, amd64 + arm64) and the `ghcr.io/queball1999/meal-planner` Docker image, all versioned `X.Y.Z`.
 
 ## Configuration
 

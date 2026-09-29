@@ -9,7 +9,8 @@
 .chat-launcher {
   position: fixed;
   right: var(--sp-5);
-  bottom: var(--sp-5);
+  /* Clear the sticky site footer. */
+  bottom: calc(var(--footer-h) + var(--sp-5));
   z-index: 900;
   display: flex;
   align-items: center;
@@ -37,7 +38,7 @@
 .chat-panel {
   position: fixed;
   right: var(--sp-5);
-  bottom: calc(var(--sp-5) + 4rem);
+  bottom: calc(var(--footer-h) + var(--sp-5) + 4rem);
   z-index: 890;
   display: flex;
   flex-direction: column;
@@ -224,7 +225,7 @@
   }
   .chat-launcher {
     right: var(--sp-4);
-    bottom: var(--sp-4);
+    bottom: calc(var(--footer-h) + var(--sp-4));
     z-index: 901;
   }
 }

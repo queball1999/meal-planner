@@ -102,8 +102,7 @@
     </main>
 
     <footer class="site-footer" role="contentinfo">
-        <span>{{.AppName}} &middot; v{{.Version}}</span>
-        {{if .User}}<span>&middot; <a href="/attributions">Photo attributions</a></span> <span>&middot; <a href="/about">About</a></span>{{end}}
+        <span>{{.AppName}} &middot; {{.Version}}</span>
         {{if gt .PageLoadMs 0.0}}
         <span class="site-footer__timing">Page: {{dur .PageLoadMs}} &middot; Template: {{dur .TemplateMs}}</span>
         {{end}}

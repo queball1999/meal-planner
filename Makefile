@@ -168,8 +168,9 @@ export RUSTUP_TOOLCHAIN
 endif
 
 # tauri build runs cmd/build_sidecar first (beforeBuildCommand), which stamps
-# GOEAT_VERSION into the Go binary.
-export GOEAT_VERSION = v$(DESKTOP_VERSION)
+# GOEAT_VERSION into the Go binary. CI sets it to the full git tag (v1.2.3-dev).
+GOEAT_VERSION ?= v$(DESKTOP_VERSION)
+export GOEAT_VERSION
 TAURI_BUILD = cd $(DESKTOP_DIR) && npx tauri build --config '{"version":"$(DESKTOP_VERSION)"}'
 
 ## desktop-deps: install the Tauri CLI into desktop/node_modules

@@ -53,6 +53,7 @@
 
     /* ── Layout ───────────────────────────────────────────────────────── */
     --nav-h:          56px;      /* sticky header height (§8.1) */
+    --footer-h:       44px;      /* sticky footer height; fixed widgets clear it */
     --content-max:    1200px;
     --sidebar-w:      260px;
 

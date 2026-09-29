@@ -271,12 +271,16 @@ const TOAST_ICONS = {
 function wirePasswordToggle(input) {
     if (!input || input.closest('.password-field-wrap')) return;
 
-    // Best-effort opt-out hints for password managers with an inline icon of
-    // their own (Bitwarden, LastPass, 1Password, Dashlane); not universal.
-    input.setAttribute('data-lpignore', 'true');
-    input.setAttribute('data-1p-ignore', 'true');
-    input.setAttribute('data-bwignore', 'true');
-    input.setAttribute('data-form-type', 'other');
+    // Password-manager opt-out hints (Bitwarden, LastPass, 1Password,
+    // Dashlane) only on secret fields like API keys and tokens, which are
+    // marked autocomplete="off". Real credential fields (login, setup,
+    // account) must stay visible to password managers so autofill works.
+    if (input.getAttribute('autocomplete') === 'off') {
+        input.setAttribute('data-lpignore', 'true');
+        input.setAttribute('data-1p-ignore', 'true');
+        input.setAttribute('data-bwignore', 'true');
+        input.setAttribute('data-form-type', 'other');
+    }
 
     const wrapper = document.createElement('span');
     wrapper.className = 'password-field-wrap';

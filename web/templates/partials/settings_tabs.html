@@ -9,6 +9,15 @@
     <a href="/admin/scrape"  class="subtab{{if eq .Page "scrape_config"}} subtab--active{{end}}"{{if eq .Page "scrape_config"}} aria-current="page"{{end}}>{{icon "code"}} Scraping</a>
     <a href="/admin/llm-log" class="subtab{{if eq .Page "llm_log"}}       subtab--active{{end}}"{{if eq .Page "llm_log"}} aria-current="page"{{end}}>{{icon "cpu"}} Audit log</a>
     <a href="/admin/events"  class="subtab{{if eq .Page "admin_events"}}  subtab--active{{end}}"{{if eq .Page "admin_events"}} aria-current="page"{{end}}>{{icon "shield-check"}} Admin events</a>
-    <a href="/about"         class="subtab{{if eq .Page "about"}}         subtab--active{{end}}"{{if eq .Page "about"}} aria-current="page"{{end}}>{{icon "information"}} About</a>
+    {{- $about := or (eq .Page "about") (eq .Page "attributions")}}
+    <a href="/about"         class="subtab{{if $about}}                   subtab--active{{end}}"{{if $about}} aria-current="page"{{end}}>{{icon "information"}} About</a>
+</nav>
+{{end}}
+
+{{/* Second-level tabs inside Settings → About. */}}
+{{define "aboutTabs"}}
+<nav class="subtabs" aria-label="About sections">
+    <a href="/about"        class="subtab{{if eq .Page "about"}}        subtab--active{{end}}"{{if eq .Page "about"}} aria-current="page"{{end}}>{{icon "information"}} Overview</a>
+    <a href="/attributions" class="subtab{{if eq .Page "attributions"}} subtab--active{{end}}"{{if eq .Page "attributions"}} aria-current="page"{{end}}>{{icon "image"}} Photo attributions</a>
 </nav>
 {{end}}

@@ -1,23 +1,26 @@
 name: Build Manager
 
-# Desktop release pipeline (same shape as QSnippet's).
+# Release pipeline (same shape as QSnippet's). One tag builds everything:
+# desktop apps (Windows, Linux), standalone servers (Linux, Windows, macOS on
+# amd64 + arm64) and the Docker image on ghcr.io. The tag's X.Y.Z becomes the
+# version of every one of them.
 #
 # Tag convention:
-#   v*.*.*-release  ->  full pipeline, stable release (must be cut from main)
-#   v*.*.*-dev      ->  full pipeline, prerelease (any branch)
+#   vX.Y.Z          ->  full pipeline, stable release (must be cut from main)
+#   vX.Y.Z-dev      ->  full pipeline, prerelease (any branch)
 #   v*.*.*-windows  ->  desktop_windows.yaml alone, artifact only
 #   v*.*.*-linux    ->  desktop_linux.yaml alone, artifact only
+#   v*.*.*-server   ->  server_binaries.yaml alone, artifact only
 #
 # Every published file gets a detached GPG signature, and SHA256SUMS.txt lists
 # them all (itself signed). Secrets: GPG_PRIVATE_KEY (base64 of the armored
-# private key) and GPG_PASSPHRASE.
+# private key) and GPG_PASSPHRASE. The image push uses GITHUB_TOKEN.
 
 on:
   push:
     tags:
-      - "v*.*.*-release"
-      - "v*.*.*-dev"
-  workflow_dispatch:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-dev"
 
 jobs:
   # Classifies the tag's channel, and for a release tag, enforces it was cut
@@ -42,11 +45,11 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ github.ref_name }}"
-          if [[ "$tag" == *-release ]]; then
+          if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "channel=release"             >> "$GITHUB_OUTPUT"
             echo "prerelease=false"            >> "$GITHUB_OUTPUT"
             echo "release_name=Go Eat $tag"    >> "$GITHUB_OUTPUT"
-          elif [[ "$tag" == *-dev ]]; then
+          elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev$ ]]; then
             echo "channel=dev"                         >> "$GITHUB_OUTPUT"
             echo "prerelease=true"                     >> "$GITHUB_OUTPUT"
             echo "release_name=Go Eat $tag (Dev build)" >> "$GITHUB_OUTPUT"
@@ -63,7 +66,7 @@ jobs:
           if git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
             echo "OK: $(git rev-parse --short ${{ github.sha }}) is reachable from main"
           else
-            echo "::error::v*.*.*-release tags must be cut from a commit on main. Use a v*.*.*-dev tag for other branches."
+            echo "::error::vX.Y.Z release tags must be cut from a commit on main. Use a vX.Y.Z-dev tag for other branches."
             exit 1
           fi
 
@@ -99,9 +102,24 @@ jobs:
     uses: ./.github/workflows/desktop_linux.yaml
     secrets: inherit
 
+  build-server:
+    needs: test
+    uses: ./.github/workflows/server_binaries.yaml
+    secrets: inherit
+
+  # Pushed only once every other build passed, so a broken release never
+  # leaves an image behind on ghcr.io.
+  build-docker:
+    needs: [build-windows, build-linux, build-server]
+    uses: ./.github/workflows/docker_image.yaml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
   release:
     runs-on: ubuntu-latest
-    needs: [guard, build-windows, build-linux]
+    needs: [guard, build-windows, build-linux, build-server, build-docker]
 
     permissions:
       contents: write
@@ -123,7 +141,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          find . -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.deb" -o -name "*.AppImage" \) \
+          find . -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.tar.gz" -o -name "*.deb" -o -name "*.AppImage" \) \
             -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
@@ -136,7 +154,7 @@ jobs:
                 --detach-sign "$1"
           }
           sign SHA256SUMS.txt
-          find . -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.deb" -o -name "*.AppImage" \) \
+          find . -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.tar.gz" -o -name "*.deb" -o -name "*.AppImage" \) \
             -print0 | while IFS= read -r -d '' file; do sign "$file"; done
 
       - name: Create GitHub Release
@@ -149,6 +167,7 @@ jobs:
           files: |
             dist/**/*.exe
             dist/**/*.zip
+            dist/**/*.tar.gz
             dist/**/*.deb
             dist/**/*.AppImage
             dist/**/*.sig

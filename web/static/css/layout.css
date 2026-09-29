@@ -1,7 +1,17 @@
 /* layout.css - shell structure: header, nav, main, footer.
- * The sticky header is --nav-h tall (56px). Min-height arithmetic keeps the
- * footer pinned to the bottom even on short pages.
+ * The sticky header is --nav-h tall (56px). The body is a flex column and
+ * .site-main grows to fill it, which keeps the footer pinned to the bottom on
+ * short pages whatever the footer's height turns out to be.
  */
+
+body {
+    display: flex;
+    flex-direction: column;
+    /* base.css's height: 100% would cap the column at one viewport and let
+       the header and footer shrink on long pages; grow with content instead. */
+    height: auto;
+    min-height: 100vh;
+}
 
 /* ── Skip link (§8.6, §8.1 - non-negotiable) ───────────────────────────── */
 
@@ -116,7 +126,10 @@
 /* ── Main content area ──────────────────────────────────────────────────── */
 
 .site-main {
-    min-height: calc(100vh - var(--nav-h) - 48px);
+    flex: 1 0 auto;
+    /* A flex item with auto margins shrinks to its content; keep it full
+       width up to the cap. */
+    width: 100%;
     max-width: var(--content-max);
     margin: 0 auto;
     padding: var(--sp-8) var(--sp-6);
@@ -165,7 +178,14 @@
 
 /* ── Site footer ────────────────────────────────────────────────────────── */
 
+/* Sticky like the header: pinned to the viewport bottom while scrolling.
+   Needs its own background so page content does not show through. */
 .site-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 100;
+    min-height: var(--footer-h);
+    background: var(--surface);
     display: flex;
     align-items: center;
     justify-content: space-between;

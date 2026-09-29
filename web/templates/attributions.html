@@ -6,6 +6,12 @@
         Credit lines required by the sources of catalog-item photos.
     </p>
 </div>
+{{/* The page stays readable by any member (the route is view-level), but
+     the Settings tabs lead to admin-only pages, so only admins see them. */}}
+{{if .IsAdmin}}
+{{template "settingsTabs" .}}
+{{template "aboutTabs" .}}
+{{end}}
 
 <div class="card">
     <p class="form-section__desc">
