@@ -52,6 +52,11 @@ func Open(dsn string) (Store, error) {
 	// instead of failing instantly with "database is locked".
 	if _, err := sqlDB.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=10000;`); err != nil {
 		_ = sqlDB.Close()
+		if strings.Contains(err.Error(), "readonly database") {
+			// Almost always file ownership, not a bad database: e.g. a Docker
+			// volume written by an older image running as another user.
+			return nil, fmt.Errorf("db pragmas: %w - the database file or its directory is not writable by this process (uid %d); fix its ownership, e.g. chown -R %d /data", err, os.Getuid(), os.Getuid())
+		}
 		return nil, fmt.Errorf("db pragmas: %w", err)
 	}
 
