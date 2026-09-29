@@ -72,6 +72,14 @@ type Server struct {
 	pendingMu   sync.Mutex
 	pendingChat map[int64]*agent.Pending
 
+	// resumableGen holds, per household, a plan generation whose reply was
+	// cut off at its output-token limit - the whole in-flight state (prompt,
+	// every tool result, the plan row) - so the progress screen's "Try again"
+	// can re-send the same request with a bigger budget instead of starting
+	// over. In memory for the same reason as pendingChat.
+	resumeMu     sync.Mutex
+	resumableGen map[int64]*plan.TruncatedError
+
 	// setup is the first-run claim token; setupLimiter throttles guesses at
 	// it per IP (see setup_token.go).
 	setup        setupClaim
@@ -81,10 +89,11 @@ type Server struct {
 // NewServer wires up routes, session loading, and CSRF middleware, then
 // returns a ready-to-run Server.
 func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string, box *cryptbox.Box) *Server {
-	chain := buildChain(cfg, store, gen)
 	if gen != nil {
-		gen = llm.NewDebugLogger(gen) // captures every call into llm.GlobalDebugLog
+		gen = llm.NewDebugLogger(gen)        // captures every call into llm.GlobalDebugLog
+		gen = llm.NewRunRecorder(gen, store) // one ai_runs row per call
 	}
+	chain := buildChain(cfg, store, gen)
 	s := &Server{
 		cfg:            cfg,
 		store:          store,
@@ -99,6 +108,7 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		startedAt:      time.Now(),
 		repricingPlans: make(map[int64]bool),
 		pendingChat:    make(map[int64]*agent.Pending),
+		resumableGen:   make(map[int64]*plan.TruncatedError),
 		setupLimiter:   newAttemptLimiter(10, 15*time.Minute),
 	}
 	s.handler = s.buildHandler()
@@ -159,6 +169,7 @@ func (s *Server) reloadLLM(ctx context.Context) {
 	}
 	if gen != nil {
 		gen = llm.NewDebugLogger(gen)
+		gen = llm.NewRunRecorder(gen, s.store)
 	}
 	chain := buildChain(&cfg, s.store, gen)
 

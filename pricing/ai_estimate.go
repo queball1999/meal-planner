@@ -61,7 +61,7 @@ Return ONLY valid JSON - no prose, no markdown:
 	// given one will burn the entire budget on it and answer with nothing. 512
 	// tokens is still ample for the ~30-token JSON object on backends that
 	// don't support the switch.
-	resp, err := a.gen.Generate(ctx, llm.GenerateRequest{
+	resp, err := a.gen.Generate(llm.WithPurpose(ctx, "price_estimate"), llm.GenerateRequest{
 		System:            "You are a grocery pricing assistant. Return only JSON.",
 		Prompt:            prompt,
 		MaxTokens:         512,
@@ -181,7 +181,7 @@ Return ONLY valid JSON - no prose, no markdown - as an array with one object per
 
 	// Same no-reasoning, generous-token-budget reasoning as Lookup, scaled to
 	// however many items are in this chunk.
-	resp, err := a.gen.Generate(ctx, llm.GenerateRequest{
+	resp, err := a.gen.Generate(llm.WithPurpose(ctx, "price_estimate"), llm.GenerateRequest{
 		System:            "You are a grocery pricing assistant. Return only JSON.",
 		Prompt:            prompt,
 		MaxTokens:         80*len(terms) + 256,

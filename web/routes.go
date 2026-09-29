@@ -105,6 +105,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /plan/generate", edit(http.HandlerFunc(s.handlePlanGenerate)))
 	mux.Handle("GET /plan/generate", view(http.HandlerFunc(s.handlePlanGeneratePage)))
 	mux.Handle("GET /plan/generate/status", view(http.HandlerFunc(s.handlePlanGenerateStatus)))
+	mux.Handle("POST /plan/generate/resume", edit(http.HandlerFunc(s.handlePlanGenerateResume)))
 	mux.Handle("POST /plan/days/{date}/headcount", edit(http.HandlerFunc(s.handlePlanHeadcount)))
 	mux.Handle("GET /plan/days/{date}/status-impact", view(http.HandlerFunc(s.handleDayStatusImpact)))
 	mux.Handle("POST /plan/days/{date}/status", edit(http.HandlerFunc(s.handleDayStatus)))

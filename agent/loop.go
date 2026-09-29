@@ -164,7 +164,7 @@ func (r *Runner) step(ctx context.Context, s *Session, transcript string, spent 
 
 	reply := Reply{Steps: spent}
 	for step := spent; step < limit; step++ {
-		resp, err := r.Gen.Generate(ctx, llm.GenerateRequest{
+		resp, err := r.Gen.Generate(llm.WithPurpose(ctx, "chat"), llm.GenerateRequest{
 			System: system,
 			Prompt: b.String(),
 			// Suppressed: the reply is one small JSON object, and a reasoning

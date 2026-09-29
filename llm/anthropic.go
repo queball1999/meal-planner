@@ -15,6 +15,7 @@ type anthropicClient struct {
 	client   anthropic.Client
 	model    string
 	maxToks  int
+	planToks int // LLM_PLAN_MAX_TOKENS; see PlanMaxTokens
 	sampling Sampling
 }
 
@@ -30,6 +31,7 @@ func newAnthropicClient(apiKey, model string, maxToks int, s Sampling) *anthropi
 
 func (c *anthropicClient) ProviderName() string { return "anthropic" }
 func (c *anthropicClient) ModelName() string    { return c.model }
+func (c *anthropicClient) PlanMaxTokens() int   { return c.planToks }
 
 func (c *anthropicClient) Generate(ctx context.Context, req GenerateRequest) (GenerateResponse, error) {
 	maxToks := req.MaxTokens
@@ -82,6 +84,7 @@ func (c *anthropicClient) Generate(ctx context.Context, req GenerateRequest) (Ge
 		OutputTokens: int(msg.Usage.OutputTokens),
 		ProviderName: "anthropic",
 		ModelName:    msg.Model,
+		Truncated:    msg.StopReason == anthropic.StopReasonMaxTokens,
 	}, nil
 }
 
@@ -123,6 +126,7 @@ func (c *anthropicClient) generateStreaming(ctx context.Context, params anthropi
 		OutputTokens: int(msg.Usage.OutputTokens),
 		ProviderName: "anthropic",
 		ModelName:    msg.Model,
+		Truncated:    msg.StopReason == anthropic.StopReasonMaxTokens,
 	}, nil
 }
 

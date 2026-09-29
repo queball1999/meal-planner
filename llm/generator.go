@@ -5,7 +5,16 @@
 // meal-plan generation.
 package llm
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrTruncated is wrapped by a Generate error when the call hit its output
+// limit before producing any usable content (e.g. a reasoning model that
+// spent the whole budget thinking). A cut-off call that did produce content
+// returns no error and sets GenerateResponse.Truncated instead.
+var ErrTruncated = errors.New("output token limit reached")
 
 // GenerateRequest is the input to Generator.Generate.
 type GenerateRequest struct {
@@ -42,6 +51,39 @@ type GenerateResponse struct {
 	OutputTokens int
 	ProviderName string
 	ModelName    string
+
+	// Truncated is true when the provider stopped because it hit MaxTokens
+	// (Anthropic stop_reason "max_tokens", OpenAI finish_reason "length")
+	// rather than finishing its answer. Content is then whatever was produced
+	// before the cut - for a JSON reply, almost certainly unparseable.
+	Truncated bool
+
+	// RunID is the ai_runs row the recorder (see NewRunRecorder) wrote for
+	// this call, or 0 when the call was not recorded.
+	RunID int64
+}
+
+// DefaultPlanMaxTokens is the plan-generation output budget when nothing
+// else is configured. Bumped from 8192 after real responses were getting cut
+// off mid-JSON on busy weeks.
+const DefaultPlanMaxTokens = 16384
+
+// planLimiter is implemented by every Generator that knows its configured
+// plan-generation budget (LLM_PLAN_MAX_TOKENS). Wrappers forward it.
+type planLimiter interface {
+	PlanMaxTokens() int
+}
+
+// PlanMaxTokens returns the output budget for one plan-generation call:
+// the configured LLM_PLAN_MAX_TOKENS when gen exposes one, otherwise
+// DefaultPlanMaxTokens.
+func PlanMaxTokens(gen Generator) int {
+	if l, ok := gen.(planLimiter); ok {
+		if n := l.PlanMaxTokens(); n > 0 {
+			return n
+		}
+	}
+	return DefaultPlanMaxTokens
 }
 
 // Generator is the single interface all LLM backends implement.

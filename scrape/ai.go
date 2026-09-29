@@ -152,7 +152,7 @@ func ProposeWithAI(ctx context.Context, gen AIClient, pageHTML string) (*Proposa
 	var lastNote string
 	for attempt := 1; attempt <= aiSelectorAttempts; attempt++ {
 		prompt := aiSelectorPrompt(condensed, lastNote)
-		res, err := gen.Generate(ctx, llm.GenerateRequest{
+		res, err := gen.Generate(llm.WithPurpose(ctx, "scrape"), llm.GenerateRequest{
 			System:            aiSelectorSystem,
 			Prompt:            prompt,
 			MaxTokens:         2048,
@@ -298,7 +298,7 @@ func ExtractWithAI(ctx context.Context, gen AIClient, pageHTML, term string) ([]
 		return nil, fmt.Errorf("scrape: page had no extractable markup")
 	}
 
-	res, err := gen.Generate(ctx, llm.GenerateRequest{
+	res, err := gen.Generate(llm.WithPurpose(ctx, "scrape"), llm.GenerateRequest{
 		System: `You read grocery search-result markup and report the products you can see.
 Reply with ONE JSON object and nothing else:
 {"products":[{"name":"...","price":0.00,"pack_size":"5 lb"}]}

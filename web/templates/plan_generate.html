@@ -30,7 +30,42 @@
     <div class="skeleton-card__icon icon-spin" aria-hidden="true" id="gen-icon">{{icon "autorenew"}}</div>
     <h2 class="skeleton-card__title" id="gen-title">Working…</h2>
     <p class="skeleton-card__body" id="gen-status">Connecting to generation service…</p>
+    <p id="gen-resume-wrap" hidden style="margin-top:var(--sp-4)">
+        <button type="button" class="btn btn-primary" data-modal-open="gen-resume-modal">{{icon "autorenew"}} Try again</button>
+    </p>
 </div>
+
+{{/* "Try again" after a reply was cut off at its output-token limit. The
+     server still holds that whole generation in memory (prompt, tool
+     results, plan row - see handlePlanGenerateResume), so this re-sends the
+     same request with a bigger budget rather than starting over. */}}
+{{template "partials/modal_open.html" dict "ID" "gen-resume-modal" "Title" "Try again with more room"}}
+  <form method="POST" action="/plan/generate/resume" id="gen-resume-form">
+    {{.CSRFField}}
+    <p class="text-muted">
+      The AI ran out of room writing your plan (limit: <strong id="gen-resume-current"></strong> tokens).
+      Your preferences and every lookup it already did are kept - only the final
+      request is sent again, with a higher limit.
+    </p>
+    <div class="field">
+      <span class="field-label">Add</span>
+      <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
+        <button type="button" class="btn btn-secondary btn-sm" data-resume-add="8192">+8,192</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-resume-add="16384">+16,384</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-resume-add="32768">+32,768</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label" for="gen-resume-max">New limit (output tokens)</label>
+      <input class="field-input" id="gen-resume-max" name="max_tokens" type="number" step="1024" required>
+      <p class="field-hint">Your model has its own ceiling - Claude models allow 64,000 or more; many local models far less. Too high and the provider rejects it; you can try again lower.</p>
+    </div>
+    <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "autorenew"}} Try again</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
 <template id="gen-icon-check">{{icon "check"}}</template>
 <template id="gen-icon-close">{{icon "close"}}</template>
 
@@ -121,6 +156,29 @@
     // every subsequent 'error' dispatch instead of re-rendering from it.
     var settled = false;
 
+    /* ── "Try again" after a token-limit cut-off ──────────────────────
+     * The server sends "resumable" (data: the limit the cut-off reply had)
+     * just before "error" when the reply ran out of output tokens. */
+    var resumeFrom = 0;
+    var resumeWrap  = document.getElementById('gen-resume-wrap');
+    var resumeInput = document.getElementById('gen-resume-max');
+    es.addEventListener('resumable', function (e) {
+        resumeFrom = parseInt(e.data, 10) || 0;
+    });
+    function showResume() {
+        if (!resumeFrom || !resumeWrap) return;
+        document.getElementById('gen-resume-current').textContent = resumeFrom.toLocaleString();
+        resumeInput.min = resumeFrom + 1;
+        resumeInput.max = 200000;
+        resumeInput.value = resumeFrom * 2;
+        resumeWrap.hidden = false;
+    }
+    document.querySelectorAll('[data-resume-add]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            resumeInput.value = resumeFrom + parseInt(btn.dataset.resumeAdd, 10);
+        });
+    });
+
     es.addEventListener('status', function (e) {
         if (settled) return;
         status.textContent = e.data;
@@ -159,6 +217,7 @@
         icon.innerHTML     = document.getElementById('gen-icon-close').innerHTML;
         title.textContent  = 'Generation failed';
         status.textContent = e.data;
+        showResume();
     });
 
     es.onerror = function () {

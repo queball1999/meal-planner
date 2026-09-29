@@ -19,6 +19,7 @@ type openAIClient struct {
 	apiKey   string
 	model    string
 	maxToks  int
+	planToks int // LLM_PLAN_MAX_TOKENS; see PlanMaxTokens
 	sampling Sampling
 	provider string
 	httpCli  *http.Client
@@ -55,6 +56,7 @@ func newOpenAIClient(baseURL, apiKey, model, provider string, maxToks int, s Sam
 
 func (c *openAIClient) ProviderName() string { return c.provider }
 func (c *openAIClient) ModelName() string    { return c.model }
+func (c *openAIClient) PlanMaxTokens() int   { return c.planToks }
 
 func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (GenerateResponse, error) {
 	maxToks := req.MaxTokens
@@ -158,12 +160,12 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 		switch {
 		case choice.FinishReason == "length" && reasoned != "":
 			return GenerateResponse{}, fmt.Errorf(
-				"openai: model spent all %d output tokens reasoning and returned no answer - raise max_tokens or disable thinking for this call",
-				cr.Usage.CompletionTokens)
+				"openai: model spent all %d output tokens reasoning and returned no answer - raise max_tokens or disable thinking for this call: %w",
+				cr.Usage.CompletionTokens, ErrTruncated)
 		case choice.FinishReason == "length":
 			return GenerateResponse{}, fmt.Errorf(
-				"openai: response was cut off at the %d-token limit before any content was produced",
-				cr.Usage.CompletionTokens)
+				"openai: response was cut off at the %d-token limit before any content was produced: %w",
+				cr.Usage.CompletionTokens, ErrTruncated)
 		case reasoned != "":
 			return GenerateResponse{}, fmt.Errorf(
 				"openai: model returned only reasoning, no answer (finish_reason %q)", choice.FinishReason)
@@ -179,6 +181,7 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 		OutputTokens: cr.Usage.CompletionTokens,
 		ProviderName: c.provider,
 		ModelName:    cr.Model,
+		Truncated:    choice.FinishReason == "length",
 	}, nil
 }
 

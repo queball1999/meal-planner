@@ -14,6 +14,7 @@ import (
 
 	"goeat/auth"
 	"goeat/db"
+	"goeat/llm"
 )
 
 // SessionCookieName is the name of the session cookie, shared with the web
@@ -211,6 +212,7 @@ func withActiveHousehold(ctx context.Context, store db.Store, user *db.User, ses
 		return ctx
 	}
 	ctx = context.WithValue(ctx, ctxKeyHousehold, hh)
+	ctx = llm.WithHousehold(ctx, hh.ID) // bill this request's LLM calls (ai_runs)
 	return context.WithValue(ctx, ctxKeyRole, role)
 }
 

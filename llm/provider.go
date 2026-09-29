@@ -38,11 +38,15 @@ func NewGenerator(cfg *config.Config) (Generator, error) {
 		if apiKey == "" {
 			return nil, fmt.Errorf("provider=anthropic requires an Anthropic API key")
 		}
-		return newAnthropicClient(apiKey, model, cfg.LLMMaxTokens, sampling), nil
+		c := newAnthropicClient(apiKey, model, cfg.LLMMaxTokens, sampling)
+		c.planToks = cfg.LLMPlanMaxTokens
+		return c, nil
 	}
 
 	if baseURL == "" {
 		return nil, fmt.Errorf("provider=%s requires an API URL", id)
 	}
-	return newOpenAIClient(baseURL, apiKey, model, id, cfg.LLMMaxTokens, sampling), nil
+	c := newOpenAIClient(baseURL, apiKey, model, id, cfg.LLMMaxTokens, sampling)
+	c.planToks = cfg.LLMPlanMaxTokens
+	return c, nil
 }

@@ -133,6 +133,9 @@ var Defs = []Definition{
 	{Key: "LLM_MAX_TOKENS", Label: "Max tokens", Category: "AI Provider", Kind: KindInt,
 		Help:       "Upper bound on generated tokens per call. Default 4096.",
 		FromConfig: func(c *config.Config) string { return strconv.Itoa(c.LLMMaxTokens) }},
+	{Key: "LLM_PLAN_MAX_TOKENS", Label: "Plan max tokens", Category: "AI Provider", Kind: KindInt,
+		Help:       "Upper bound on generated tokens for each meal-plan generation call - a whole week in one reply needs far more than ordinary calls. Default 16384.",
+		FromConfig: func(c *config.Config) string { return strconv.Itoa(c.LLMPlanMaxTokens) }},
 	{Key: "LLM_TEMPERATURE", Label: "Temperature", Category: "AI Provider", Kind: KindFloat,
 		Help:       "Sampling temperature. Default 1.01 (clamped to 1 for Anthropic).",
 		FromConfig: func(c *config.Config) string { return formatFloat(c.LLMTemp) }},
@@ -334,6 +337,13 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 			cfg.LLMMaxTokens = n
 		} else {
 			warnBad("LLM_MAX_TOKENS", v, err)
+		}
+	}
+	if v, ok := get("LLM_PLAN_MAX_TOKENS"); ok {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.LLMPlanMaxTokens = n
+		} else {
+			warnBad("LLM_PLAN_MAX_TOKENS", v, err)
 		}
 	}
 	if v, ok := get("LLM_TOP_K"); ok {

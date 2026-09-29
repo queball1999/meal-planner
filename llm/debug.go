@@ -48,6 +48,7 @@ func NewDebugLogger(gen Generator) Generator {
 
 func (d *debugLogger) ProviderName() string { return d.inner.ProviderName() }
 func (d *debugLogger) ModelName() string    { return d.inner.ModelName() }
+func (d *debugLogger) PlanMaxTokens() int   { return PlanMaxTokens(d.inner) }
 
 func (d *debugLogger) Generate(ctx context.Context, req GenerateRequest) (GenerateResponse, error) {
 	start := time.Now()

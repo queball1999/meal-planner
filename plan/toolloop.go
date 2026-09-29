@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -99,60 +100,87 @@ func stripFence(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// runGenerationLoop drives the model through the tool loop and returns the
-// raw text of its final reply - the caller (generate, in generate.go) parses
-// that exactly as it always parsed a single-shot response (stripFences +
+// genLoop is the generation tool loop's state: the system prompt, the
+// transcript so far (the user prompt plus every tool result), and which step
+// comes next. Kept on the heap across a truncated reply so ResumeGeneration
+// can re-send exactly the same request with a bigger budget - every lookup
+// already made stays in the transcript and is never re-run.
+type genLoop struct {
+	system     string
+	transcript strings.Builder
+	step       int
+	maxTokens  int
+}
+
+func newGenLoop(systemPrompt, userPrompt string, maxTokens int) *genLoop {
+	lp := &genLoop{system: toolProtocolPreamble + systemPrompt, maxTokens: maxTokens}
+	lp.transcript.WriteString(userPrompt)
+	return lp
+}
+
+// prompt is the user turn for the current step. Deterministic in (transcript,
+// step), so a resumed step sends byte-for-byte what the cut-off one did.
+func (lp *genLoop) prompt() string {
+	p := lp.transcript.String()
+	// The last couple of steps: stop offering the choice and require the plan
+	// itself, so a model that spent its whole budget looking things up still
+	// hands back something rather than nothing.
+	if lp.step >= genMaxSteps-2 {
+		p += "\n\nYou are nearly out of lookups. Reply with the final plan now."
+	}
+	return p
+}
+
+// errLoopTruncated is returned by runGenerationLoop when the current step's
+// reply hit lp.maxTokens. lp.step is left pointing at that step, so running
+// the loop again (after raising lp.maxTokens) re-sends the same request.
+var errLoopTruncated = errors.New("reply hit the output token limit")
+
+// runGenerationLoop drives the model through the tool loop from lp.step and
+// returns its final reply - the caller (generate, in generate.go) parses that
+// exactly as it always parsed a single-shot response (stripFences +
 // json.Unmarshal into GeneratedPlan), so Validate/ClampQuantities/persistPlan
 // downstream are unaffected by how many round-trips it took to get there.
-func runGenerationLoop(ctx context.Context, gen llm.Generator, systemPrompt, userPrompt string, gc *genToolCtx, j *Job) (string, error) {
-	system := toolProtocolPreamble + systemPrompt
-
-	var transcript strings.Builder
-	transcript.WriteString(userPrompt)
-
-	for step := 0; step < genMaxSteps; step++ {
-		// The last couple of steps: stop offering the choice and require the
-		// plan itself, so a model that spent its whole budget looking things
-		// up still hands back something rather than nothing.
-		prompt := transcript.String()
-		if step >= genMaxSteps-2 {
-			prompt += "\n\nYou are nearly out of lookups. Reply with the final plan now."
-		}
-
+// Each step is its own request with its own lp.maxTokens output budget.
+func runGenerationLoop(ctx context.Context, gen llm.Generator, lp *genLoop, gc *genToolCtx, j *Job) (llm.GenerateResponse, error) {
+	for ; lp.step < genMaxSteps; lp.step++ {
 		j.EmitLLMStart()
 		resp, err := gen.Generate(ctx, llm.GenerateRequest{
-			System:    system,
-			Prompt:    prompt,
-			MaxTokens: planGenMaxTokens,
+			System:    lp.system,
+			Prompt:    lp.prompt(),
+			MaxTokens: lp.maxTokens,
 			OnDelta:   j.EmitDelta,
 		})
+		if errors.Is(err, llm.ErrTruncated) || (err == nil && resp.Truncated) {
+			return resp, errLoopTruncated
+		}
 		if err != nil {
-			return "", fmt.Errorf("llm generate: %w", err)
+			return resp, fmt.Errorf("llm generate: %w", err)
 		}
 
 		action, isCall := looksLikeToolCall(resp.Content)
 		if !isCall {
-			return resp.Content, nil
+			return resp, nil
 		}
 
-		if step == 0 {
+		if lp.step == 0 {
 			j.EmitStatus("Checking pantry, recipes, and prices before drafting your week…")
 		}
 
 		res, terr := runGenTool(ctx, gc, action.Tool, action.Args)
 		if terr != nil {
-			transcript.WriteString(fmt.Sprintf("\nTOOL %s ERROR: %s\n", action.Tool, terr.Error()))
+			lp.transcript.WriteString(fmt.Sprintf("\nTOOL %s ERROR: %s\n", action.Tool, terr.Error()))
 			continue
 		}
-		transcript.WriteString(fmt.Sprintf("\nTOOL %s OK: %s\n", action.Tool, res.Summary))
+		lp.transcript.WriteString(fmt.Sprintf("\nTOOL %s OK: %s\n", action.Tool, res.Summary))
 		if res.Data != nil {
 			if blob, mErr := json.Marshal(res.Data); mErr == nil {
-				transcript.WriteString("DATA: ")
-				transcript.Write(blob)
-				transcript.WriteString("\n")
+				lp.transcript.WriteString("DATA: ")
+				lp.transcript.Write(blob)
+				lp.transcript.WriteString("\n")
 			}
 		}
 	}
 
-	return "", fmt.Errorf("generation used its whole tool-call budget (%d) without producing a plan", genMaxSteps)
+	return llm.GenerateResponse{}, fmt.Errorf("generation used its whole tool-call budget (%d) without producing a plan", genMaxSteps)
 }

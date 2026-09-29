@@ -168,7 +168,7 @@ func (s *Server) probeLLM(ctx context.Context) probeResult {
 	defer cancel()
 
 	err, ms := timed(func() error {
-		_, gerr := s.llmGen().Generate(c, llm.GenerateRequest{
+		_, gerr := s.llmGen().Generate(llm.WithPurpose(c, "probe"), llm.GenerateRequest{
 			System: "Reply with the single word: ok",
 			Prompt: "ping",
 			// Deliberately tiny. This is a reachability check, and a reasoning

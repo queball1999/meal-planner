@@ -178,11 +178,10 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 		}
 
 		parsedJSON := "null"
-		var inToks, outToks int
 
 		if rawText != "" && s.llmGen() != nil {
 			var err error
-			parsedJSON, inToks, outToks, err = llm.ParseMealDescription(ctx, s.llmGen(), slot, rawText)
+			parsedJSON, _, _, err = llm.ParseMealDescription(ctx, s.llmGen(), slot, rawText)
 			if err != nil {
 				log.Printf("preferences: parse %s: %v", slot, err)
 			} else if parsedJSON != "null" {
@@ -190,17 +189,6 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 				if u != nil {
 					id := u.ID
 					s.logEvent(r, &id, "parse_meal_description", "meal_slot_hint", slot, "")
-				}
-				if _, err := s.store.CreateAIRun(ctx, db.CreateAIRunParams{
-					HouseholdID:      hh.ID,
-					Purpose:          "free_text_parse",
-					Provider:         s.llmGen().ProviderName(),
-					Model:            s.llmGen().ModelName(),
-					PromptTokens:     inToks,
-					CompletionTokens: outToks,
-					Status:           "ok",
-				}); err != nil {
-					log.Printf("preferences: create ai run: %v", err)
 				}
 			}
 		}

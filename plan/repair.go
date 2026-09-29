@@ -76,7 +76,7 @@ func Repair(
 		// Reasoning stays on here - swapping a meal is a judgement call, not a
 		// lookup - so the budget has to cover the thinking as well as the JSON.
 		j.EmitLLMStart()
-		resp, err := gen.Generate(ctx, llm.GenerateRequest{
+		resp, err := gen.Generate(llm.WithPurpose(ctx, "repair"), llm.GenerateRequest{
 			System:    sysPmt,
 			Prompt:    userPmt,
 			MaxTokens: 8192,

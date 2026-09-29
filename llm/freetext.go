@@ -34,7 +34,7 @@ func ParseMealDescription(ctx context.Context, gen Generator, slot, text string)
 	}
 
 	prompt := fmt.Sprintf("Meal slot: %s\n\nDescription: %s", slot, text)
-	resp, err := gen.Generate(ctx, GenerateRequest{
+	resp, err := gen.Generate(WithPurpose(ctx, "free_text_parse"), GenerateRequest{
 		System:            freetextSystem,
 		Prompt:            prompt,
 		MaxTokens:         1024,

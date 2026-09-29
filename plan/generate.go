@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -14,10 +15,6 @@ import (
 	"goeat/llm"
 	"goeat/pricing"
 )
-
-// planGenMaxTokens caps the LLM response for a full week's plan. Bumped from
-// 8192 after real responses were getting cut off mid-JSON on busy weeks.
-const planGenMaxTokens = 16384
 
 var dayOffset = map[string]int{
 	"sunday":    0,
@@ -127,17 +124,6 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 
 	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd, requested, onHand, days)
 
-	aiRun, err := store.CreateAIRun(ctx, db.CreateAIRunParams{
-		HouseholdID: householdID,
-		Purpose:     "plan",
-		Provider:    gen.ProviderName(),
-		Model:       gen.ModelName(),
-		Status:      "running",
-	})
-	if err != nil {
-		return 0, fmt.Errorf("create ai_run: %w", err)
-	}
-
 	plan, err := store.CreatePlan(ctx, db.CreatePlanParams{
 		HouseholdID: householdID,
 		WeekStart:   weekStart.Format("2006-01-02"),
@@ -160,30 +146,102 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		fmt.Printf("warning: cancel superseded plans failed: %v\n", err)
 	}
 
-	gc := &genToolCtx{store: store, householdID: householdID, checker: checker}
-	rawResp, err := runGenerationLoop(ctx, gen, sysPmt, userPmt, gc, j)
+	st := &genState{
+		store:       store,
+		householdID: householdID,
+		hh:          hh,
+		profile:     profile,
+		stores:      stores,
+		weekStart:   weekStart,
+		days:        days,
+		planID:      plan.ID,
+		pricer:      pricer,
+		gc:          &genToolCtx{store: store, householdID: householdID, checker: checker},
+		loop:        newGenLoop(sysPmt, userPmt, llm.PlanMaxTokens(gen)),
+	}
+	return st.run(ctx, gen, j)
+}
+
+// genState is everything one generation needs after its prompt is built -
+// kept together so a reply cut off at the token limit can be resumed (see
+// TruncatedError and ResumeGeneration) without resolving preferences,
+// creating another plan row, or re-running any tool lookup.
+type genState struct {
+	store       db.Store
+	householdID int64
+	hh          *db.Household
+	profile     *PreferenceProfile
+	stores      []*db.GroceryStore
+	weekStart   time.Time
+	days        []string
+	planID      int64
+	pricer      Pricer
+	gc          *genToolCtx
+	loop        *genLoop
+}
+
+// TruncatedError is returned by generation when the model's reply hit its
+// output-token limit. It holds the whole in-flight generation in memory, so
+// ResumeGeneration can send the very same request again with a bigger budget
+// and carry on from there.
+type TruncatedError struct {
+	PlanID    int64
+	MaxTokens int // the budget the cut-off reply had
+	st        *genState
+}
+
+func (e *TruncatedError) Error() string {
+	return fmt.Sprintf("parse llm response: response was cut off before completing (max %d output tokens) - try again with a higher limit", e.MaxTokens)
+}
+
+// ResumeGeneration re-sends the request that was cut off in te with
+// maxTokens as its new output budget, then finishes the generation exactly as
+// the first attempt would have. Returns another *TruncatedError if the bigger
+// budget still wasn't enough.
+func ResumeGeneration(ctx context.Context, gen llm.Generator, te *TruncatedError, maxTokens int, j *Job) (int64, error) {
+	st := te.st
+	if err := st.store.UpdatePlanStatus(ctx, st.planID, "generating"); err != nil {
+		return st.planID, fmt.Errorf("update plan status: %w", err)
+	}
+	st.loop.maxTokens = maxTokens
+	return st.run(ctx, gen, j)
+}
+
+// run drives the tool loop from wherever st.loop left off, then validates,
+// persists, and (in the background) prices the result.
+func (st *genState) run(ctx context.Context, gen llm.Generator, j *Job) (int64, error) {
+	store, planID := st.store, st.planID
+	ctx = llm.WithPurpose(llm.WithHousehold(ctx, st.householdID), "plan")
+
+	resp, err := runGenerationLoop(ctx, gen, st.loop, st.gc, j)
+	if errors.Is(err, errLoopTruncated) {
+		_ = store.UpdatePlanStatus(ctx, planID, "error")
+		return planID, &TruncatedError{PlanID: planID, MaxTokens: st.loop.maxTokens, st: st}
+	}
 	if err != nil {
-		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
-		return plan.ID, fmt.Errorf("llm generate: %w", err)
+		_ = store.UpdatePlanStatus(ctx, planID, "error")
+		return planID, fmt.Errorf("llm generate: %w", err)
 	}
 
 	j.EmitStatus("Got a plan back - checking it over…")
 
 	var gp GeneratedPlan
-	raw := stripFences(strings.TrimSpace(rawResp))
+	raw := stripFences(strings.TrimSpace(resp.Content))
 	if err := json.Unmarshal([]byte(raw), &gp); err != nil {
-		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
+		_ = store.UpdatePlanStatus(ctx, planID, "error")
+		// Some OpenAI-compatible servers don't report finish_reason
+		// reliably; a reply that stops mid-object is still a cut-off one.
 		if !strings.HasSuffix(raw, "}") {
-			return plan.ID, fmt.Errorf("parse llm response: response was cut off before completing (max %d output tokens) - raise the token limit or shorten the plan: %w", planGenMaxTokens, err)
+			return planID, &TruncatedError{PlanID: planID, MaxTokens: st.loop.maxTokens, st: st}
 		}
-		return plan.ID, fmt.Errorf("parse llm response: %w", err)
+		return planID, fmt.Errorf("parse llm response: %w", err)
 	}
 
 	CleanMealTitles(gp)
 
-	if err := Validate(gp, profile, days); err != nil {
-		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
-		return plan.ID, fmt.Errorf("validate plan: %w", err)
+	if err := Validate(gp, st.profile, st.days); err != nil {
+		_ = store.UpdatePlanStatus(ctx, planID, "error")
+		return planID, fmt.Errorf("validate plan: %w", err)
 	}
 
 	// Pull any physically absurd ingredient quantity back to a sane cap before
@@ -191,10 +249,16 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	// ClampQuantities.
 	ClampQuantities(gp)
 
+	// Meals point at the ai_runs row of the call that actually produced them.
+	var aiRunID *int64
+	if resp.RunID != 0 {
+		aiRunID = &resp.RunID
+	}
+
 	j.EmitStatus("Saving your meals and recipes…")
-	if err := persistPlan(ctx, store, householdID, plan.ID, aiRun.ID, weekStart, gp); err != nil {
-		_ = store.UpdatePlanStatus(ctx, plan.ID, "error")
-		return plan.ID, fmt.Errorf("persist plan: %w", err)
+	if err := persistPlan(ctx, store, st.householdID, planID, aiRunID, st.weekStart, gp); err != nil {
+		_ = store.UpdatePlanStatus(ctx, planID, "error")
+		return planID, fmt.Errorf("persist plan: %w", err)
 	}
 
 	// Seed one plan_days row per day with everyone eating. The plan page used
@@ -202,10 +266,10 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	// display but left nothing to scale against - now every day has an
 	// explicit portion total from the moment the plan exists, and changing who
 	// is eating rescales that day's meals.
-	seedPlanDays(ctx, store, plan.ID, weekStart, hh.HouseholdSize, profile.Members)
+	seedPlanDays(ctx, store, planID, st.weekStart, st.hh.HouseholdSize, st.profile.Members)
 
 	// Mark leftover slots based on cooked-portions surplus (§5.6).
-	if err := PlanLeftovers(ctx, store, plan.ID, profile.LeftoverTolerance); err != nil {
+	if err := PlanLeftovers(ctx, store, planID, st.profile.LeftoverTolerance); err != nil {
 		log.Printf("plan: leftover planning failed: %v", err)
 	}
 
@@ -223,26 +287,26 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	// so a deadline blown later during background pricing must not strand
 	// this row in "generating" and leave the progress screen spinning.
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	err = store.UpdatePlanStatus(finishCtx, plan.ID, "ready")
+	err = store.UpdatePlanStatus(finishCtx, planID, "ready")
 	cancel()
 	if err != nil {
-		return plan.ID, fmt.Errorf("update plan status: %w", err)
+		return planID, fmt.Errorf("update plan status: %w", err)
 	}
 
-	if pricer != nil {
-		go priceInBackground(store, gen, plan.ID, hh, profile, stores, pricer)
+	if st.pricer != nil {
+		go priceInBackground(store, gen, planID, st.hh, st.profile, st.stores, st.pricer)
 	} else {
 		// No pricer configured (tests, or no pricing chain) - nothing to
 		// background; write an unpriced list synchronously so the plan still
 		// has something to shop from.
 		listCtx, listCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		if _, lerr := pricing.EnsureShoppingList(listCtx, store, plan.ID, hh); lerr != nil {
-			log.Printf("plan: shopping list fallback failed for plan %d: %v", plan.ID, lerr)
+		if _, lerr := pricing.EnsureShoppingList(listCtx, store, planID, st.hh); lerr != nil {
+			log.Printf("plan: shopping list fallback failed for plan %d: %v", planID, lerr)
 		}
 		listCancel()
 	}
 
-	return plan.ID, nil
+	return planID, nil
 }
 
 // priceInBackground runs pricing, budget repair, and the unpriced-list
@@ -253,7 +317,7 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 // still has real network work ahead of it (a scrape or AI lookup per
 // ingredient, then up to 3 repair rounds that each re-price the whole list).
 func priceInBackground(store db.Store, gen llm.Generator, planID int64, hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, pricer Pricer) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(llm.WithHousehold(context.Background(), hh.ID), 15*time.Minute)
 	defer cancel()
 
 	// Lets the shopping list's "stop pricing" button abort this run early -
@@ -304,7 +368,7 @@ func itemHintFrom(ing GeneratedIngredient) catalog.ItemHint {
 // to live: buildPricer returns nil when no store chain is configured, so a
 // household with no stores never linked a single ingredient and every shopping
 // line stayed unmatched forever.
-func persistPlan(ctx context.Context, store db.Store, householdID, planID, aiRunID int64, weekStart time.Time, gp GeneratedPlan) error {
+func persistPlan(ctx context.Context, store db.Store, householdID, planID int64, aiRunID *int64, weekStart time.Time, gp GeneratedPlan) error {
 	for _, gm := range gp.Meals {
 		day := strings.ToLower(gm.Day)
 		offset, ok := dayOffset[day]
@@ -321,7 +385,7 @@ func persistPlan(ctx context.Context, store db.Store, householdID, planID, aiRun
 			Effort:         gm.Effort,
 			Servings:       gm.Servings,
 			CookedPortions: gm.CookedPortions,
-			AIRunID:        &aiRunID,
+			AIRunID:        aiRunID,
 		})
 		if err != nil {
 			return fmt.Errorf("create meal %s %s: %w", gm.Day, gm.Slot, err)

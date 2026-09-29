@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -762,11 +763,21 @@ func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Cont
 		planID, err := generate(ctx, pricer, checker, j)
 		if err != nil {
 			log.Printf("plan generation error household=%d: %v", hhID, err)
+			// A cut-off reply keeps its whole generation in memory so the
+			// progress screen can offer "Try again" with a bigger budget.
+			// "resumable" goes out before "error": the page closes the stream
+			// on "error".
+			var te *plan.TruncatedError
+			if errors.As(err, &te) {
+				s.setResumableGen(hhID, te)
+				j.Emit(plan.JobEvent{Type: "resumable", Message: strconv.Itoa(te.MaxTokens)})
+			}
 			j.Status = plan.JobFailed
 			j.Error = err.Error()
 			j.Emit(plan.JobEvent{Type: "error", Message: err.Error()})
 			return
 		}
+		s.setResumableGen(hhID, nil)
 		j.Status = plan.JobDone
 		j.PlanID = planID
 		j.Emit(plan.JobEvent{Type: "done", Message: "Plan ready", PlanID: planID})
@@ -781,6 +792,7 @@ func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Cont
 func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 	store, gen := s.store, s.llmGen()
 	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
+		s.setResumableGen(hhID, nil) // a fresh generation supersedes any cut-off one
 		return plan.Generate(ctx, store, gen, hhID, pricer, checker, j)
 	})
 }
@@ -795,8 +807,65 @@ func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
 func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart, fromDate time.Time, requested, onHand []string) (job *plan.Job, started bool) {
 	store, gen := s.store, s.llmGen()
 	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
+		s.setResumableGen(hhID, nil) // a fresh generation supersedes any cut-off one
 		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, fromDate, pricer, checker, j, requested, onHand)
 	})
+}
+
+// maxResumeTokens caps what "Try again" may ask for. Above most providers'
+// real output limits; a model that rejects the number fails with its own
+// error, and the cut-off generation stays resumable at a smaller value.
+const maxResumeTokens = 200000
+
+func (s *Server) setResumableGen(hhID int64, te *plan.TruncatedError) {
+	s.resumeMu.Lock()
+	defer s.resumeMu.Unlock()
+	if te == nil {
+		delete(s.resumableGen, hhID)
+		return
+	}
+	s.resumableGen[hhID] = te
+}
+
+func (s *Server) resumableGenFor(hhID int64) *plan.TruncatedError {
+	s.resumeMu.Lock()
+	defer s.resumeMu.Unlock()
+	return s.resumableGen[hhID]
+}
+
+// handlePlanGenerateResume is the progress screen's "Try again" after a reply
+// was cut off at the output-token limit: it re-sends the exact request that
+// was cut off, now with max_tokens as its budget, and finishes that same
+// generation - no preference resolution, new plan row, or tool lookups again.
+func (s *Server) handlePlanGenerateResume(w http.ResponseWriter, r *http.Request) {
+	gen := s.llmGen()
+	if gen == nil {
+		http.Error(w, "No LLM configured", http.StatusServiceUnavailable)
+		return
+	}
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	te := s.resumableGenFor(hh.ID)
+	if te == nil {
+		s.setNotify(w, NotifyDanger, "There's nothing to resume - that generation is gone (a newer one replaced it, or the server restarted). Generate the plan again.")
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	maxTokens, err := strconv.Atoi(strings.TrimSpace(r.FormValue("max_tokens")))
+	if err != nil || maxTokens <= te.MaxTokens || maxTokens > maxResumeTokens {
+		s.setNotify(w, NotifyDanger, fmt.Sprintf("Pick a limit above %d and at most %d tokens.", te.MaxTokens, maxResumeTokens))
+		http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
+		return
+	}
+
+	s.runPlanGenerationJob(hh.ID, func(ctx context.Context, _ plan.Pricer, _ plan.PriceChecker, j *plan.Job) (int64, error) {
+		j.EmitStatus(fmt.Sprintf("Asking the AI again with room for %d tokens…", maxTokens))
+		return plan.ResumeGeneration(ctx, gen, te, maxTokens, j)
+	})
+	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 }
 
 // handlePlanGenerate starts a background generation job, then redirects to
@@ -1242,7 +1311,11 @@ func (s *Server) handlePlanGenerateStatus(w http.ResponseWriter, r *http.Request
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		event, msg := "done", "no active job"
-		if p, _ := s.store.GetLatestPlan(r.Context(), hh.ID); p != nil {
+		if te := s.resumableGenFor(hh.ID); te != nil {
+			// Reconnected after a cut-off generation: offer "Try again" again.
+			fmt.Fprintf(w, "event: resumable\ndata: %d\n\n", te.MaxTokens)
+			event, msg = "error", te.Error()
+		} else if p, _ := s.store.GetLatestPlan(r.Context(), hh.ID); p != nil {
 			if s.reconcilePlanStatus(r.Context(), hh.ID, p) == "error" {
 				event = "error"
 				msg = "The last plan generation didn't finish. Check Settings → AI Logs, then regenerate."

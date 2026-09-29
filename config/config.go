@@ -58,12 +58,16 @@ type Config struct {
 	// top_k and min_p are not part of the OpenAI API proper, so they are only
 	// sent to openai_compatible endpoints (llama.cpp, vLLM, Ollama, ...) and
 	// to Anthropic (top_k only).
-	LLMMaxTokens int     // default 4096
-	LLMTemp      float64 // default 1.01
-	LLMTopP      float64 // default 0.91
-	LLMTopK      int     // default 20
-	LLMMinP      float64 // default 0.1
-	LLMPresence  float64 // presence_penalty, default 1.52
+	LLMMaxTokens int // default 4096
+	// LLMPlanMaxTokens is the output budget for each plan-generation call -
+	// a whole week of meals in one JSON reply needs far more than
+	// LLMMaxTokens. Default 16384.
+	LLMPlanMaxTokens int
+	LLMTemp          float64 // default 1.01
+	LLMTopP          float64 // default 0.91
+	LLMTopK          int     // default 20
+	LLMMinP          float64 // default 0.1
+	LLMPresence      float64 // presence_penalty, default 1.52
 
 	// ── Pricing providers (§11.3) ─────────────────────────────────────────
 	PriceCacheTTLHours int // default 168 (1 week); 0 = no expiry
@@ -142,6 +146,10 @@ func Load() (*Config, error) {
 	if maxToks <= 0 {
 		maxToks = 4096
 	}
+	planToks, _ := strconv.Atoi(os.Getenv("LLM_PLAN_MAX_TOKENS"))
+	if planToks <= 0 {
+		planToks = 16384
+	}
 	temp := floatEnv("LLM_TEMPERATURE", 1.01)
 	topP := floatEnv("LLM_TOP_P", 0.91)
 	minP := floatEnv("LLM_MIN_P", 0.1)
@@ -176,24 +184,25 @@ func Load() (*Config, error) {
 		SessionSecret:   os.Getenv("SESSION_SECRET"),
 		SessionTTLHours: sessionTTL,
 
-		Provider:        provider,
-		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
-		AnthropicModel:  getenv("ANTHROPIC_MODEL", "claude-sonnet-5"),
-		OpenAIAPIKey:    openaiKey,
-		OpenAIModel:     openaiModel,
-		OpenAIAPIURL:    getenv("OPENAI_API_URL", openaiURL),
-		GoogleAPIKey:    googleKey,
-		GoogleModel:     googleModel,
-		GoogleAPIURL:    getenv("GOOGLE_API_URL", googleURL),
-		LLMAPIUrl:       os.Getenv("LLM_API_URL"),
-		LLMModel:        os.Getenv("LLM_MODEL"),
-		LLMAPIKey:       os.Getenv("LLM_API_KEY"),
-		LLMMaxTokens:    maxToks,
-		LLMTemp:         temp,
-		LLMTopP:         topP,
-		LLMTopK:         topK,
-		LLMMinP:         minP,
-		LLMPresence:     presence,
+		Provider:         provider,
+		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
+		AnthropicModel:   getenv("ANTHROPIC_MODEL", "claude-sonnet-5"),
+		OpenAIAPIKey:     openaiKey,
+		OpenAIModel:      openaiModel,
+		OpenAIAPIURL:     getenv("OPENAI_API_URL", openaiURL),
+		GoogleAPIKey:     googleKey,
+		GoogleModel:      googleModel,
+		GoogleAPIURL:     getenv("GOOGLE_API_URL", googleURL),
+		LLMAPIUrl:        os.Getenv("LLM_API_URL"),
+		LLMModel:         os.Getenv("LLM_MODEL"),
+		LLMAPIKey:        os.Getenv("LLM_API_KEY"),
+		LLMMaxTokens:     maxToks,
+		LLMPlanMaxTokens: planToks,
+		LLMTemp:          temp,
+		LLMTopP:          topP,
+		LLMTopK:          topK,
+		LLMMinP:          minP,
+		LLMPresence:      presence,
 
 		PriceCacheTTLHours: func() int {
 			v, _ := strconv.Atoi(os.Getenv("PRICE_CACHE_TTL_HOURS"))
