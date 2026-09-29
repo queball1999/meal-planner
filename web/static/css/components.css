@@ -3033,3 +3033,60 @@ body:not([data-admin]) [data-requires="admin"] {
     padding: 0;
     min-width: 0;
 }
+
+/* ── Setup guides ─────────────────────────────────────────────────────────
+ * Numbered, screenshot-per-step walkthroughs inside a modal (e.g. the Kroger
+ * setup guide on Settings). Screenshots live in /static/img/guides/. */
+.guide {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+}
+.guide-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding-bottom: var(--sp-5);
+    border-bottom: 1px solid var(--border);
+}
+.guide-step:last-child { border-bottom: none; padding-bottom: 0; }
+.guide-step__head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+.guide-step__num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: var(--text-inverse);
+    font-size: var(--text-sm);
+    font-weight: 700;
+}
+.guide-step__title { font-weight: 600; }
+.guide-step__desc {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    line-height: 1.55;
+}
+.guide-code {
+    padding: var(--sp-2) var(--sp-4);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono, monospace);
+    font-size: var(--text-sm);
+    word-break: break-all;
+}
+.guide-screenshot {
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}

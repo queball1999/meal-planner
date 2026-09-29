@@ -218,12 +218,26 @@
 {{/* ── Editable settings, one card per category ────────────────────────── */}}
 {{range .Data.Categories}}
 <div class="card form-section settings-category" style="margin-bottom:1.5rem">
+    {{if eq .Name "Kroger"}}
+    <div class="ai-head">
+        <h2 class="form-section__title" style="margin:0">{{.Name}}</h2>
+        <button type="button" class="btn btn-ghost btn-sm" data-modal-open="kroger-guide">Setup guide</button>
+    </div>
+    <p class="field-hint" style="margin-top:var(--sp-2)">
+        Optional. Live prices from any Kroger-family store. When set, Kroger is asked
+        first; anything it can't price falls through to the cache, your manual prices,
+        store scraping, and finally an AI estimate.
+    </p>
+    {{else}}
     <h2 class="form-section__title">{{.Name}}</h2>
+    {{end}}
     {{range .Fields}}
     <div class="field settings-field">
         <label class="field-label" for="set-{{.Key}}">
             {{.Label}}
             {{if eq .Source "admin"}}<span class="badge badge-accent" title="Overrides the .env value">edited</span>{{end}}
+            {{if .Tooltip}}<button type="button" class="tooltip-btn" aria-label="Where do I find this?"
+                    data-tooltip="{{.Tooltip}}">?</button>{{end}}
         </label>
 
         {{if eq .Kind "select"}}
@@ -252,8 +266,73 @@
         {{if .Help}}<span class="field-hint">{{.Help}}</span>{{end}}
     </div>
     {{end}}
+
+    {{if eq .Name "Kroger"}}
+    <div style="margin-top:var(--sp-5);border-top:1px solid var(--border);padding-top:var(--sp-5)">
+        <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
+            <button id="testKrogerBtn" class="btn btn-ghost btn-sm" type="button">
+                {{icon "refresh"}} Test connection
+            </button>
+            <span id="testKrogerStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
+        </div>
+        <ul id="testKrogerResult" class="field-hint" hidden style="margin-top:var(--sp-3);padding-left:1.2rem"></ul>
+    </div>
+    {{end}}
 </div>
 {{end}}
+
+{{/* ── Kroger setup guide ───────────────────────────────────────────────
+     Each step's image is a placeholder SVG in web/static/img/guides/. To add
+     a real screenshot, save it as kroger-N.png next to it and change that
+     step's src from .svg to .png. */}}
+{{template "partials/modal_open.html" dict "ID" "kroger-guide" "Title" "Kroger API - Setup guide" "Large" true}}
+<div class="guide">
+    <div class="guide-step">
+        <div class="guide-step__head"><span class="guide-step__num">1</span><span class="guide-step__title">Sign in to Kroger Developers</span></div>
+        <p class="guide-step__desc">Go to <a href="https://developer.kroger.com" target="_blank" rel="noopener noreferrer">developer.kroger.com</a> and sign in or create a free account. Open <strong>My Apps</strong> and click <em>Create App</em>.</p>
+        <!-- SCREENSHOT: kroger-1 - "My Apps" page with the Create App button highlighted. 800×450 -->
+        <img src="/static/img/guides/kroger-1.svg" alt="Kroger Developers - My Apps page with the Create App button" class="guide-screenshot" loading="lazy">
+    </div>
+
+    <div class="guide-step">
+        <div class="guide-step__head"><span class="guide-step__num">2</span><span class="guide-step__title">Describe the app and pick Production</span></div>
+        <p class="guide-step__desc">Enter any name and description (e.g. <em>GoEat</em>, "meal planning with Kroger prices"). Set <strong>Environment</strong> to <strong>Production</strong> <em>before</em> choosing API products. App homepage, redirect URI, terms and privacy links can stay blank.</p>
+        <!-- SCREENSHOT: kroger-2 - Create App form, Environment = Production. 800×450 -->
+        <img src="/static/img/guides/kroger-2.svg" alt="Kroger Developers - Create App form with Production environment selected" class="guide-screenshot" loading="lazy">
+    </div>
+
+    <div class="guide-step">
+        <div class="guide-step__head"><span class="guide-step__num">3</span><span class="guide-step__title">Select the API products</span></div>
+        <p class="guide-step__desc">Tick only <strong>Products (Public)</strong> (prices) and <strong>Locations (Public)</strong> (store lookup for Test connection). Leave Cart and Profile unticked - they need a customer login GoEat doesn't use. Click <em>Create App</em>.</p>
+        <p class="guide-step__desc"><strong>"Products do not match the chosen environment" error?</strong> The form kept a stale product list. Open a private/incognito window, create a <em>new</em> app, and pick Production first.</p>
+        <!-- SCREENSHOT: kroger-3 - API Products dropdown, only Products + Locations ticked. 800×450 -->
+        <img src="/static/img/guides/kroger-3.svg" alt="Kroger Developers - API Products list with Products and Locations ticked" class="guide-screenshot" loading="lazy">
+    </div>
+
+    <div class="guide-step">
+        <div class="guide-step__head"><span class="guide-step__num">4</span><span class="guide-step__title">Copy the Client ID and secret</span></div>
+        <p class="guide-step__desc">Open the new app. Paste its <strong>Client ID</strong> and <strong>Client Secret</strong> into the matching fields on this card. Watch for trailing spaces when pasting.</p>
+        <!-- SCREENSHOT: kroger-4 - App page with Client ID and Client Secret highlighted. 800×450 -->
+        <img src="/static/img/guides/kroger-4.svg" alt="Kroger Developers - app details showing Client ID and Client Secret" class="guide-screenshot" loading="lazy">
+    </div>
+
+    <div class="guide-step">
+        <div class="guide-step__head"><span class="guide-step__num">5</span><span class="guide-step__title">Find your store's Location ID</span></div>
+        <p class="guide-step__desc">On <a href="https://www.kroger.com/stores/search" target="_blank" rel="noopener noreferrer">kroger.com</a> (or Ralphs, Fred Meyer, King Soopers, etc.) find your store and open its <strong>store details</strong> page. The URL ends in two number groups - join them:</p>
+        <div class="guide-code">.../stores/details/014/00338 &rarr; 01400338</div>
+        <!-- SCREENSHOT: kroger-5 - Store details page with the URL bar highlighted. 800×450 -->
+        <img src="/static/img/guides/kroger-5.svg" alt="Kroger store details page with the location numbers in the URL highlighted" class="guide-screenshot" loading="lazy">
+    </div>
+
+    <div class="guide-step">
+        <div class="guide-step__head"><span class="guide-step__num">6</span><span class="guide-step__title">Test and restart</span></div>
+        <p class="guide-step__desc">Click <strong>Test connection</strong> on this card. You should see "token OK", your store's name and address, and a sample price. Then restart GoEat (<code>make docker-restart</code>) so plan pricing picks up the new credentials.</p>
+    </div>
+</div>
+<div class="modal-dialog__footer">
+    <button type="button" class="btn btn-primary" data-modal-close>Got it</button>
+</div>
+{{template "partials/modal_close.html" .}}
 
 {{/* ── Danger zone: irreversible per-household data wipes ──────────────── */}}
 <div class="card form-section danger-zone" style="margin-bottom:1.5rem">
@@ -583,6 +662,68 @@
             });
         });
     });
+
+    /* ── Test Kroger ────────────────────────────────────────────────── */
+    var krBtn = document.getElementById('testKrogerBtn');
+    if (krBtn) {
+        var krStatus = document.getElementById('testKrogerStatus');
+        var krResult = document.getElementById('testKrogerResult');
+
+        function krLine(ok, text) {
+            var li = document.createElement('li');
+            li.textContent = (ok ? '✓ ' : '✗ ') + text;
+            li.style.color = ok ? 'var(--color-success, #22c55e)' : 'var(--color-danger, #ef4444)';
+            krResult.appendChild(li);
+        }
+
+        krBtn.addEventListener('click', function () {
+            krBtn.disabled = true;
+            krBtn.classList.add('is-loading');
+            krStatus.textContent = 'Calling Kroger…';
+            krStatus.style.color = '';
+            krResult.hidden = true;
+            krResult.innerHTML = '';
+
+            // Send the typed Location ID so a just-edited value is what gets
+            // tested, even if its autosave hasn't landed yet.
+            var locInput = document.getElementById('set-KROGER_LOCATION_ID');
+            fetch('/settings/test-kroger', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify({ location_id: locInput ? locInput.value.trim() : '' })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                (d.credentials || []).forEach(function (c) {
+                    var who = c.client_id ? 'Client ID ' + c.client_id : 'Credentials';
+                    krLine(c.ok, who + (c.ok ? ': token OK' : ': ' + c.error));
+                });
+                if (d.store_name) {
+                    krLine(true, 'Location ' + d.location_id + ': ' + d.store_name +
+                        (d.store_address ? ' - ' + d.store_address : ''));
+                } else if (d.location_error) {
+                    krLine(false, d.location_error);
+                }
+                if (d.sample_price_cents) {
+                    krLine(true, 'Sample search "' + d.sample_term + '": $' + (d.sample_price_cents / 100).toFixed(2));
+                } else if (d.sample_error) {
+                    krLine(false, 'Sample search "' + d.sample_term + '": ' + d.sample_error);
+                }
+                if (d.error) krLine(false, d.error);
+                krResult.hidden = krResult.children.length === 0;
+                krStatus.textContent = d.ok ? 'Working' : 'Failed';
+                krStatus.style.color = d.ok ? 'var(--color-success, #22c55e)' : 'var(--color-danger, #ef4444)';
+            })
+            .catch(function (e) {
+                krStatus.textContent = String(e);
+                krStatus.style.color = 'var(--color-danger, #ef4444)';
+            })
+            .finally(function () {
+                krBtn.disabled = false;
+                krBtn.classList.remove('is-loading');
+            });
+        });
+    }
 })();
 </script>
 

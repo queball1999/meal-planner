@@ -188,6 +188,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /settings/save", admin(http.HandlerFunc(s.handleSettingsSave)))
 	mux.Handle("POST /settings/test-render", admin(http.HandlerFunc(s.handleSettingsTestRender)))
 	mux.Handle("POST /settings/test-ai", admin(http.HandlerFunc(s.handleSettingsTestAI)))
+	mux.Handle("POST /settings/test-kroger", admin(http.HandlerFunc(s.handleSettingsTestKroger)))
 	mux.Handle("POST /settings/ha/test", admin(http.HandlerFunc(s.handleHATest)))
 	mux.Handle("POST /settings/ha/entities", admin(http.HandlerFunc(s.handleHAEntities)))
 	mux.Handle("POST /settings/ha/save", admin(http.HandlerFunc(s.handleHASave)))

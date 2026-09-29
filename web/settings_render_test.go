@@ -41,6 +41,10 @@ func TestSettingsPageExecutes(t *testing.T) {
 			Categories: []settingsCategoryView{{
 				Name:   "General",
 				Fields: []settingsFieldView{{Key: "APP_NAME", Label: "App name", Kind: "string", Value: "Go Eat"}},
+			}, {
+				Name: "Kroger",
+				Fields: []settingsFieldView{{Key: "KROGER_LOCATION_ID", Label: "Location ID", Kind: "string",
+					Tooltip: "Join the two number groups."}},
 			}},
 		},
 	}
@@ -57,6 +61,11 @@ func TestSettingsPageExecutes(t *testing.T) {
 		`data-setting-key="OPENAI_MODEL"`,
 		`data-setting-key="LLM_TOP_K"`,
 		`value="gpt-4.1"`, // curated models reach the dropdown
+		`data-tooltip="Join the two number groups."`,
+		`id="testKrogerBtn"`,
+		`data-modal-open="kroger-guide"`,
+		`id="kroger-guide"`,
+		`/static/img/guides/kroger-5.svg`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered settings page missing %q", want)

@@ -12,6 +12,7 @@ import (
 	"goeat/db"
 	"goeat/llm"
 	"goeat/middleware"
+	"goeat/pricing"
 	"goeat/scrape"
 	"goeat/settings"
 )
@@ -22,6 +23,7 @@ type settingsFieldView struct {
 	Role    string // AI fields only: "key" | "model" | "url"
 	Label   string
 	Help    string
+	Tooltip string
 	Kind    string // "string" | "int" | "float" | "select" | "secret"
 	Options []string
 	Value   string // "" for a secret - never sent to the browser
@@ -102,6 +104,7 @@ func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 			Role:    d.Role,
 			Label:   d.Label,
 			Help:    d.Help,
+			Tooltip: d.Tooltip,
 			Kind:    kindNames[d.Kind],
 			Options: d.Options,
 		}
@@ -640,6 +643,34 @@ func llmDebugEntries() []llmDebugEntry {
 		}
 	}
 	return out
+}
+
+// handleSettingsTestKroger checks the saved Kroger credentials and location
+// ID against the live API. Like Test AI it reads the settings as saved now,
+// not the ones this process started with, so a fresh edit can be tested
+// before the restart that actually applies it. An optional location_id in
+// the body overrides the saved one, so a just-typed value is what gets tested.
+//
+//	POST /settings/test-kroger  {location_id?}
+func (s *Server) handleSettingsTestKroger(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		LocationID string `json:"location_id"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+
+	cfg := *s.cfg
+	if err := settings.Apply(r.Context(), s.store, &cfg, func(string, ...any) {}); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "failed to read settings"})
+		return
+	}
+	loc := strings.TrimSpace(body.LocationID)
+	if loc == "" {
+		loc = cfg.KrogerLocationID
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	writeJSON(w, http.StatusOK, pricing.CheckKroger(ctx, cfg.KrogerCredentials, loc))
 }
 
 // handleSettingsTestRender checks that the configured headless browser is

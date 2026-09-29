@@ -39,9 +39,12 @@ const (
 // variable name and the settings table's primary key, so there is exactly
 // one name to look up in .env.example, this file, and the DB.
 type Definition struct {
-	Key      string
-	Label    string
-	Help     string
+	Key   string
+	Label string
+	Help  string
+	// Tooltip, when set, adds a "(?)" help popup beside the label for
+	// longer how-to text that would crowd the always-visible Help line.
+	Tooltip  string
 	Category string
 	Kind     Kind
 	Options  []string // choices for KindSelect
@@ -169,7 +172,12 @@ var Defs = []Definition{
 		Help:       "One secret, or a comma-separated list aligned position-for-position with Client ID.",
 		FromConfig: func(c *config.Config) string { return c.KrogerClientSecret }},
 	{Key: "KROGER_LOCATION_ID", Label: "Location ID", Category: "Kroger", Kind: KindString,
-		Help:       "The Kroger store location to price against.",
+		Help: "The Kroger store location to price against.",
+		Tooltip: "The 8-character ID of your Kroger-family store (Kroger, Ralphs, Fred Meyer, King Soopers, " +
+			"Smith's, Fry's, etc.). To find it: open kroger.com (or your banner's site), pick your store, " +
+			"then open its store details page. The URL ends in two number groups, e.g. " +
+			".../stores/details/014/00338 - join them: 01400338. " +
+			"Use Test connection below to confirm it resolves to the right store.",
 		FromConfig: func(c *config.Config) string { return c.KrogerLocationID }},
 
 	{Key: "FLARESOLVERR_URL", Label: "FlareSolverr URL", Category: "Scraping", Kind: KindString,
