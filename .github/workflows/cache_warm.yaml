@@ -1,0 +1,62 @@
+name: Warm Build Caches
+
+# Actions caches are scoped to the ref that saved them: a v1.2.3 tag run can
+# read caches saved on main, but never ones saved by an earlier tag. So every
+# release would start cold (Go, npm, Rust) unless main has a fresh cache.
+#
+# This runs the same build workflows from main, without uploading anything or
+# pushing an image, so the next release restores warm caches. It runs when a
+# dependency file changes, and twice a week, because GitHub evicts caches not
+# read for 7 days. The Docker layer cache lives in ghcr.io (:buildcache), not
+# in Actions, and is refreshed here too.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - go.mod
+      - go.sum
+      - Dockerfile
+      - desktop/package-lock.json
+      - desktop/src-tauri/Cargo.lock
+      - desktop/src-tauri/Cargo.toml
+      - .github/workflows/**
+  schedule:
+    - cron: "17 6 * * 1,4"
+  workflow_dispatch:
+
+concurrency:
+  group: cache-warm
+  cancel-in-progress: true
+
+jobs:
+  # Same setup-go cache key as build_manager.yaml's test job.
+  test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: go test
+        run: go test ./...
+
+  build-windows:
+    uses: ./.github/workflows/desktop_windows.yaml
+
+  build-linux:
+    uses: ./.github/workflows/desktop_linux.yaml
+
+  build-server:
+    uses: ./.github/workflows/server_binaries.yaml
+
+  build-docker:
+    uses: ./.github/workflows/docker_image.yaml
+    permissions:
+      contents: read
+      packages: write

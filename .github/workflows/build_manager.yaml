@@ -125,9 +125,11 @@ jobs:
       contents: write
 
     steps:
-      - name: Download all build artifacts
+      - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
+          # Only our own artifacts, never tool-generated ones.
+          pattern: release-*
           path: dist
 
       - name: Import GPG key

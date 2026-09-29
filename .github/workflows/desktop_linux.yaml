@@ -52,6 +52,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
+          # Fixed key: the same cache whether called by a release or cache_warm.
+          shared-key: desktop-linux
 
       - name: Version from tag
         run: |
@@ -65,9 +67,11 @@ jobs:
         run: make desktop-linux
 
       - name: Upload Linux artifacts
+        # Cache-warming runs from main (cache_warm.yaml) build but don't upload.
+        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-linux
+          name: release-desktop-linux
           path: |
             output/linux/GoEat-*-linux-amd64.deb
             output/linux/GoEat-*-linux-amd64.AppImage

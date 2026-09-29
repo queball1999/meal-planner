@@ -6,9 +6,14 @@ name: Build Docker Image
 #   v1.2.3      ->  1.2.3, 1.2, latest   (1.2 is skipped while major is 0)
 #   v1.2.3-dev  ->  1.2.3-dev            (never moves latest)
 #
-# Only called by build_manager.yaml, after every other build passed, so a
-# failed release never publishes an image. Authenticates with GITHUB_TOKEN;
-# the caller must grant packages: write.
+# Called by build_manager.yaml after every other build passed, so a failed
+# release never publishes an image, and by cache_warm.yaml, which builds from
+# main without pushing an image, only the layer cache. Authenticates with
+# GITHUB_TOKEN; the caller must grant packages: write.
+#
+# The layer cache lives in the registry (the :buildcache tag), not in the
+# Actions cache: Actions caches are scoped to the ref, so a new tag could never
+# read the cache a previous tag wrote.
 
 on:
   workflow_call:
@@ -54,10 +59,14 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.ref_type == 'tag' }}
           build-args: |
             VERSION=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+        env:
+          # Skip the .dockerbuild build-record artifact; the release job would
+          # otherwise try to download it alongside the real artifacts.
+          DOCKER_BUILD_RECORD_UPLOAD: false

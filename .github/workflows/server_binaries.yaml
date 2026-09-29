@@ -29,6 +29,22 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          # setup-go's own cache key is shared with the test job, which saves
+          # only a linux/amd64 test build. This job keeps its own, holding the
+          # compiled packages for all six targets; the per-commit key means
+          # every run saves, and restore-keys picks up the newest one.
+          cache: false
+
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-server-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-server-${{ hashFiles('go.sum') }}-
+            go-server-
 
       - name: Version from tag
         # v1.2.3 / v1.2.3-dev -> VERSION=1.2.3, GOEAT_VERSION=<the tag>.
@@ -65,9 +81,11 @@ jobs:
           ls -l output/server
 
       - name: Upload server artifacts
+        # Cache-warming runs from main (cache_warm.yaml) build but don't upload.
+        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v7
         with:
-          name: server
+          name: release-server
           path: |
             output/server/*.tar.gz
             output/server/*.zip

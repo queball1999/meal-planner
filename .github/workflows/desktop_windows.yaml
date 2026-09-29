@@ -41,6 +41,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
+          # Fixed key: the same cache whether called by a release or cache_warm.
+          shared-key: desktop-windows
 
       - name: Install make
         run: choco install make -y --no-progress
@@ -59,9 +61,11 @@ jobs:
         run: make desktop-windows
 
       - name: Upload Windows artifacts
+        # Cache-warming runs from main (cache_warm.yaml) build but don't upload.
+        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-windows
+          name: release-desktop-windows
           path: |
             output/windows/GoEat-*-windows-x64-setup.exe
             output/windows/GoEat-*-windows-x64-portable.zip
