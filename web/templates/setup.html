@@ -653,11 +653,18 @@
         sharesRows.textContent = '';
         sharesBar.textContent = '';
         if (names.length < 2) return;
-        const unset = names.filter(function (n) { return shareVals[n] === undefined; });
-        const used = names.reduce(function (t, n) { return t + (shareVals[n] || 0); }, 0);
-        unset.forEach(function (n) {
-            shareVals[n] = Math.max(0, Math.round((100 - used) / unset.length / 5) * 5);
+        // A newly checked store starts at an even share and the rest scale
+        // around it; unchecking one hands its share back to the others.
+        const fresh = names.findIndex(function (n) { return shareVals[n] === undefined; });
+        names.forEach(function (n) {
+            if (shareVals[n] === undefined) shareVals[n] = Math.round(100 / names.length / 5) * 5;
         });
+        const start = names.map(function (n) { return shareVals[n]; });
+        if (start.reduce(function (t, v) { return t + v; }, 0) !== 100) {
+            window.rebalanceShares(start, Math.max(0, fresh), 5);
+            names.forEach(function (n, k) { shareVals[n] = start[k]; });
+        }
+        const parts = [];
         names.forEach(function (n, i) {
             const hue = 'var(--meal-' + (i % 8 + 1) + '-text)';
             const seg = document.createElement('span');
@@ -683,12 +690,19 @@
             const out = document.createElement('output');
             out.className = 'store-shares__pct';
             out.textContent = shareVals[n] + '%';
+            // Moving one slider rebalances the rest so the total stays at 100.
             inp.addEventListener('input', function () {
-                shareVals[n] = parseInt(inp.value, 10) || 0;
-                out.textContent = shareVals[n] + '%';
-                seg.style.flexGrow = shareVals[n];
+                const vals = names.map(function (m) { return m === n ? parseInt(inp.value, 10) || 0 : shareVals[m]; });
+                window.rebalanceShares(vals, i, 5);
+                names.forEach(function (m, k) {
+                    shareVals[m] = vals[k];
+                    parts[k].inp.value = vals[k];
+                    parts[k].out.textContent = vals[k] + '%';
+                    parts[k].seg.style.flexGrow = vals[k];
+                });
                 renderSharesTotal(names);
             });
+            parts.push({ inp: inp, out: out, seg: seg });
             row.append(sw, nm, inp, out);
             sharesRows.appendChild(row);
         });
@@ -702,7 +716,8 @@
     }
 
     document.getElementById('store-picker').addEventListener('change', renderShares);
-    renderShares();
+    // After DOMContentLoaded so the deferred main.js (rebalanceShares) is in.
+    document.addEventListener('DOMContentLoaded', renderShares);
 
     // Carry the household ZIP forward into the store step's filter.
     const zipInput = form.elements['zip_code'];

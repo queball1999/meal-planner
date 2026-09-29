@@ -27,6 +27,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/zip-state", s.handleZIPState) // public: the setup wizard needs it before login
 	mux.HandleFunc("POST /setup", s.handleSetup)
 
+	// Store logos: public because the setup wizard shows them before login;
+	// only catalog domains are ever fetched (web/store_logos.go).
+	mux.HandleFunc("GET /store-logos/{domain}", s.handleStoreLogo)
+
 	// ── Auth-required ──────────────────────────────────────────────────────
 
 	// Every route below names the least it needs (phase 13):

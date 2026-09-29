@@ -282,23 +282,22 @@
 {{end}}
 
 {{/* ── Kroger setup guide ───────────────────────────────────────────────
-     Each step's image is a placeholder SVG in web/static/img/guides/. To add
-     a real screenshot, save it as kroger-N.png next to it and change that
-     step's src from .svg to .png. */}}
+     Each step's screenshot is web/static/img/guides/kroger-N.png - replace
+     the file to update it. */}}
 {{template "partials/modal_open.html" dict "ID" "kroger-guide" "Title" "Kroger API - Setup guide" "Large" true}}
 <div class="guide">
     <div class="guide-step">
         <div class="guide-step__head"><span class="guide-step__num">1</span><span class="guide-step__title">Sign in to Kroger Developers</span></div>
         <p class="guide-step__desc">Go to <a href="https://developer.kroger.com" target="_blank" rel="noopener noreferrer">developer.kroger.com</a> and sign in or create a free account. Open <strong>My Apps</strong> and click <em>Create App</em>.</p>
         <!-- SCREENSHOT: kroger-1 - "My Apps" page with the Create App button highlighted. 800×450 -->
-        <img src="/static/img/guides/kroger-1.svg" alt="Kroger Developers - My Apps page with the Create App button" class="guide-screenshot" loading="lazy">
+        <img src="/static/img/guides/kroger-1.png" alt="Kroger Developers - My Apps page with the Create App button" class="guide-screenshot" loading="lazy" data-lightbox tabindex="0">
     </div>
 
     <div class="guide-step">
         <div class="guide-step__head"><span class="guide-step__num">2</span><span class="guide-step__title">Describe the app and pick Production</span></div>
         <p class="guide-step__desc">Enter any name and description (e.g. <em>GoEat</em>, "meal planning with Kroger prices"). Set <strong>Environment</strong> to <strong>Production</strong> <em>before</em> choosing API products. App homepage, redirect URI, terms and privacy links can stay blank.</p>
         <!-- SCREENSHOT: kroger-2 - Create App form, Environment = Production. 800×450 -->
-        <img src="/static/img/guides/kroger-2.svg" alt="Kroger Developers - Create App form with Production environment selected" class="guide-screenshot" loading="lazy">
+        <img src="/static/img/guides/kroger-2.png" alt="Kroger Developers - Create App form with Production environment selected" class="guide-screenshot" loading="lazy" data-lightbox tabindex="0">
     </div>
 
     <div class="guide-step">
@@ -306,14 +305,14 @@
         <p class="guide-step__desc">Tick only <strong>Products (Public)</strong> (prices) and <strong>Locations (Public)</strong> (store lookup for Test connection). Leave Cart and Profile unticked - they need a customer login GoEat doesn't use. Click <em>Create App</em>.</p>
         <p class="guide-step__desc"><strong>"Products do not match the chosen environment" error?</strong> The form kept a stale product list. Open a private/incognito window, create a <em>new</em> app, and pick Production first.</p>
         <!-- SCREENSHOT: kroger-3 - API Products dropdown, only Products + Locations ticked. 800×450 -->
-        <img src="/static/img/guides/kroger-3.svg" alt="Kroger Developers - API Products list with Products and Locations ticked" class="guide-screenshot" loading="lazy">
+        <img src="/static/img/guides/kroger-3.png" alt="Kroger Developers - API Products list with Products and Locations ticked" class="guide-screenshot" loading="lazy" data-lightbox tabindex="0">
     </div>
 
     <div class="guide-step">
         <div class="guide-step__head"><span class="guide-step__num">4</span><span class="guide-step__title">Copy the Client ID and secret</span></div>
         <p class="guide-step__desc">Open the new app. Paste its <strong>Client ID</strong> and <strong>Client Secret</strong> into the matching fields on this card. Watch for trailing spaces when pasting.</p>
         <!-- SCREENSHOT: kroger-4 - App page with Client ID and Client Secret highlighted. 800×450 -->
-        <img src="/static/img/guides/kroger-4.svg" alt="Kroger Developers - app details showing Client ID and Client Secret" class="guide-screenshot" loading="lazy">
+        <img src="/static/img/guides/kroger-4.png" alt="Kroger Developers - app details showing Client ID and Client Secret" class="guide-screenshot" loading="lazy" data-lightbox tabindex="0">
     </div>
 
     <div class="guide-step">
@@ -321,7 +320,7 @@
         <p class="guide-step__desc">On <a href="https://www.kroger.com/stores/search" target="_blank" rel="noopener noreferrer">kroger.com</a> (or Ralphs, Fred Meyer, King Soopers, etc.) find your store and open its <strong>store details</strong> page. The URL ends in two number groups - join them:</p>
         <div class="guide-code">.../stores/details/014/00338 &rarr; 01400338</div>
         <!-- SCREENSHOT: kroger-5 - Store details page with the URL bar highlighted. 800×450 -->
-        <img src="/static/img/guides/kroger-5.svg" alt="Kroger store details page with the location numbers in the URL highlighted" class="guide-screenshot" loading="lazy">
+        <img src="/static/img/guides/kroger-5.png" alt="Kroger store details page with the location numbers in the URL highlighted" class="guide-screenshot" loading="lazy" data-lightbox tabindex="0">
     </div>
 
     <div class="guide-step">

@@ -108,6 +108,10 @@
 
 {{/* ── Your stores ────────────────────────────────────────────────────────── */}}
 {{if .Data.Stores}}
+<p class="field-hint" style="margin:0 0 var(--sp-3)">
+    {{icon "star-outline"}} <strong>Only here</strong> picks items you only ever buy at that store -
+    they are always priced and listed there, whatever your split says.
+</p>
 <ul class="store-list" aria-label="Your grocery stores">
     {{range .Data.Stores}}
     <li class="store-item card" id="store-{{.Store.ID}}">
@@ -132,7 +136,7 @@
                     data-modal-open="store-items-{{.Store.ID}}"
                     aria-label="Choose items you only buy at {{.Store.Name}}"
                     title="Items you only buy here">
-                {{icon "cart"}}
+                {{icon "star-outline"}} Only here
             </button>
             <button type="button" class="btn btn-ghost btn-sm" data-requires="admin"
                     data-modal-open="store-cfg-{{.Store.ID}}"
@@ -168,24 +172,21 @@
         <form method="POST" data-requires="edit" action="/stores/{{.Store.ID}}/items">
             {{$.CSRFField}}
             <div class="field">
-                <label class="field-label" for="store-items-sel-{{.Store.ID}}">Pantry items</label>
-                {{if .ItemOptions}}
-                <select class="field-input" id="store-items-sel-{{.Store.ID}}" name="item_ids" multiple data-choices>
+                <label class="field-label" for="store-items-sel-{{.Store.ID}}">Items</label>
+                <select class="field-input" id="store-items-sel-{{.Store.ID}}" name="item_ids" multiple data-choices data-choices-add>
                     {{range .ItemOptions}}
                     <option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Name}}{{if .Elsewhere}} (now: {{.Elsewhere}}){{end}}</option>
                     {{end}}
                 </select>
                 <span class="field-hint">
                     These are always priced and listed at {{.Store.Name}}, whatever your split says.
-                    Picking an item marked "now: …" moves it here from that store.
+                    Pick from your items, or type any name and press Enter to add one that is not
+                    in your pantry yet. Picking an item marked "now: …" moves it here from that store.
                 </span>
-                {{else}}
-                <p class="field-hint">No pantry items yet - they appear here once a plan or the Pantry page adds some.</p>
-                {{end}}
             </div>
             <div class="modal-dialog__footer">
                 <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
-                {{if .ItemOptions}}<button type="submit" class="btn btn-primary">{{icon "check"}} Save</button>{{end}}
+                <button type="submit" class="btn btn-primary">{{icon "check"}} Save</button>
             </div>
         </form>
 {{template "partials/modal_close.html" $}}
@@ -332,10 +333,10 @@
     // Out-of-area chains are hidden, not removed: a household near a state
     // line can still opt in.
     // Shopping split: live percentages, the stacked bar, and a running total.
-    // The server scales a total that is not 100, so this only informs.
+    // Moving one slider rebalances the others so the total stays at 100.
     var split = document.querySelector('[data-store-shares]');
     if (split) {
-        var inputs = split.querySelectorAll('[data-share-input]');
+        var inputs = Array.prototype.slice.call(split.querySelectorAll('[data-share-input]'));
         var totalEl = split.querySelector('[data-share-total]');
         var refresh = function () {
             var total = 0;
@@ -349,7 +350,13 @@
                 : total === 100 ? 'Total 100%'
                 : 'Total ' + total + '% - saved as the same proportions out of 100%.';
         };
-        inputs.forEach(function (inp) { inp.addEventListener('input', refresh); });
+        inputs.forEach(function (inp, idx) {
+            inp.addEventListener('input', function () {
+                var vals = inputs.map(function (el) { return parseInt(el.value, 10) || 0; });
+                window.rebalanceShares(vals, idx, 5).forEach(function (v, i) { inputs[i].value = v; });
+                refresh();
+            });
+        });
         split.querySelector('[data-share-even]').addEventListener('click', function () {
             var n = inputs.length, base = Math.floor(100 / n / 5) * 5, left = 100 - base * n;
             inputs.forEach(function (inp, i) {

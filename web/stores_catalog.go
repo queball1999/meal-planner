@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -155,14 +154,14 @@ var storeDomainMap = func() map[string]string {
 	return m
 }()
 
-// StoreLogoURL returns the Google Favicon service URL for a store's logo given
-// its name. Returns "" when the store name is not in the catalog.
+// StoreLogoURL returns the same-origin URL of a store's cached logo given its
+// name (see store_logos.go). Returns "" when the store is not in the catalog.
 func StoreLogoURL(name string) string {
 	domain, ok := storeDomainMap[name]
 	if !ok || domain == "" {
 		return ""
 	}
-	return fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s&sz=64", domain)
+	return "/store-logos/" + domain
 }
 
 // KnownStoreByName returns the catalog entry for name, or nil.

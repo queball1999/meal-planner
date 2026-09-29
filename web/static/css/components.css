@@ -3090,3 +3090,51 @@ body:not([data-admin]) [data-requires="admin"] {
     border: 1px solid var(--border);
     border-radius: var(--radius);
 }
+
+/* Full-screen image viewer for <img data-lightbox> (main.js initLightbox).
+   Above .modal-overlay (1000) so it works from inside a dialog. */
+img[data-lightbox] { cursor: zoom-in; }
+img[data-lightbox]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    padding: var(--sp-6) var(--sp-4);
+    background: rgba(0, 0, 0, 0.88);
+    cursor: zoom-out;
+}
+.lightbox__img {
+    max-width: 100%;
+    max-height: calc(100vh - 6rem);
+    object-fit: contain;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+}
+.lightbox__caption {
+    margin: 0;
+    color: #ddd;
+    font-size: var(--text-sm);
+    text-align: center;
+}
+.lightbox__close {
+    position: absolute;
+    top: var(--sp-3);
+    right: var(--sp-3);
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.lightbox__close:hover,
+.lightbox__close:focus-visible { background: rgba(255, 255, 255, 0.24); }

@@ -65,7 +65,7 @@ func TestSettingsPageExecutes(t *testing.T) {
 		`id="testKrogerBtn"`,
 		`data-modal-open="kroger-guide"`,
 		`id="kroger-guide"`,
-		`/static/img/guides/kroger-5.svg`,
+		`/static/img/guides/kroger-5.png`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered settings page missing %q", want)

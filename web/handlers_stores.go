@@ -10,8 +10,10 @@ import (
 	"strconv"
 	"strings"
 
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
+	"goeat/pricing"
 )
 
 type storesPageData struct {
@@ -394,9 +396,26 @@ func (s *Server) handleStoreItems(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/stores", http.StatusSeeOther)
 		return
 	}
+	// The picker posts option values (item ids) and, for anything typed in,
+	// the typed name. A value is an id only when it names one of this
+	// household's items; anything else is a name, matched to an existing
+	// item by normalized term or added to the catalog.
+	known := map[int64]bool{}
+	if all, err := s.store.ListItems(r.Context(), hh.ID); err == nil {
+		for _, it := range all {
+			known[it.ID] = true
+		}
+	}
 	var itemIDs []int64
+	seen := map[int64]bool{}
 	for _, v := range r.Form["item_ids"] {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+		v = strings.TrimSpace(v)
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || !known[n] {
+			n = s.itemIDForName(r.Context(), hh.ID, v)
+		}
+		if n > 0 && !seen[n] {
+			seen[n] = true
 			itemIDs = append(itemIDs, n)
 		}
 	}
@@ -408,6 +427,34 @@ func (s *Server) handleStoreItems(w http.ResponseWriter, r *http.Request) {
 		s.setNotify(w, NotifySuccess, fmt.Sprintf("%d item(s) now bought only here.", len(itemIDs)))
 	}
 	http.Redirect(w, r, fmt.Sprintf("/stores#store-%d", id), http.StatusSeeOther)
+}
+
+// itemIDForName returns the household item a typed name refers to, creating
+// a manual catalog item when none matches. 0 when the name is blank or the
+// item could not be created.
+func (s *Server) itemIDForName(ctx context.Context, householdID int64, name string) int64 {
+	name = strings.TrimSpace(name)
+	term := pricing.Normalize(name)
+	if term == "" {
+		return 0
+	}
+	if existing, _ := s.store.GetItemByTerm(ctx, householdID, term); existing != nil {
+		return existing.ID
+	}
+	it, err := s.store.CreateItem(ctx, db.CreateItemParams{
+		HouseholdID:        householdID,
+		Name:               name,
+		NormalizedTerm:     term,
+		StockUnit:          "each",
+		DefaultPurchaseQty: 1,
+		Source:             "manual",
+	})
+	if err != nil {
+		log.Printf("stores: create item %q: %v", name, err)
+		return 0
+	}
+	_ = catalog.RecalcItemConversions(ctx, s.store, it.ID)
+	return it.ID
 }
 
 // ensureScrapeConfig gives a newly added catalog store a starting scrape

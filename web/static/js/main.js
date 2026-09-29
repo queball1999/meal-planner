@@ -334,6 +334,100 @@ document.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('[data-print]')) window.print();
 });
 
+// ── Store split rebalance (stores page + setup wizard) ────────────────────
+//
+// vals holds each store's share with vals[idx] just set by the user. The
+// others are rescaled in proportion to what they had so the total stays at
+// 100 - or split evenly when they were all zero - and rounded to whole
+// steps by largest remainder, so the sum is exact. Mutates and returns vals.
+
+window.rebalanceShares = function (vals, idx, step) {
+    step = step || 5;
+    const units = Math.round(100 / step);
+    const mine = Math.min(units, Math.max(0, Math.round(vals[idx] / step)));
+    vals[idx] = mine * step;
+    const others = [];
+    vals.forEach(function (v, i) { if (i !== idx) others.push(i); });
+    if (!others.length) return vals;
+    const left = units - mine;
+    const had = others.reduce(function (t, i) { return t + Math.max(0, vals[i]); }, 0);
+    const want = others.map(function (i) {
+        return had > 0 ? Math.max(0, vals[i]) / had * left : left / others.length;
+    });
+    const got = want.map(Math.floor);
+    let spare = left - got.reduce(function (t, n) { return t + n; }, 0);
+    want.map(function (w, k) { return k; })
+        .sort(function (a, b) { return (want[b] - got[b]) - (want[a] - got[a]); })
+        .forEach(function (k) { if (spare > 0) { got[k]++; spare--; } });
+    others.forEach(function (i, k) { vals[i] = got[k] * step; });
+    return vals;
+};
+
+// ── Image lightbox ────────────────────────────────────────────────────────
+// Clicking an <img data-lightbox> shows it full-screen over everything,
+// modals included. Closes on a click anywhere, the x, or Escape; focus goes
+// back to the image. Lives on <body>, outside any modal overlay, so the
+// modal's own Escape handler never sees the key and stays open underneath.
+
+(function initLightbox() {
+    let box = null;
+    let opener = null;
+
+    function close() {
+        if (!box) return;
+        box.remove();
+        box = null;
+        if (opener && document.body.contains(opener)) opener.focus();
+        opener = null;
+    }
+
+    function open(img) {
+        close();
+        opener = img;
+        box = document.createElement('div');
+        box.className = 'lightbox';
+        box.setAttribute('role', 'dialog');
+        box.setAttribute('aria-modal', 'true');
+        box.setAttribute('aria-label', img.alt || 'Image');
+        const big = document.createElement('img');
+        big.className = 'lightbox__img';
+        big.src = img.currentSrc || img.src;
+        big.alt = img.alt || '';
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'lightbox__close';
+        x.setAttribute('aria-label', 'Close');
+        x.textContent = '×';
+        box.append(big, x);
+        if (img.alt) {
+            const cap = document.createElement('p');
+            cap.className = 'lightbox__caption';
+            cap.textContent = img.alt;
+            box.appendChild(cap);
+        }
+        box.addEventListener('click', close);
+        box.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+            else if (e.key === 'Tab') { e.preventDefault(); } // only the x is focusable
+        });
+        document.body.appendChild(box);
+        x.focus();
+    }
+
+    document.addEventListener('click', function (e) {
+        const img = e.target.closest && e.target.closest('img[data-lightbox]');
+        if (!img) return;
+        e.preventDefault();
+        open(img);
+    });
+    document.addEventListener('keydown', function (e) {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('img[data-lightbox]')) {
+            e.preventDefault();
+            open(e.target);
+        }
+    });
+})();
+
 // ── CSRF token helper (shared by autosave and fetch calls) ────────────────
 
 function goeatCSRF() {
@@ -405,13 +499,58 @@ function goeatCSRF() {
         var el = selects[i];
         if (el.dataset.choicesReady) continue;
         el.dataset.choicesReady = '1';
-        new window.Choices(el, {
+        // data-choices-add lets the user type a value that is not in the
+        // list; it is posted as the typed text instead of an option value.
+        var canAdd = el.hasAttribute('data-choices-add');
+        var ch = new window.Choices(el, {
             searchEnabled: true,
             shouldSort: false,
             itemSelectText: '',
             removeItemButton: el.multiple,
             allowHTML: false,
+            addItems: true,
+            addChoices: canAdd,
+            addItemText: function (value) { return 'Press Enter to add "' + value + '"'; },
         });
+        if (el.closest('.modal-dialog')) floatChoicesDropdown(el, ch);
+    }
+
+    // A dialog scrolls (overflow-y: auto), which clips an absolutely placed
+    // dropdown to the dialog's box. While open, the list is pinned with
+    // position: fixed under (or above) the field so it can hang past the
+    // dialog's edge, and it follows the field on scroll or resize.
+    function floatChoicesDropdown(el, ch) {
+        var outer = ch.containerOuter.element;
+        var list = ch.dropdown.element;
+        var place = function () {
+            var r = outer.getBoundingClientRect();
+            var below = window.innerHeight - r.bottom;
+            list.style.position = 'fixed';
+            list.style.left = r.left + 'px';
+            list.style.width = r.width + 'px';
+            list.style.zIndex = '1100'; // above .modal-overlay (1000)
+            if (below < 220 && r.top > below) {
+                list.style.top = 'auto';
+                list.style.bottom = (window.innerHeight - r.top) + 'px';
+            } else {
+                list.style.top = r.bottom + 'px';
+                list.style.bottom = 'auto';
+            }
+        };
+        var reset = function () {
+            ['position', 'left', 'width', 'zIndex', 'top', 'bottom'].forEach(function (p) { list.style[p] = ''; });
+            window.removeEventListener('resize', place);
+            document.removeEventListener('scroll', place, true);
+        };
+        el.addEventListener('showDropdown', function () {
+            place();
+            window.addEventListener('resize', place);
+            document.addEventListener('scroll', place, true);
+        });
+        el.addEventListener('hideDropdown', reset);
+        // Typing or picking can change the field's height (tags wrap).
+        el.addEventListener('change', function () { if (list.style.position) place(); });
+        el.addEventListener('search', function () { if (list.style.position) place(); });
     }
 })();
 
