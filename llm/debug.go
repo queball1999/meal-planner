@@ -3,47 +3,29 @@ package llm
 import (
 	"context"
 	"log"
-	"sync"
 	"time"
+
+	"goeat/db"
 )
 
-// DebugEntry records one LLM call for inspection in the admin UI.
-type DebugEntry struct {
-	At         time.Time
-	System     string
-	Prompt     string
-	Response   string
-	Error      string
-	DurationMS int64
-	InputToks  int
-	OutputToks int
-	Provider   string
-	Model      string
+// CallLogStore is the slice of db.Store the call logger needs.
+type CallLogStore interface {
+	InsertLLMCall(ctx context.Context, c db.LLMCall) error
 }
 
-const maxDebugEntries = 30
-
-// debugLogger wraps a Generator, recording every call into an in-memory ring.
+// debugLogger wraps a Generator, writing every call - prompt, response,
+// error - to llm_calls for the admin Audit Log. The log lives in the
+// database, not in this wrapper, so rebuilding the generator on a settings
+// save or a restart loses nothing, and a busy plan run cannot push its own
+// calls out.
 type debugLogger struct {
 	inner Generator
-	mu    sync.Mutex
-	ring  []DebugEntry
+	store CallLogStore
 }
 
-// GlobalDebugLog is set by NewDebugLogger and read by handlers.
-// nil when debug logging is not wired up.
-var GlobalDebugLog *debugLogger
-
-// NewDebugLogger wraps gen with call logging and registers the logger globally.
-func NewDebugLogger(gen Generator) Generator {
-	dl := &debugLogger{inner: gen}
-	GlobalDebugLog = dl
-	// TEMPORARY diagnostic - remove once the missing-audit-log-entries bug is
-	// found. Confirms which debugLogger instance is live and when it was
-	// (re)built, so a reload replacing GlobalDebugLog mid-generation shows up
-	// in the container logs instead of just as an empty ring later.
-	log.Printf("[llm-debug] NewDebugLogger: wrapped provider=%s model=%s instance=%p", gen.ProviderName(), gen.ModelName(), dl)
-	return dl
+// NewDebugLogger wraps gen so every call is written to the Audit Log.
+func NewDebugLogger(gen Generator, store CallLogStore) Generator {
+	return &debugLogger{inner: gen, store: store}
 }
 
 func (d *debugLogger) ProviderName() string { return d.inner.ProviderName() }
@@ -53,48 +35,36 @@ func (d *debugLogger) PlanMaxTokens() int   { return PlanMaxTokens(d.inner) }
 func (d *debugLogger) Generate(ctx context.Context, req GenerateRequest) (GenerateResponse, error) {
 	start := time.Now()
 	resp, err := d.inner.Generate(ctx, req)
-	ms := time.Since(start).Milliseconds()
 
-	e := DebugEntry{
-		At:         start,
-		System:     req.System,
-		Prompt:     req.Prompt,
-		DurationMS: ms,
-		Provider:   d.inner.ProviderName(),
-		Model:      d.inner.ModelName(),
+	hhID, _ := ctx.Value(ctxKeyRunHousehold).(int64)
+	purpose, _ := ctx.Value(ctxKeyRunPurpose).(string)
+	c := db.LLMCall{
+		HouseholdID: hhID,
+		Purpose:     purpose,
+		Provider:    d.inner.ProviderName(),
+		Model:       d.inner.ModelName(),
+		System:      req.System,
+		Prompt:      req.Prompt,
+		DurationMS:  time.Since(start).Milliseconds(),
+		At:          start,
 	}
 	if err != nil {
-		e.Error = err.Error()
-	} else {
-		e.Response = resp.Content
-		e.InputToks = resp.InputTokens
-		e.OutputToks = resp.OutputTokens
-		if resp.ModelName != "" {
-			e.Model = resp.ModelName
-		}
+		c.Error = err.Error()
+	}
+	// A truncated or failed call can still carry partial content; keep it,
+	// since that is what explains the failure.
+	c.Response = resp.Content
+	c.InputToks = resp.InputTokens
+	c.OutputToks = resp.OutputTokens
+	if resp.ModelName != "" {
+		c.Model = resp.ModelName
 	}
 
-	d.mu.Lock()
-	d.ring = append(d.ring, e)
-	if len(d.ring) > maxDebugEntries {
-		d.ring = d.ring[len(d.ring)-maxDebugEntries:]
+	// Detached: a call cut short by a canceled request still belongs in the log.
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if lerr := d.store.InsertLLMCall(wctx, c); lerr != nil {
+		log.Printf("llm: record call log: %v", lerr)
 	}
-	ringLen := len(d.ring)
-	d.mu.Unlock()
-
-	// TEMPORARY diagnostic - remove once the missing-audit-log-entries bug is
-	// found.
-	log.Printf("[llm-debug] Generate on instance=%p: provider=%s model=%s err=%v ring_len_after=%d global_is_this=%v",
-		d, d.inner.ProviderName(), d.inner.ModelName(), err, ringLen, GlobalDebugLog == d)
-
 	return resp, err
-}
-
-// Entries returns a snapshot of the ring, newest last.
-func (d *debugLogger) Entries() []DebugEntry {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	out := make([]DebugEntry, len(d.ring))
-	copy(out, d.ring)
-	return out
 }

@@ -154,6 +154,16 @@ type financeAIData struct {
 	Mappings   []financeMappingRow
 	// Unmapped is the set of local model labels seen in usage with no mapping.
 	Unmapped []string
+	// MappableModels feeds the mapping dialog's picker: every model with usage
+	// in range (unmapped first) plus every already-mapped model, so a mapping
+	// can be re-pointed even when its model is quiet in the selected range.
+	MappableModels []financeMappableModel
+}
+
+type financeMappableModel struct {
+	Name     string
+	HasUsage bool
+	MappedTo string // "anthropic / claude-sonnet-5", empty when unmapped
 }
 
 type financePurposeRow struct {
@@ -321,13 +331,29 @@ func (s *Server) handleFinanceAI(w http.ResponseWriter, r *http.Request) {
 			ReferenceModel: m.ReferenceModel,
 		})
 	}
-	mapped := make(map[string]bool, len(mappings))
+	mapped := make(map[string]string, len(mappings))
 	for _, m := range mappings {
-		mapped[m.LocalModel] = true
+		mapped[m.LocalModel] = m.Provider + " / " + m.ReferenceModel
 	}
+	seen := make(map[string]bool, len(modelLabels)+len(mappings))
+	var mappedWithUsage []financeMappableModel
 	for _, label := range modelLabels {
-		if !mapped[label] {
-			data.Unmapped = append(data.Unmapped, label)
+		if seen[label] {
+			continue
+		}
+		seen[label] = true
+		if to, ok := mapped[label]; ok {
+			mappedWithUsage = append(mappedWithUsage, financeMappableModel{Name: label, HasUsage: true, MappedTo: to})
+			continue
+		}
+		data.Unmapped = append(data.Unmapped, label)
+		data.MappableModels = append(data.MappableModels, financeMappableModel{Name: label, HasUsage: true})
+	}
+	data.MappableModels = append(data.MappableModels, mappedWithUsage...)
+	for _, m := range mappings {
+		if !seen[m.LocalModel] {
+			seen[m.LocalModel] = true
+			data.MappableModels = append(data.MappableModels, financeMappableModel{Name: m.LocalModel, MappedTo: mapped[m.LocalModel]})
 		}
 	}
 

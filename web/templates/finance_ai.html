@@ -1,12 +1,22 @@
 {{define "title"}}AI usage &amp; cost - {{.AppName}}{{end}}
 {{define "content"}}
-<div class="page-header">
-    <h1 class="page-title">{{icon "cpu"}} AI usage &amp; cost</h1>
-    <p class="page-subtitle">
-        Token usage and reference cost for every LLM call. Costs are <em>reference
-        estimates</em> - what the usage would have cost on a third-party provider -
-        not a bill. Models without a mapping are shown as unpriced, never as $0.00.
-    </p>
+<div class="page-header page-header--actions">
+    <div>
+        <h1 class="page-title">{{icon "cpu"}} AI usage &amp; cost</h1>
+        <p class="page-subtitle">
+            Token usage and reference cost for every LLM call. Costs are <em>reference
+            estimates</em> - what the usage would have cost on a third-party provider -
+            not a bill. Models without a mapping are shown as unpriced, never as $0.00.
+        </p>
+    </div>
+    <div class="page-header__actions" data-requires="admin">
+        <button type="button" class="btn btn-ghost" data-modal-open="pricing-modal">
+            {{icon "plus"}} Add reference price
+        </button>
+        <button type="button" class="btn btn-primary" data-modal-open="mapping-modal">
+            {{icon "swap-horizontal"}} Map a model
+        </button>
+    </div>
 </div>
 {{template "financeTabs" .}}
 
@@ -149,37 +159,9 @@
         <h2 class="form-section__title" id="ref-title">{{icon "tag"}} Reference prices</h2>
         <p class="page-subtitle" style="margin-top:0">
             A reference price is what a model's tokens would cost per million on a
-            third-party provider. Add one, then map your local model to it below.
+            third-party provider. Use <strong>Add reference price</strong>, then map
+            your local model to it.
         </p>
-
-        <form method="POST" action="/finance/ai/reference" class="pref-form">
-            {{$.CSRFField}}
-            <div class="field-row">
-                <div class="field field--sm">
-                    <label class="field-label" for="ref-provider">Provider</label>
-                    <input class="field-input" id="ref-provider" name="provider" type="text" placeholder="anthropic">
-                </div>
-                <div class="field">
-                    <label class="field-label" for="ref-model">Reference model</label>
-                    <input class="field-input" id="ref-model" name="reference_model" type="text" placeholder="claude-sonnet-5">
-                </div>
-                <div class="field field--sm">
-                    <label class="field-label" for="ref-in">Input $/M</label>
-                    <input class="field-input" id="ref-in" name="input_per_million" type="number" min="0" step="0.01" placeholder="3.00">
-                </div>
-                <div class="field field--sm">
-                    <label class="field-label" for="ref-out">Output $/M</label>
-                    <input class="field-input" id="ref-out" name="output_per_million" type="number" min="0" step="0.01" placeholder="15.00">
-                </div>
-                <div class="field">
-                    <label class="field-label" for="ref-notes">Notes</label>
-                    <input class="field-input" id="ref-notes" name="notes" type="text" placeholder="sourced 2026-09-10">
-                </div>
-                <div class="field field--action">
-                    <button type="submit" class="btn btn-primary">{{icon "plus"}} Save</button>
-                </div>
-            </div>
-        </form>
 
         {{if .Data.References}}
         <table class="data-table" aria-label="Reference prices">
@@ -213,31 +195,10 @@
     <section class="card" aria-labelledby="map-title">
         <h2 class="form-section__title" id="map-title">{{icon "swap-horizontal"}} Model → price mappings</h2>
         <p class="page-subtitle" style="margin-top:0">
-            Map a local model label (as it appears in the "By model" table) to a
-            reference price. Unmapped models are reported as unpriced.
+            Each local model label (as it appears in the "By model" table) points at a
+            reference price. Unmapped models are reported as unpriced. Use
+            <strong>Map a model</strong> to add or re-point one.
         </p>
-
-        <form method="POST" action="/finance/ai/mapping" class="pref-form">
-            {{$.CSRFField}}
-            <div class="field-row">
-                <div class="field">
-                    <label class="field-label" for="map-local">Local model</label>
-                    <input class="field-input" id="map-local" name="local_model" type="text" placeholder="e.g. claude-sonnet-5">
-                </div>
-                <div class="field">
-                    <label class="field-label" for="map-ref">Reference price</label>
-                    <select class="field-input" id="map-ref" name="reference_id">
-                        <option value="">— unmap —</option>
-                        {{range .Data.References}}
-                        <option value="{{.ID}}">{{.Provider}} / {{.ReferenceModel}} ({{.InputLabel}} in, {{.OutputLabel}} out)</option>
-                        {{end}}
-                    </select>
-                </div>
-                <div class="field field--action">
-                    <button type="submit" class="btn btn-primary">{{icon "check"}} Save mapping</button>
-                </div>
-            </div>
-        </form>
 
         {{if .Data.Unmapped}}
         <p class="empty-note">
@@ -248,20 +209,108 @@
         {{if .Data.Mappings}}
         <table class="data-table" aria-label="Model cost mappings">
             <thead>
-                <tr><th>Local model</th><th>Mapped to</th></tr>
+                <tr><th>Local model</th><th>Mapped to</th><th><span class="sr-only">Actions</span></th></tr>
             </thead>
             <tbody>
                 {{range .Data.Mappings}}
                 <tr>
                     <td data-label="Local model">{{.LocalModel}}</td>
                     <td data-label="Mapped to">{{.Provider}} / {{.ReferenceModel}}</td>
+                    <td data-label="" class="data-table__actions">
+                        <form method="POST" action="/finance/ai/mapping" style="display:inline" data-requires="admin">
+                            {{$.CSRFField}}
+                            <input type="hidden" name="local_model" value="{{.LocalModel}}">
+                            <input type="hidden" name="reference_id" value="">
+                            <button type="submit" class="btn btn-danger btn-sm" aria-label="Unmap model" title="Unmap">{{icon "delete"}}</button>
+                        </form>
+                    </td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
         {{else}}
-        <p class="empty-note">No mappings yet.</p>
+        <p class="empty-note">No mappings yet. Every model shows tokens without a cost estimate until one is mapped.</p>
         {{end}}
     </section>
 </div>
+
+{{template "partials/modal_open.html" dict "ID" "pricing-modal" "Title" "Add reference price" "Form" true}}
+  <form method="POST" action="/finance/ai/reference" class="pref-form">
+{{.CSRFField}}
+        <div class="field-row">
+            <div class="field">
+                <label class="field-label" for="ref-provider">Provider</label>
+                <input class="field-input" id="ref-provider" name="provider" type="text" placeholder="anthropic" required>
+            </div>
+            <div class="field">
+                <label class="field-label" for="ref-model">Reference model</label>
+                <input class="field-input" id="ref-model" name="reference_model" type="text" placeholder="claude-sonnet-5" required>
+            </div>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label class="field-label" for="ref-in">Input $/M</label>
+                <input class="field-input" id="ref-in" name="input_per_million" type="number" min="0" step="0.01" placeholder="3.00">
+            </div>
+            <div class="field">
+                <label class="field-label" for="ref-out">Output $/M</label>
+                <input class="field-input" id="ref-out" name="output_per_million" type="number" min="0" step="0.01" placeholder="15.00">
+            </div>
+        </div>
+        <div class="field">
+            <label class="field-label" for="ref-notes">Notes</label>
+            <input class="field-input" id="ref-notes" name="notes" type="text" placeholder="where this figure came from, and when">
+            <p class="field-hint">
+                Per million tokens. Saving a provider and model that already exist updates
+                that price instead of adding a second one.
+            </p>
+        </div>
+        <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "plus"}} Save price</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
+
+{{template "partials/modal_open.html" dict "ID" "mapping-modal" "Title" "Map a model to a reference price" "Form" true}}
+  {{if not .Data.References}}
+    <p class="empty-note">
+        {{icon "information"}} There are no reference prices to map onto yet. Use
+        <strong>Add reference price</strong> first: a mapping points a local model at a price.
+    </p>
+    <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Close</button>
+    </div>
+  {{else}}
+  <form method="POST" action="/finance/ai/mapping" class="pref-form">
+{{.CSRFField}}
+        <div class="field">
+            <label class="field-label" for="map-local">Local model</label>
+            <input class="field-input" id="map-local" name="local_model" type="text"
+                   list="map-local-models" placeholder="e.g. claude-sonnet-5" autocomplete="off" required>
+            <datalist id="map-local-models">
+                {{range .Data.MappableModels}}
+                <option value="{{.Name}}" label="{{if .HasUsage}}has usage{{else}}no usage in range{{end}}{{if .MappedTo}} · currently {{.MappedTo}}{{end}}"></option>
+                {{end}}
+            </datalist>
+            <p class="field-hint">
+                Unmapped models with usage are listed first. Picking a model that already
+                has a mapping re-points it rather than adding a second one.
+            </p>
+        </div>
+        <div class="field">
+            <label class="field-label" for="map-ref">Reference price</label>
+            <select class="field-input" id="map-ref" name="reference_id" required>
+                {{range .Data.References}}
+                <option value="{{.ID}}">{{.Provider}} / {{.ReferenceModel}} ({{.InputLabel}} in, {{.OutputLabel}} out)</option>
+                {{end}}
+            </select>
+        </div>
+        <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "check"}} Save mapping</button>
+    </div>
+  </form>
+  {{end}}
+{{template "partials/modal_close.html" .}}
 {{end}}

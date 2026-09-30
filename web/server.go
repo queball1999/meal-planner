@@ -95,7 +95,7 @@ type Server struct {
 func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version string, box *cryptbox.Box) *Server {
 	SetAppTimezone(cfg.Timezone)
 	if gen != nil {
-		gen = llm.NewDebugLogger(gen)        // captures every call into llm.GlobalDebugLog
+		gen = llm.NewDebugLogger(gen, store) // every call into llm_calls (Audit Log)
 		gen = llm.NewRunRecorder(gen, store) // one ai_runs row per call
 	}
 	chain := buildChain(cfg, store, gen)
@@ -174,7 +174,7 @@ func (s *Server) reloadLLM(ctx context.Context) {
 		}
 	}
 	if gen != nil {
-		gen = llm.NewDebugLogger(gen)
+		gen = llm.NewDebugLogger(gen, s.store)
 		gen = llm.NewRunRecorder(gen, s.store)
 	}
 	chain := buildChain(&cfg, s.store, gen)

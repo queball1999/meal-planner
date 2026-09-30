@@ -379,4 +379,9 @@ type Store interface {
 	// ── Audit log reader (app_events, written by LogEvent above) ───────────
 
 	ListEvents(ctx context.Context, limit int) ([]*AppEventRow, error)
+
+	// ── LLM call log (00039_llm_calls.sql, the Audit Log's LLM rows) ───────
+
+	InsertLLMCall(ctx context.Context, c LLMCall) error
+	ListLLMCalls(ctx context.Context, limit int) ([]*LLMCall, error)
 }

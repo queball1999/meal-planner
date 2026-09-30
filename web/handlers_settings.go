@@ -493,14 +493,7 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 //	GET /admin/llm-debug
 func (s *Server) handleLLMDebugLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	entries := llmDebugEntries()
-	// TEMPORARY diagnostic - remove once the missing-audit-log-entries bug is
-	// found. Confirms whether s.llmGen() (what plan generation actually uses)
-	// is the same instance as the global the entries came from.
-	log.Printf("[llm-debug] handleLLMDebugLog: entries=%d global_nil=%v llmGen_nil=%v", len(entries), llm.GlobalDebugLog == nil, s.llmGen() == nil)
-	if len(entries) > 10 {
-		entries = entries[:10]
-	}
+	entries := s.llmDebugEntries(r.Context(), 10)
 	json.NewEncoder(w).Encode(entries)
 }
 
@@ -558,7 +551,7 @@ func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
 	var entries []auditLogEntry
 
 	if kind == "" || kind == "llm" {
-		for _, e := range llmDebugEntries() {
+		for _, e := range s.llmDebugEntries(r.Context(), 0) {
 			if !matchStatus(e.Error != "") {
 				continue
 			}
@@ -631,15 +624,17 @@ type llmDebugEntry struct {
 	Model      string    `json:"model,omitempty"`
 }
 
-func llmDebugEntries() []llmDebugEntry {
-	if llm.GlobalDebugLog == nil {
+// llmDebugEntries reads the newest limit LLM calls from llm_calls, newest
+// first (limit <= 0 means all that are kept).
+func (s *Server) llmDebugEntries(ctx context.Context, limit int) []llmDebugEntry {
+	raw, err := s.store.ListLLMCalls(ctx, limit)
+	if err != nil {
+		log.Printf("audit log: list llm calls: %v", err)
 		return nil
 	}
-	raw := llm.GlobalDebugLog.Entries()
 	out := make([]llmDebugEntry, len(raw))
 	for i, e := range raw {
-		// Reverse so newest is first
-		out[len(raw)-1-i] = llmDebugEntry{
+		out[i] = llmDebugEntry{
 			At:         inAppTZ(e.At).Format("2006-01-02 15:04:05"),
 			at:         e.At,
 			System:     e.System,
