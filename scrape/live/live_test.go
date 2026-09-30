@@ -22,17 +22,19 @@ type fakeCDPServer struct {
 
 	mu   sync.Mutex
 	conn *websocket.Conn
+	// ready closes once the handler has stored conn. dial returns as soon
+	// as the handshake completes, which can be before the handler runs.
+	ready chan struct{}
 }
 
 func startFakeCDPServer(t *testing.T) *fakeCDPServer {
 	t.Helper()
-	f := &fakeCDPServer{}
-	ready := make(chan struct{})
+	f := &fakeCDPServer{ready: make(chan struct{})}
 	handler := websocket.Handler(func(ws *websocket.Conn) {
 		f.mu.Lock()
 		f.conn = ws
 		f.mu.Unlock()
-		close(ready)
+		close(f.ready)
 		for {
 			var req rpcRequest
 			if err := websocket.JSON.Receive(ws, &req); err != nil {
@@ -54,12 +56,14 @@ func startFakeCDPServer(t *testing.T) *fakeCDPServer {
 
 func (f *fakeCDPServer) pushEvent(t *testing.T, method string, params any) {
 	t.Helper()
+	select {
+	case <-f.ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pushEvent before a client connected")
+	}
 	f.mu.Lock()
 	ws := f.conn
 	f.mu.Unlock()
-	if ws == nil {
-		t.Fatal("pushEvent before a client connected")
-	}
 	raw, _ := json.Marshal(params)
 	if err := websocket.JSON.Send(ws, rpcMessage{Method: method, Params: raw}); err != nil {
 		t.Fatalf("push event: %v", err)
