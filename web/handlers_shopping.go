@@ -29,8 +29,9 @@ type shoppingStoreGroup struct {
 type shoppingLineItem struct {
 	ID          int64
 	DisplayName string
-	BuyLabel    string // "2 lb" | "3 each"
-	PriceLabel  string // "$2.49 / lb"
+	BuyLabel    string // what the recipes need: "4" | "1.5 lb"
+	PackLabel   string // what that means at the store: "buy 2 × 1 lb"; "" when the same thing
+	PriceLabel  string // per pack: "$2.49 / lb" | "$4.49 / 9 oz"
 	TotalLabel  string // "$4.98"
 	TotalCents  int64  // raw line total, for client-side spend recalculation
 	BadgeClass  string // "badge-live" | "badge-cached" | "badge-manual" | "badge-estimate"
@@ -43,8 +44,8 @@ type shoppingLineItem struct {
 	// the estimated total and skipped by the Home Assistant sync. Distinct
 	// from Checked, which means "picked up on this trip".
 	InPantry bool
-	// The raw numbers behind BuyLabel, so the have-it dialog can prefill the
-	// quantity it will stock the pantry with.
+	// The raw numbers behind BuyLabel (need, stock unit), so the have-it
+	// dialog can prefill the quantity it will stock the pantry with.
 	BuyQuantity float64
 	Unit        string
 
@@ -159,6 +160,11 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 	}
 
 	rawItems, _ := s.store.ListShoppingListItems(ctx, p.ID)
+	// Lines priced before need_quantity existed get it filled in once, so the
+	// list can say "4" bananas rather than the pack-rounded "7.69".
+	if !readOnly {
+		pricing.BackfillNeed(ctx, s.store, hh.ID, p.ID, rawItems)
+	}
 	stores, _ := s.store.ListStores(ctx, hh.ID)
 	mealTitles, _ := s.store.ListMealTitlesByIngredientID(ctx, p.ID)
 
@@ -289,22 +295,15 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]db
 		linked = itemsByID[*item.ItemID]
 	}
 
-	// BuyQuantity is stored in the item's stock unit (costing.go reconciles
-	// every pack into it), so the label has to read in that unit too - not
-	// PurchaseUnit, which is only the store's word for a pack ("bag", "lb")
-	// and was what made a 907 g buy render as "907 lb".
-	qtyUnit := item.PurchaseUnit
-	if linked != nil && linked.StockUnit != "" {
-		qtyUnit = linked.StockUnit
-	}
-	// Re-express weight/volume into the household's preferred system before
-	// labelling ("1200 g" -> "1.2 kg"); a no-op for "as-is" and countable units.
-	buyQty, buyUnit := displayQtyUnit(item.BuyQuantity, qtyUnit, unitSystem)
-	buyLabel := qtyLabel(buyQty, buyUnit)
-	priceLabel := ""
-	if item.UnitPriceCents > 0 {
-		priceLabel = fmt.Sprintf("$%.2f / %s", float64(item.UnitPriceCents)/100, item.PurchaseUnit)
-	}
+	// Quantities are stored in the item's stock unit (costing.go reconciles
+	// every pack into it), so labels read in that unit - not PurchaseUnit,
+	// which is only the store's word for a pack ("bag", "lb") and was what
+	// made a 907 g buy render as "907 lb".
+	qtyUnit := lineStockUnit(item, linked)
+	needQty := lineNeed(item)
+	buyLabel := displayQtyLabel(needQty, qtyUnit, unitSystem)
+	packLabel := linePackLabel(item, needQty, qtyUnit)
+	priceLabel := linePriceLabel(item)
 	totalLabel := fmt.Sprintf("$%.2f", float64(item.LineTotalCents)/100)
 
 	badgeClass, badgeText := confidenceBadge(item.Confidence)
@@ -319,6 +318,7 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]db
 		ID:                item.ID,
 		DisplayName:       item.DisplayName,
 		BuyLabel:          buyLabel,
+		PackLabel:         packLabel,
 		PriceLabel:        priceLabel,
 		TotalLabel:        totalLabel,
 		TotalCents:        item.LineTotalCents,
@@ -327,8 +327,8 @@ func buildLineItem(item *db.ShoppingListItem, mealTitleByIngredient map[int64]db
 		Checked:           item.Checked,
 		Meals:             mealTagsFor(item.MealIngredientRefs, mealTitleByIngredient),
 		InPantry:          item.InPantry,
-		BuyQuantity:       item.BuyQuantity,
-		Unit:              item.PurchaseUnit,
+		BuyQuantity:       pricing.Round2(needQty),
+		Unit:              qtyUnit,
 		LinkState:         state,
 		LinkLabel:         label,
 		PantryNote:        pantryNote(item),
@@ -495,7 +495,7 @@ func (s *Server) handleShoppingListExport(w http.ResponseWriter, r *http.Request
 				qtyUnit = linked.StockUnit
 			}
 		}
-		qty, unit := displayQtyUnit(it.BuyQuantity, qtyUnit, prefs.UnitSystem)
+		qty, unit := displayQtyUnit(lineNeed(it), qtyUnit, prefs.UnitSystem)
 		_ = cw.Write([]string{
 			store,
 			it.DisplayName,
@@ -584,7 +584,14 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	qty := line.BuyQuantity
+	// Default to what the recipes need, in the item's own unit - not the
+	// pack-rounded buy quantity under the store's pack word, which stocked
+	// the pantry with "907 oz" of a 32 oz tub of yogurt.
+	var linked *db.Item
+	if line.ItemID != nil {
+		linked, _ = s.store.GetItem(ctx, *line.ItemID)
+	}
+	qty := lineNeed(line)
 	if raw := strings.TrimSpace(r.FormValue("quantity")); raw != "" {
 		if q, perr := strconv.ParseFloat(raw, 64); perr == nil && q > 0 {
 			qty = q
@@ -592,7 +599,7 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 	}
 	unit := strings.TrimSpace(r.FormValue("unit"))
 	if unit == "" {
-		unit = line.PurchaseUnit
+		unit = lineStockUnit(line, linked)
 	}
 
 	term := pricing.Normalize(line.DisplayName)

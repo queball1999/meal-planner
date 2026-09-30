@@ -561,6 +561,12 @@ type ShoppingListItem struct {
 	// (guest count, meal skip) without asking a provider again.
 	PackAmount float64
 	PackUnit   string
+	// NeedQuantity is what the plan's recipes call for, in the stock unit,
+	// before pantry stock (00037) - the number the list shows; PantryQtyUsed
+	// is how much of it the pantry covers. BuyQuantity is what is left,
+	// rounded up to whole packs. 0 means not recorded (a pre-00037 row
+	// not yet backfilled).
+	NeedQuantity float64
 }
 
 // UpdateShoppingListItemPriceParams rewrites one shopping-list line's price and
@@ -665,6 +671,8 @@ type CreateShoppingListItemParams struct {
 	// - the shopping list tab renders these as loading placeholders until
 	// ResolvePricing turns each one into a priced line.
 	Pending bool
+	// NeedQuantity: see ShoppingListItem.NeedQuantity.
+	NeedQuantity float64
 }
 
 // ── Items catalog + quantity conversions (00010_items.sql) ───────────────────

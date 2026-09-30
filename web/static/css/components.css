@@ -2735,6 +2735,16 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     white-space: normal;
 }
 
+/* What the needed amount means at the store ("buy 2 × 1 lb"). Below the
+ * quantity for the same reason as the pantry note, muted because the need is
+ * the number to scan. */
+.shopping-item__pack-note {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    white-space: normal;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    PRICE HISTORY CHART
    One inline SVG per store on the item detail page. No charting library: a

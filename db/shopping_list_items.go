@@ -20,12 +20,12 @@ func (s *store) CreateShoppingListItem(ctx context.Context, p CreateShoppingList
 			(plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 			 buy_quantity, pack_size, purchase_unit,
 			 unit_price_cents, line_total_cents, price_source, confidence,
-			 pantry_qty_used, in_pantry, pending)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 pantry_qty_used, in_pantry, pending, need_quantity)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.PlanID, storeID, itemID, p.MealIngredientRefs, p.DisplayName,
 		p.BuyQuantity, p.PackSize, p.PurchaseUnit,
 		p.UnitPriceCents, p.LineTotalCents, p.PriceSource, p.Confidence,
-		p.PantryQtyUsed, boolInt(p.InPantry), boolInt(p.Pending),
+		p.PantryQtyUsed, boolInt(p.InPantry), boolInt(p.Pending), p.NeedQuantity,
 	)
 	if err != nil {
 		return nil, err
@@ -48,6 +48,7 @@ func (s *store) CreateShoppingListItem(ctx context.Context, p CreateShoppingList
 		PantryQtyUsed:      p.PantryQtyUsed,
 		InPantry:           p.InPantry,
 		Pending:            p.Pending,
+		NeedQuantity:       p.NeedQuantity,
 	}
 	return item, nil
 }
@@ -57,7 +58,7 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
 		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending,
-		       pack_amount, pack_unit
+		       pack_amount, pack_unit, need_quantity
 		FROM shopping_list_items
 		WHERE plan_id = ?
 		ORDER BY store_id, display_name`, planID)
@@ -76,7 +77,7 @@ func (s *store) ListShoppingListItems(ctx context.Context, planID int64) ([]*Sho
 			&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 			&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
 			&checked, &inPantry, &item.PantryQtyUsed, &pending,
-			&item.PackAmount, &item.PackUnit,
+			&item.PackAmount, &item.PackUnit, &item.NeedQuantity,
 		); err != nil {
 			return nil, err
 		}
@@ -95,7 +96,7 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 		SELECT id, plan_id, store_id, item_id, meal_ingredient_refs, display_name,
 		       buy_quantity, pack_size, purchase_unit,
 		       unit_price_cents, line_total_cents, price_source, confidence, checked, in_pantry, pantry_qty_used, pending,
-		       pack_amount, pack_unit
+		       pack_amount, pack_unit, need_quantity
 		FROM shopping_list_items
 		WHERE id = ?`, id)
 
@@ -107,7 +108,7 @@ func (s *store) GetShoppingListItem(ctx context.Context, id int64) (*ShoppingLis
 		&item.BuyQuantity, &item.PackSize, &item.PurchaseUnit,
 		&item.UnitPriceCents, &item.LineTotalCents, &item.PriceSource, &item.Confidence,
 		&checked, &inPantry, &item.PantryQtyUsed, &pending,
-		&item.PackAmount, &item.PackUnit,
+		&item.PackAmount, &item.PackUnit, &item.NeedQuantity,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -154,13 +155,21 @@ func (s *store) UpdateShoppingListItemPrice(ctx context.Context, p UpdateShoppin
 // resolved price/source/confidence/store - see
 // pricing.RescaleShoppingList, which is the only caller. Unlike
 // UpdateShoppingListItemPrice this never asked a provider for anything.
-func (s *store) UpdateShoppingListItemQuantity(ctx context.Context, id int64, buyQuantity, packSize float64, lineTotalCents int64, pantryQtyUsed float64, inPantry bool) error {
+func (s *store) UpdateShoppingListItemQuantity(ctx context.Context, id int64, needQuantity, buyQuantity, packSize float64, lineTotalCents int64, pantryQtyUsed float64, inPantry bool) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE shopping_list_items
-		SET buy_quantity = ?, pack_size = ?, line_total_cents = ?,
+		SET need_quantity = ?, buy_quantity = ?, pack_size = ?, line_total_cents = ?,
 		    pantry_qty_used = ?, in_pantry = ?
 		WHERE id = ?`,
-		buyQuantity, packSize, lineTotalCents, pantryQtyUsed, boolInt(inPantry), id)
+		needQuantity, buyQuantity, packSize, lineTotalCents, pantryQtyUsed, boolInt(inPantry), id)
+	return err
+}
+
+// SetShoppingListItemNeed records a line's recipe requirement on its own -
+// pricing.BackfillNeed filling in lines written before need_quantity existed.
+func (s *store) SetShoppingListItemNeed(ctx context.Context, id int64, needQuantity float64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE shopping_list_items SET need_quantity = ? WHERE id = ?`, needQuantity, id)
 	return err
 }
 

@@ -41,6 +41,7 @@ var unitAliases = map[string]string{
 	"jar": "jar", "jars": "jar",
 	"bag": "bag", "bags": "bag",
 	"box": "box", "boxes": "box",
+	"carton": "carton", "cartons": "carton",
 	"dozen": "dozen", "doz": "dozen",
 }
 

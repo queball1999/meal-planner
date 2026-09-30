@@ -1,9 +1,11 @@
 package web
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
+	"goeat/db"
 	"goeat/pricing"
 )
 
@@ -121,4 +123,73 @@ func fmtQty(v any) string {
 		return q
 	}
 	return ""
+}
+
+// lineStockUnit is the unit a shopping line's quantities are stored in: the
+// linked item's stock unit, or the purchase unit for an unlinked line (which
+// was never converted, so the two agree).
+func lineStockUnit(item *db.ShoppingListItem, linked *db.Item) string {
+	if linked != nil && linked.StockUnit != "" {
+		return linked.StockUnit
+	}
+	return item.PurchaseUnit
+}
+
+// lineNeed is what a line's recipes call for (00037), falling back to the buy
+// quantity for a line with nothing recorded.
+func lineNeed(item *db.ShoppingListItem) float64 {
+	if item.NeedQuantity > 0 {
+		return item.NeedQuantity
+	}
+	return item.BuyQuantity
+}
+
+// linePackLabel says what the need turns into at the store - "buy 2 × 1 lb"
+// for 4 bananas sold by the pound, "buy 1 pack of 18" for 12 eggs. Empty when
+// there is no package to speak of, or when it would just repeat the need
+// (one pack that is exactly the amount needed).
+func linePackLabel(item *db.ShoppingListItem, need float64, stockUnit string) string {
+	n := pricing.PacksBought(item)
+	if n == 0 {
+		return ""
+	}
+	unit := pricing.CanonUnit(item.PackUnit)
+	if n == 1 && unit == pricing.CanonUnit(stockUnit) && pricing.Round2(item.PackAmount) == pricing.Round2(need) {
+		return ""
+	}
+	if countableUnits[unit] {
+		if item.PackAmount == 1 {
+			return "buy " + strconv.Itoa(n)
+		}
+		packs := "packs"
+		if n == 1 {
+			packs = "pack"
+		}
+		return fmt.Sprintf("buy %d %s of %s", n, packs, pricing.FormatQty(item.PackAmount))
+	}
+	return fmt.Sprintf("buy %d × %s", n, qtyLabel(item.PackAmount, item.PackUnit))
+}
+
+// linePriceLabel is the price of one store pack, labelled with the pack
+// itself - "$0.55 / lb", "$4.49 / 9 oz", "$2.65 / pack of 18". It used to be
+// "$price / unit" regardless of pack size, which priced a 9 oz pack of
+// chicken at "$4.49 / oz".
+func linePriceLabel(item *db.ShoppingListItem) string {
+	if item.UnitPriceCents <= 0 {
+		return ""
+	}
+	price := fmt.Sprintf("$%.2f", float64(item.UnitPriceCents)/100)
+	if item.PackAmount <= 0 {
+		return price + " / " + item.PurchaseUnit
+	}
+	unit := pricing.CanonUnit(item.PackUnit)
+	switch {
+	case countableUnits[unit] && item.PackAmount == 1:
+		return price + " each"
+	case countableUnits[unit]:
+		return price + " / pack of " + pricing.FormatQty(item.PackAmount)
+	case item.PackAmount == 1:
+		return price + " / " + unit
+	}
+	return price + " / " + qtyLabel(item.PackAmount, item.PackUnit)
 }

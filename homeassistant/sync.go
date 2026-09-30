@@ -37,8 +37,14 @@ func label(it *db.ShoppingListItem, format string) string {
 	if format != "name_qty" || it.BuyQuantity <= 0 {
 		return name
 	}
-	qty := pricing.FormatQty(it.BuyQuantity)
-	unit := strings.TrimSpace(it.PurchaseUnit)
+	// In the store's own terms - the packs to pick up ("2 lb Banana",
+	// "32 oz Greek yogurt"). BuyQuantity is in the item's stock unit, not
+	// PurchaseUnit, so pairing those two pushed "907.18 oz" of yogurt.
+	amount, unit := it.BuyQuantity, strings.TrimSpace(it.PurchaseUnit)
+	if n := pricing.PacksBought(it); n > 0 {
+		amount, unit = float64(n)*it.PackAmount, strings.TrimSpace(it.PackUnit)
+	}
+	qty := pricing.FormatQty(amount)
 	if unit == "" || unit == "each" {
 		return fmt.Sprintf("%s %s", qty, name)
 	}

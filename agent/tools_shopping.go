@@ -159,6 +159,7 @@ func RegisterShoppingTools(r *Registry) {
 				DisplayName:    name,
 				BuyQuantity:    qty,
 				PackSize:       1,
+				NeedQuantity:   qty,
 				PurchaseUnit:   unit,
 				UnitPriceCents: cents,
 				LineTotalCents: int64(math.Round(float64(cents) * qty)),

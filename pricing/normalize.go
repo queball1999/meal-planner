@@ -7,11 +7,16 @@ import (
 
 // prepWords are stripped before normalization - they describe preparation, not
 // the ingredient itself, so "diced onion" and "onion" should match.
+//
+// "canned" is not one: a can of diced tomatoes and a fresh tomato are
+// different things to buy, and stripping it made them one catalog item, so a
+// recipe's fresh tomato was priced (and bought) as a can. catalog.EnsureItem
+// still joins "black beans" measured in cans to "canned black beans".
 var prepWords = map[string]bool{
 	"diced": true, "chopped": true, "sliced": true, "minced": true,
 	"crushed": true, "peeled": true, "grated": true, "shredded": true,
 	"ground": true, "whole": true, "fresh": true, "dried": true,
-	"cooked": true, "raw": true, "frozen": true, "canned": true,
+	"cooked": true, "raw": true, "frozen": true,
 	"organic": true, "boneless": true, "skinless": true, "lean": true,
 	"large": true, "medium": true, "small": true, "extra": true,
 }
@@ -74,8 +79,11 @@ func Normalize(raw string) string {
 
 	// Light singularization: drop trailing 's' only for common food plurals
 	// that won't be misread (e.g. "eggs" → "egg", "carrots" → "carrot").
-	// Stops at 3-char minimum to avoid mangling short words.
-	if len(result) > 4 && strings.HasSuffix(result, "s") &&
+	// Stops at 3-char minimum to avoid mangling short words. "-oes" plurals
+	// drop the whole "es" ("tomatoes" → "tomato", not "tomatoe").
+	if len(result) > 4 && strings.HasSuffix(result, "oes") {
+		result = result[:len(result)-2]
+	} else if len(result) > 4 && strings.HasSuffix(result, "s") &&
 		!strings.HasSuffix(result, "ss") &&
 		!strings.HasSuffix(result, "us") &&
 		!strings.HasSuffix(result, "ies") {

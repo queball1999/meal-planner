@@ -151,6 +151,7 @@
             {{else}}
             <span class="shopping-item__qty">
                 {{.BuyLabel}}
+                {{if .PackLabel}}<span class="shopping-item__pack-note">{{.PackLabel}}</span>{{end}}
                 {{if .PantryNote}}<span class="shopping-item__pantry-note">{{.PantryNote}}</span>{{end}}
             </span>
             {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}
@@ -219,6 +220,7 @@
             </label>
             <span class="shopping-item__qty">
                 {{.BuyLabel}}
+                {{if .PackLabel}}<span class="shopping-item__pack-note">{{.PackLabel}}</span>{{end}}
                 {{if .PantryNote}}<span class="shopping-item__pantry-note">{{.PantryNote}}</span>{{end}}
             </span>
             {{if .PriceLabel}}<span class="shopping-item__unit-price">{{.PriceLabel}}</span>{{end}}

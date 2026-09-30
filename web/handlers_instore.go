@@ -8,7 +8,6 @@ import (
 
 	"goeat/db"
 	"goeat/middleware"
-	"goeat/pricing"
 )
 
 // aisleOrder is the order a shop is walked, not the order a database returns.
@@ -183,11 +182,17 @@ func (s *Server) handleInStore(w http.ResponseWriter, r *http.Request) {
 				qtyUnit = su
 			}
 		}
-		qty, unit := displayQtyUnit(ln.BuyQuantity, qtyUnit, prefs.UnitSystem)
+		// What to pick up: the recipes' need, plus the packs it means when
+		// that differs ("4 · buy 2 × 1 lb") - same labels as the list.
+		need := lineNeed(ln)
+		qtyText := displayQtyLabel(need, qtyUnit, prefs.UnitSystem)
+		if pack := linePackLabel(ln, need, qtyUnit); pack != "" {
+			qtyText = strings.TrimSpace(qtyText + " · " + pack)
+		}
 		b.aisle.Lines = append(b.aisle.Lines, instoreLine{
 			ID:      ln.ID,
 			Name:    ln.DisplayName,
-			Qty:     strings.TrimSpace(pricing.FormatQty(qty) + " " + unit),
+			Qty:     qtyText,
 			Price:   fmt.Sprintf("$%.2f", float64(ln.LineTotalCents)/100),
 			Checked: ln.Checked,
 			Store:   store,

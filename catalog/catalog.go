@@ -68,6 +68,11 @@ func EnsureItemWithHint(ctx context.Context, store db.Store, householdID int64, 
 	} else if it != nil {
 		return enrichItem(ctx, store, it, hint, false)
 	}
+	if it, err := cannedTwin(ctx, store, householdID, term, hint); err != nil {
+		return nil, err
+	} else if it != nil {
+		return enrichItem(ctx, store, it, hint, false)
+	}
 	if it, err := store.GetItemByAlias(ctx, householdID, term); err != nil {
 		return nil, err
 	} else if it != nil {
@@ -84,7 +89,7 @@ func EnsureItemWithHint(ctx context.Context, store db.Store, householdID int64, 
 	}
 
 	stockUnit := "each"
-	if u := pricing.CanonUnit(hint.Unit); u != "" {
+	if u := pricing.CanonUnit(hint.Unit); u != "" && !containerUnits[u] {
 		stockUnit = u
 	}
 	it, err := store.CreateItem(ctx, db.CreateItemParams{
@@ -99,6 +104,32 @@ func EnsureItemWithHint(ctx context.Context, store db.Store, householdID int64, 
 		return it, err
 	}
 	return enrichItem(ctx, store, it, hint, true)
+}
+
+// containerUnits are store packaging, not amounts: a new item hinted in one is
+// stocked by "each" instead. Stocking tortillas by the "package" turned a
+// recipe's 6 tortillas into "0.6 packages" everywhere they were shown; the
+// hint's package conversion (1 package = 10 each) is still recorded, so pack
+// pricing works the same. Cans, jars and bottles stay: recipes count in them
+// ("1 can black beans").
+var containerUnits = map[string]bool{
+	"package": true, "bag": true, "box": true, "carton": true,
+}
+
+// cannedTwin joins the two spellings of a canned good, now that "canned" is
+// part of a normalized term: "canned black bean" finds an item filed as
+// "black bean", and a plain "black bean" or "tuna" finds "canned black bean"
+// or "canned tuna" when the recipe generator says it is bought by some unit
+// other than a count (a can, ounces). Never for a count or with no unit to go
+// on: a fresh tomato bought "each" must not become a can of diced tomatoes.
+func cannedTwin(ctx context.Context, store db.Store, householdID int64, term string, hint ItemHint) (*db.Item, error) {
+	if bare, ok := strings.CutPrefix(term, "canned "); ok {
+		return store.GetItemByTerm(ctx, householdID, bare)
+	}
+	if u := pricing.CanonUnit(hint.Unit); u != "" && u != "each" {
+		return store.GetItemByTerm(ctx, householdID, "canned "+term)
+	}
+	return nil, nil
 }
 
 // enrichItem applies a hint's conversion edges to an item (never clobbering an

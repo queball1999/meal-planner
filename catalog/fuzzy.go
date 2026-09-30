@@ -39,7 +39,9 @@ var stopWords = map[string]bool{
 	"fresh": true, "organic": true, "raw": true, "whole": true, "large": true,
 	"small": true, "medium": true, "boneless": true, "skinless": true,
 	"chopped": true, "diced": true, "sliced": true, "minced": true,
-	"frozen": true, "canned": true, "dried": true, "ground": false, // "ground beef" needs it
+	"frozen": true, "dried": true, "ground": false, // "ground beef" needs it
+	// "canned" is identity, not noise: ignoring it scored a fresh "tomato" as
+	// a perfect match for "Canned diced tomatoes" and auto-linked the two.
 	"of": true, "the": true, "a": true, "an": true, "and": true,
 	"unsalted": true, "salted": true, "low": true, "reduced": true, "fat": true,
 	"free": true, "range": true, "extra": true, "virgin": true, "pure": true,

@@ -132,6 +132,7 @@ func (s *Server) quickAddToList(w http.ResponseWriter, r *http.Request, hh *db.H
 		DisplayName:    item.Name,
 		BuyQuantity:    qty,
 		PackSize:       1,
+		NeedQuantity:   qty,
 		PurchaseUnit:   item.StockUnit,
 		UnitPriceCents: cents,
 		LineTotalCents: int64(math.Round(float64(cents) * qty)),

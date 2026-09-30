@@ -166,7 +166,7 @@ func rescaleInPlace(ctx context.Context, store db.Store, ex *db.ShoppingListItem
 		lineTotal = int64(math.Round(float64(ex.LineTotalCents) * ratio))
 	}
 
-	if err := store.UpdateShoppingListItemQuantity(ctx, ex.ID, buyQuantity, packSize, lineTotal, ded.Used, ded.Covered); err != nil {
+	if err := store.UpdateShoppingListItemQuantity(ctx, ex.ID, round3(item.TotalQuantity+ded.Used), buyQuantity, packSize, lineTotal, ded.Used, ded.Covered); err != nil {
 		log.Printf("pricing: rescale item %d: %v", ex.ID, err)
 		return false
 	}
