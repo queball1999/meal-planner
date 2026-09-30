@@ -189,11 +189,20 @@ func TestPlanEmptySlotOffersFill(t *testing.T) {
 	if strings.Contains(out, `data-slot="dinner"`) {
 		t.Error("a filled slot was offered an Add a meal button")
 	}
+	// It is offered a swap instead, into the same picker.
+	for _, want := range []string{`data-popover="meal-menu-3"`, `id="meal-menu-3"`, `data-swap-meal`, `data-swap-slot="dinner"`, `id="swap-leftovers"`, `value="carry"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("plan page missing %q", want)
+		}
+	}
 
 	// A past plan is a record, not an editing surface.
 	ro := renderPage(t, "plan", pageData{AppName: "Go Eat", Page: "plan", Data: planPageWithDays(days, nil, true)})
 	if strings.Contains(ro, `data-fill-slot`) {
 		t.Error("read-only plan offers Add a meal")
+	}
+	if strings.Contains(ro, `data-swap-meal`) {
+		t.Error("read-only plan offers a swap")
 	}
 }
 

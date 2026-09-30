@@ -153,6 +153,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /meals/{id}/lock", edit(http.HandlerFunc(s.handleMealLock)))
 	mux.Handle("GET /meals/{id}/status-impact", view(http.HandlerFunc(s.handleMealStatusImpact)))
 	mux.Handle("POST /meals/{id}/status", edit(http.HandlerFunc(s.handleMealStatus)))
+	mux.Handle("POST /meals/{id}/swap", edit(http.HandlerFunc(s.handleMealSwap)))
 
 	// Recipe catalog - literal routes before /recipes/{id} wildcard (§8.2)
 	mux.Handle("GET /recipes/import", view(http.HandlerFunc(s.handleRecipeImportPage)))

@@ -183,26 +183,42 @@
                     {{$.CSRFField}}<input type="hidden" name="rating" value="-1">
                     <button type="submit" class="btn-icon" title="Dislike this meal" aria-label="Dislike {{$cell.Title}}">{{icon "thumb-down"}}</button>
                 </form>
-                <form method="POST" action="/meals/{{$cell.MealID}}/lock">
-                    {{$.CSRFField}}<input type="hidden" name="locked" value="{{if $cell.Locked}}0{{else}}1{{end}}">
-                    <button type="submit" class="btn-icon" title="{{if $cell.Locked}}Unlock{{else}}Lock{{end}}" aria-label="{{if $cell.Locked}}Unlock{{else}}Lock{{end}} {{$cell.Title}}">
-                        {{if $cell.Locked}}{{icon "lock"}}{{else}}{{icon "lock-open"}}{{end}}
-                    </button>
-                </form>
-                <button type="button" class="btn-icon meal-status-btn{{if eq $cell.Status "eating_out"}} meal-status-btn--active{{end}}"
-                        data-meal-status-btn data-meal-id="{{$cell.MealID}}" data-status="eating_out"
-                        aria-pressed="{{if eq $cell.Status "eating_out"}}true{{else}}false{{end}}"
-                        title="{{if eq $cell.Status "eating_out"}}Eating out - click to undo{{else}}Mark as eating out{{end}}"
-                        aria-label="{{if eq $cell.Status "eating_out"}}Undo eating out for {{$cell.Title}}{{else}}Mark {{$cell.Title}} as eating out{{end}}">
-                    {{icon "store"}}
+                {{/* Everything past like/dislike lives in a popover: six icons
+                     don't fit a phone-width card. A .popover (fixed, placed by
+                     popover.js) for the same reason as the people picker -
+                     .plan-board scrolls and would clip an in-flow menu. */}}
+                <button type="button" class="btn-icon meal-card__more"
+                        data-popover="meal-menu-{{$cell.MealID}}" data-popover-placement="bottom-end"
+                        data-popover-dismiss="tap" aria-expanded="false" aria-controls="meal-menu-{{$cell.MealID}}"
+                        title="More actions" aria-label="More actions for {{$cell.Title}}">
+                    {{icon "dots-horizontal"}}
                 </button>
-                <button type="button" class="btn-icon meal-status-btn{{if eq $cell.Status "skipped"}} meal-status-btn--active{{end}}"
-                        data-meal-status-btn data-meal-id="{{$cell.MealID}}" data-status="skipped"
-                        aria-pressed="{{if eq $cell.Status "skipped"}}true{{else}}false{{end}}"
-                        title="{{if eq $cell.Status "skipped"}}Skipped - click to undo{{else}}Skip this meal{{end}}"
-                        aria-label="{{if eq $cell.Status "skipped"}}Undo skip for {{$cell.Title}}{{else}}Skip {{$cell.Title}}{{end}}">
-                    {{icon "close"}}
-                </button>
+                <div class="popover" id="meal-menu-{{$cell.MealID}}" data-popover-panel hidden>
+                    <div class="popover__list">
+                        <button type="button" class="popover__item" data-swap-meal
+                                data-meal-id="{{$cell.MealID}}" data-swap-slot="{{$slot}}"
+                                data-label="{{$day.DateLabel}}" data-title="{{$cell.Title}}">
+                            {{icon "swap-horizontal"}} Swap
+                        </button>
+                        <form method="POST" action="/meals/{{$cell.MealID}}/lock">
+                            {{$.CSRFField}}<input type="hidden" name="locked" value="{{if $cell.Locked}}0{{else}}1{{end}}">
+                            <button type="submit" class="popover__item">
+                                {{if $cell.Locked}}{{icon "lock-open"}} Unlock{{else}}{{icon "lock"}} Lock{{end}}
+                            </button>
+                        </form>
+                        <div class="popover__divider"></div>
+                        <button type="button" class="popover__item meal-status-btn{{if eq $cell.Status "eating_out"}} meal-status-btn--active{{end}}"
+                                data-meal-status-btn data-meal-id="{{$cell.MealID}}" data-status="eating_out"
+                                aria-pressed="{{if eq $cell.Status "eating_out"}}true{{else}}false{{end}}">
+                            {{icon "store"}} {{if eq $cell.Status "eating_out"}}Undo eating out{{else}}Eating out{{end}}
+                        </button>
+                        <button type="button" class="popover__item meal-status-btn{{if eq $cell.Status "skipped"}} meal-status-btn--active{{end}}"
+                                data-meal-status-btn data-meal-id="{{$cell.MealID}}" data-status="skipped"
+                                aria-pressed="{{if eq $cell.Status "skipped"}}true{{else}}false{{end}}">
+                            {{icon "close"}} {{if eq $cell.Status "skipped"}}Undo skip{{else}}Skip this meal{{end}}
+                        </button>
+                    </div>
+                </div>
             </div>
             {{end}}
             {{end}}
@@ -219,6 +235,7 @@
   <form method="POST" id="pick-recipe-form" action="">
     {{.CSRFField}}
     <input type="hidden" name="recipe_id" id="pick-recipe-id">
+    <input type="hidden" name="resolution" id="pick-recipe-resolution">
     <div class="field">
       <label class="field-label" for="pick-recipe-q">Search your saved recipes</label>
       <input class="field-input" id="pick-recipe-q" type="search" autocomplete="off"
@@ -267,6 +284,34 @@
   </div>
 {{template "partials/modal_close.html" .}}
 
+{{template "partials/modal_open.html" dict "ID" "swap-leftovers" "Title" "This meal feeds another one"}}
+  <p id="swap-leftovers-intro"></p>
+  <ul id="swap-leftovers-meals"></ul>
+  <p>What should happen to those?</p>
+  <div class="field">
+    <label class="people-picker__option">
+      <input type="radio" name="swap-leftovers-resolution" value="carry" checked>
+      <span>Cook extra of the new meal and eat that as the leftovers</span>
+    </label>
+    <label class="people-picker__option">
+      <input type="radio" name="swap-leftovers-resolution" value="clear">
+      <span>Clear those meals and leave the slots empty</span>
+    </label>
+    <label class="people-picker__option">
+      <input type="radio" name="swap-leftovers-resolution" value="replace">
+      <span>Clear them, then pick a replacement for the first one</span>
+    </label>
+    <label class="people-picker__option">
+      <input type="radio" name="swap-leftovers-resolution" value="ignore">
+      <span>Leave them - I'll sort it out myself</span>
+    </label>
+  </div>
+  <div class="modal-dialog__footer">
+    <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+    <button type="button" class="btn btn-primary" id="swap-leftovers-confirm">{{icon "check"}} Swap</button>
+  </div>
+{{template "partials/modal_close.html" .}}
+
 <form method="POST" id="meal-status-form" action="" hidden>
   {{.CSRFField}}
   <input type="hidden" name="status" id="meal-status-value">
@@ -310,7 +355,11 @@
     var pickQ = document.getElementById('pick-recipe-q');
     var pickTarget = document.getElementById('pick-recipe-target');
     var pickID = document.getElementById('pick-recipe-id');
+    var pickResolution = document.getElementById('pick-recipe-resolution');
     var pickTimer;
+    // Set while the picker is replacing an existing meal (the leftover meals
+    // it feeds, from status-impact); null while it is filling an empty slot.
+    var swapPending = null;
 
     function loadRecipes(q) {
         fetch('/plan/recipe-options' + (q ? '?q=' + encodeURIComponent(q) : ''), {
@@ -344,6 +393,10 @@
                     btn.appendChild(meta);
                     btn.addEventListener('click', function () {
                         pickID.value = rc.id;
+                        if (swapPending && swapPending.orphaned.length) {
+                            openSwapLeftovers(rc.title);
+                            return;
+                        }
                         pickForm.submit();
                     });
                     li.appendChild(btn);
@@ -356,14 +409,21 @@
             });
     }
 
-    function openPicker(date, slot, label) {
-        pickForm.action = '/plan/days/' + date + '/' + slot + '/fill';
-        pickTarget.textContent = 'For ' + label + ' ' + slot +
-            ' - amounts are scaled to what that day is feeding.';
+    function showPicker(action, title, target) {
+        pickForm.action = action;
+        document.getElementById('pick-recipe-title').textContent = title;
+        pickTarget.textContent = target;
         pickID.value = '';
+        pickResolution.value = '';
         pickQ.value = '';
         loadRecipes('');
         window.goeat.openModal('pick-recipe');
+    }
+
+    function openPicker(date, slot, label) {
+        swapPending = null;
+        showPicker('/plan/days/' + date + '/' + slot + '/fill', 'Pick a meal',
+            'For ' + label + ' ' + slot + ' - amounts are scaled to what that day is feeding.');
     }
 
     document.querySelectorAll('[data-fill-slot]').forEach(function (btn) {
@@ -371,6 +431,70 @@
             openPicker(btn.dataset.date, btn.dataset.slot, btn.dataset.label);
         });
     });
+
+    // ── Swap a meal ──────────────────────────────────────────────────────
+    // The same picker, posting to /meals/{id}/swap. The meal can be feeding
+    // later leftover meals, so the skip flow's status-impact is asked what
+    // depends on it while the list loads, and picking a recipe then asks what
+    // to do with those before anything is written.
+    // Swap and status live in each card's "more actions" popover. Close it
+    // before opening a dialog: its own tap-dismiss runs a tick later and
+    // hands focus back to the trigger, out of the dialog that just opened.
+    function closeMealMenu(btn) {
+        var panel = btn.closest('[data-popover-panel]');
+        if (panel && window.goeat.popover) window.goeat.popover.close(panel.id);
+    }
+
+    var swapIntro = document.getElementById('swap-leftovers-intro');
+    var swapMealList = document.getElementById('swap-leftovers-meals');
+
+    document.querySelectorAll('[data-swap-meal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            closeMealMenu(btn);
+            var mealId = btn.dataset.mealId;
+            var pending = { mealId: mealId, title: btn.dataset.title, orphaned: [] };
+            swapPending = pending;
+            showPicker('/meals/' + mealId + '/swap', 'Swap ' + btn.dataset.title,
+                'Replaces it on ' + btn.dataset.label + ' ' + btn.dataset.swapSlot +
+                ' - amounts are scaled to what that day is feeding.');
+            fetch('/meals/' + mealId + '/status-impact', { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d && d.ok && d.orphaned) pending.orphaned = d.orphaned;
+                })
+                // No impact info: swap straight through; the server keeps any
+                // dependents fed by default ("carry").
+                .catch(function () {});
+        });
+    });
+
+    function openSwapLeftovers(newTitle) {
+        var n = swapPending.orphaned.length;
+        // textContent throughout: meal titles come from the LLM and user edits.
+        swapIntro.textContent = swapPending.title + ' is feeding ' + n +
+            (n === 1 ? ' later meal' : ' later meals') + ' as leftovers. Swapping it for ' +
+            newTitle + ' changes what ' + (n === 1 ? 'that meal eats' : 'those meals eat') + '.';
+        swapMealList.innerHTML = '';
+        swapPending.orphaned.forEach(function (m) {
+            var li = document.createElement('li');
+            li.textContent = m.date_label + ' ' + m.slot + ' - ' + m.title;
+            swapMealList.appendChild(li);
+        });
+        var carry = document.querySelector('input[name="swap-leftovers-resolution"][value="carry"]');
+        if (carry) carry.checked = true;
+        window.goeat.closeModal('pick-recipe');
+        window.goeat.openModal('swap-leftovers');
+    }
+
+    var swapConfirmBtn = document.getElementById('swap-leftovers-confirm');
+    if (swapConfirmBtn) {
+        swapConfirmBtn.addEventListener('click', function () {
+            var checked = document.querySelector('input[name="swap-leftovers-resolution"]:checked');
+            pickResolution.value = checked ? checked.value : 'carry';
+            window.goeat.closeModal('swap-leftovers');
+            pickForm.submit();
+        });
+    }
 
     if (pickQ) {
         pickQ.addEventListener('input', function () {
@@ -409,6 +533,7 @@
 
     document.querySelectorAll('[data-meal-status-btn]').forEach(function (btn) {
         btn.addEventListener('click', function () {
+            closeMealMenu(btn);
             var mealId = btn.dataset.mealId;
             // A second click on the already-active button reverts to cooking.
             var target = btn.classList.contains('meal-status-btn--active') ? 'cooking' : btn.dataset.status;

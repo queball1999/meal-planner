@@ -24,6 +24,12 @@ type MaterializeParams struct {
 	// portion factors (see db.PlanDay.Portions). Zero means "use the recipe's
 	// own yield", which is what a caller with no day context wants.
 	Portions float64
+
+	// ExtraPortions is cooked on top of Portions for later meals that eat
+	// this one's leftovers (a swap keeping its leftovers fed). The meal's
+	// servings stay at Portions; cooked_portions and every ingredient cover
+	// both.
+	ExtraPortions float64
 }
 
 // MaterializeResult reports what was written, so a caller can tell the user
@@ -72,6 +78,13 @@ func MaterializeRecipe(ctx context.Context, store db.Store, p MaterializeParams)
 		baseServings = 0
 	}
 	servings, factor := scaleFor(baseServings, p.Portions)
+	cooked := servings
+	if p.ExtraPortions > 0 {
+		cooked, factor = scaleFor(baseServings, p.Portions+p.ExtraPortions)
+		if extra := int(math.Round(p.ExtraPortions)); cooked < servings+extra {
+			cooked = servings + extra
+		}
+	}
 
 	if err := replaceSlot(ctx, store, p.PlanID, p.Date, p.Slot); err != nil {
 		return nil, err
@@ -84,7 +97,7 @@ func MaterializeRecipe(ctx context.Context, store db.Store, p MaterializeParams)
 		Title:          recipe.Title,
 		Effort:         effortFor(recipe),
 		Servings:       servings,
-		CookedPortions: servings,
+		CookedPortions: cooked,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create meal: %w", err)

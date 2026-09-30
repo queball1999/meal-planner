@@ -1800,6 +1800,15 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .meal-card__actions form { display: inline-flex; margin: 0; }
 .meal-card__actions .btn-icon { padding: var(--sp-1); }
 .meal-card__actions .btn-icon svg { width: 16px; height: 16px; }
+.meal-card__more { margin-left: auto; }
+/* The "more actions" popover sits inside .meal-card__actions in the DOM, so
+ * undo the inline-flex above for its lock form: a menu row spans the panel. */
+.meal-card__actions .popover form { display: block; }
+.meal-card__actions .popover__item { font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); }
+/* The menu's "Undo skip" / "Undo eating out" label already says the status is
+ * on, so no selected-state bar (base.css) under it. The class stays: the
+ * plan page's script reads it to decide between marking and undoing. */
+.meal-card__actions .popover .meal-status-btn--active { background-image: none !important; }
 
 /* ── Print: shopping list ─────────────────────────────────────────────────── */
 @media print {
@@ -2960,7 +2969,11 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 
 /* ── Per-meal status icons (eating out / skip) on the meal card ─────────── */
 /* A single non-cooking meal dims like a whole non-cooking day used to. */
-.meal-card--off { opacity: 0.55; }
+/* Dimmed per child, not on the card: opacity below 1 makes a stacking
+ * context, which would fade the card's "more actions" popover and let the
+ * next card paint over it. */
+.meal-card--off > :not(.meal-card__actions),
+.meal-card--off .meal-card__actions > :not(.popover) { opacity: 0.55; }
 
 .meal-status-btn--active {
     color: var(--accent-text);
