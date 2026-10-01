@@ -2573,6 +2573,9 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .probe-value--down { color: var(--danger); }
 .probe-value--off  { color: var(--text-muted); }
 
+/* About -> Updates -> Install (desktop) */
+.update-install { margin: var(--sp-3) 0 var(--sp-1); }
+
 /* Checking is deliberately quiet and slowly pulsing: an in-flight check is not
    news, and a fast blink beside three settled rows reads as an error. */
 .probe-value--checking { color: var(--text-muted); }

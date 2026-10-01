@@ -86,4 +86,18 @@ before installing anything.
    update can replace the original), and starts it with `--gui
    --calling-pid --executable --current-version --log-file <data>/logs`,
    adding `--asset-pattern` for portable. The About page gets an Install
-   button. Status: planned
+   button. Status: done
+
+   The copy is hashed, not the original, so the file can't be swapped
+   between the check and the launch; running from temp also lets a portable
+   update replace the bundled updater.exe and gets an AppImage's updater out
+   of its read-only mount. The updater starts detached (new process group on
+   Windows, its own session on Linux) so it outlives the shell it stops.
+   Install says why when it can't be offered (dev build, no bundled updater,
+   unknown install kind, already up to date), and a second click within two
+   minutes is ignored. Starts and failures go to the audit log.
+
+   Checked end to end on Windows: the branded updater, run with the
+   arguments Go builds for a portable install, stopped the stand-in process
+   by PID, downloaded the published v0.0.2 portable zip, verified it, and
+   unpacked it over the folder with `data/` and `portable.txt` intact.

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -55,6 +56,11 @@ type Server struct {
 	// updaterSHA256 is the bundled updater's expected SHA-256 (desktop
 	// builds from CI only); it must match before the updater is started.
 	updaterSHA256 string
+	// startProcess starts the updater (startDetached); tests swap it out.
+	// updaterStartedAt stops a double click starting two (updater_launch.go).
+	startProcess     func(*exec.Cmd) error
+	updaterMu        sync.Mutex
+	updaterStartedAt time.Time
 
 	autoPlanMu        sync.Mutex
 	autoPlanCheckedAt time.Time // last RunAutoPlanScheduler tick, whether or not it fired
@@ -120,6 +126,7 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		box:            box,
 		startedAt:      time.Now(),
 		updates:        updatecheck.New(version),
+		startProcess:   startDetached,
 		repricingPlans: make(map[int64]bool),
 		pendingChat:    make(map[int64]*agent.Pending),
 		resumableGen:   make(map[int64]*plan.TruncatedError),

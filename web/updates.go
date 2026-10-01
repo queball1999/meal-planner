@@ -41,9 +41,12 @@ type aboutUpdates struct {
 	// build has none), shortened for display.
 	UpdaterSHA256      string
 	UpdaterSHA256Short string
-	Current            string
-	Available          bool
-	Checking           bool
+	// InstallBlocker is why Install isn't offered ("" when it is); only
+	// meaningful on desktop with an update available.
+	InstallBlocker string
+	Current        string
+	Available      bool
+	Checking       bool
 
 	Latest      string
 	LatestName  string
@@ -65,6 +68,7 @@ func (s *Server) buildAboutUpdates(ctx context.Context) aboutUpdates {
 		Checking:      st.Checking,
 		Err:           st.Err,
 	}
+	u.InstallBlocker = s.installBlocker()
 	if len(u.UpdaterSHA256) > 12 {
 		u.UpdaterSHA256Short = u.UpdaterSHA256[:12]
 	}

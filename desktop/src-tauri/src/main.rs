@@ -44,7 +44,8 @@ fn main() {
             // sign-in) moves into the data folder too.
             let webview_dir = portable.then(|| data_dir.join("webview"));
             let window = build_window(&handle, port.clone(), webview_dir)?;
-            if let Err(err) = start_server(&handle, &window, port, &data_dir) {
+            let install = InstallInfo::detect(&handle, portable);
+            if let Err(err) = start_server(&handle, &window, port, &data_dir, &install) {
                 show_error(
                     &window,
                     &format!("Go Eat couldn't start its server.\n{err}"),
@@ -124,6 +125,61 @@ fn resolve_data_dir(app: &AppHandle) -> Result<(PathBuf, bool), Box<dyn std::err
     Ok((dir, portable))
 }
 
+/// What the Go sidecar needs to install an update from About -> Updates
+/// (spec/commit-plan-phase15-09-30-26.md): only this shell knows where its
+/// bundled updater is, how it was installed, and its own process, which the
+/// updater stops and relaunches.
+struct InstallInfo {
+    /// The branded QUpdateTool updater CI bundled as a resource; empty when
+    /// this build has none (a local build).
+    updater: String,
+    /// installer | portable | deb | appimage | dev (see config/desktop.go).
+    kind: &'static str,
+    /// What the updater relaunches: this exe, or for an AppImage the
+    /// .AppImage file rather than the binary inside its read-only mount.
+    exe: String,
+}
+
+impl InstallInfo {
+    fn detect(app: &AppHandle, portable: bool) -> Self {
+        let exe = std::env::current_exe()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let appimage = std::env::var("APPIMAGE").unwrap_or_default();
+
+        let kind = if cfg!(debug_assertions) {
+            "dev"
+        } else if cfg!(windows) {
+            if portable {
+                "portable"
+            } else {
+                "installer"
+            }
+        } else if !appimage.is_empty() {
+            "appimage"
+        } else {
+            "deb"
+        };
+
+        let name = if cfg!(windows) {
+            "updater.exe"
+        } else {
+            "updater"
+        };
+        let updater = app
+            .path()
+            .resource_dir()
+            .map(|dir| dir.join(name))
+            .ok()
+            .filter(|p| p.is_file())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        let exe = if kind == "appimage" { appimage } else { exe };
+        InstallInfo { updater, kind, exe }
+    }
+}
+
 /// Starts the Go server with everything it keeps in data_dir, then relays its
 /// output: the announce line navigates the window, the rest goes to goeat.log
 /// next to the database.
@@ -132,6 +188,7 @@ fn start_server(
     window: &WebviewWindow,
     port: Arc<AtomicU16>,
     data_dir: &Path,
+    install: &InstallInfo,
 ) -> Result<(), String> {
     let session_secret = load_or_create_secret(&data_dir.join("session.key"))?;
     // Fresh every launch and only honoured while no account exists, so it's
@@ -159,6 +216,12 @@ fn start_server(
             ("ITEM_IMAGE_DIR", path("item-images")),
             ("SESSION_SECRET", session_secret),
             ("SETUP_TOKEN", setup_token.clone()),
+            // Installing updates (About -> Updates -> Install).
+            ("GOEAT_UPDATER", install.updater.clone()),
+            ("GOEAT_INSTALL_KIND", install.kind.to_string()),
+            ("GOEAT_SHELL_PID", std::process::id().to_string()),
+            ("GOEAT_SHELL_EXE", install.exe.clone()),
+            ("GOEAT_DATA_DIR", data_dir.to_string_lossy().into_owned()),
         ])
         .spawn()
         .map_err(|e| format!("spawn goeat: {e}"))?;

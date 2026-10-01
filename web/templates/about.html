@@ -93,17 +93,31 @@
     </div>
 
     {{if .Available}}
+    {{if and .Desktop (not .InstallBlocker)}}
+    <form method="POST" action="/about/update" class="update-install"
+          data-confirm="Go Eat will close while {{.Latest}} downloads and installs, then open again by itself. Anything you haven't saved on other pages will be lost."
+          data-confirm-title="Install {{.Latest}}" data-confirm-label="Install now">
+        {{$.CSRFField}}
+        <button type="submit" class="btn btn-primary">{{icon "download"}} Install {{.Latest}}</button>
+    </form>
     <p class="form-section__desc">
-        {{if .Desktop}}
-        Download {{.Latest}} from the <a href="{{.LatestURL}}" target="_blank" rel="noopener">release page</a>
+        The updater checks that the download is signed with Go Eat's release key
+        before installing anything. Your data stays where it is.
+    </p>
+    {{else if .Desktop}}
+    <p class="form-section__desc">
+        {{.InstallBlocker}} Download {{.Latest}} from the
+        <a href="{{.LatestURL}}" target="_blank" rel="noopener">release page</a>
         and run it to update. Your data stays where it is.
-        {{else}}
+    </p>
+    {{else}}
+    <p class="form-section__desc">
         Update this server the way it was installed: pull the new Docker image
         and recreate the container, or replace the binary with the one from the
         <a href="{{.LatestURL}}" target="_blank" rel="noopener">release page</a>.
         Migrations run on start.
-        {{end}}
     </p>
+    {{end}}
     {{end}}
 
     {{if not .Enabled}}

@@ -33,6 +33,9 @@ type Config struct {
 	// as its sidecar: listen on loopback only, announce the bound address on
 	// stdout, accept only loopback Host headers, and exit when stdin closes.
 	Desktop bool
+	// DesktopInstall is what the desktop shell knows about this install, for
+	// installing updates (phase 15). Zero outside desktop mode.
+	DesktopInstall DesktopInstall
 	// SetupToken, when set, is the token the first-run wizard demands
 	// instead of a freshly generated one (QSS security design §15). At
 	// least 24 hex characters; Load rejects anything weaker.
@@ -292,6 +295,9 @@ func Load() (*Config, error) {
 	cfg.Desktop = os.Getenv("GOEAT_DESKTOP") == "1"
 	if cfg.Desktop && !loopbackAddr(cfg.ListenAddr) {
 		return nil, fmt.Errorf("GOEAT_DESKTOP=1 requires a loopback LISTEN_ADDR (e.g. 127.0.0.1:0), got %q", cfg.ListenAddr)
+	}
+	if cfg.Desktop {
+		cfg.DesktopInstall = loadDesktopInstall()
 	}
 
 	cfg.SessionIdleMinutes = 1440
