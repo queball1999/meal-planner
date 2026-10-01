@@ -78,6 +78,18 @@
             {{if .Checking}}<span class="stats-chip__value probe-value--checking">Checking…</span>{{else}}<span class="stats-chip__value">{{if .CheckedAgo}}{{.CheckedAgo}}{{else}}not yet{{end}}</span>{{end}}
             <span class="stats-chip__hint">{{if .Err}}<span class="probe-value--down">{{.Err}}</span>{{else if .Enabled}}checks every 12 hours{{else}}automatic checks are off{{end}}</span>
         </div>
+        {{if .Desktop}}
+        <div class="stats-chip">
+            <span class="stats-chip__label">Updater</span>
+            {{if .UpdaterSHA256}}
+            <span class="stats-chip__value">bundled</span>
+            <span class="stats-chip__hint" title="{{.UpdaterSHA256}}">sha256 <code>{{.UpdaterSHA256Short}}</code></span>
+            {{else}}
+            <span class="stats-chip__value">not bundled</span>
+            <span class="stats-chip__hint">this build can't install updates itself</span>
+            {{end}}
+        </div>
+        {{end}}
     </div>
 
     {{if .Available}}

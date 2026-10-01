@@ -58,12 +58,27 @@ before installing anything.
    flag, About → Updates card with Check now (`POST /about/update-check`,
    admin), background-process row. Tests against a fake GitHub. Status: done
 2. **Branded updater in the desktop build** — `desktop/updater-brand.yaml`
-   (app name, repo, `exclude_pattern: server`, pinned key fingerprints), a CI
-   step that builds the branded updater from QUpdateTool for Windows and
-   Linux, bundled as a Tauri resource; its SHA-256 is stamped into the Go
-   sidecar with `-ldflags` and checked before every launch (QUpdateTool
-   SECURITY.md). `tauri.conf.json` / `Cargo.toml` versions stamped from the
-   tag so the installer and the footer agree. Status: planned
+   (app name, repo, release-tag pattern, `exclude_pattern: server`, pinned
+   key fingerprints) and `desktop/gpg-public.asc` (the release key, shared
+   with QSnippet). `build_updater.yaml` builds the GUI updater from
+   QUpdateTool2.0, pinned to a commit, on each OS before the desktop build.
+   The Makefile bundles it as a Tauri resource (and in the portable zip) when
+   present, so local builds without Python still work. `cmd/build_sidecar`
+   stamps its SHA-256 into the sidecar (`main.updaterSHA256`); About →
+   Updates shows it on desktop. Status: done
+
+   Dropped from this commit: version stamping. CI already passes the tag's
+   version to `tauri build --config`, so the installer and the footer agree;
+   `tauri.conf.json`'s 0.1.0 is only the local default.
+
+   Process names list the desktop shell only, never `goeat`. QUpdateTool
+   matches names machine-wide, and a root `.deb` update would otherwise stop
+   a Go Eat server on the same machine.
+
+   Checked locally against the published v0.0.2: the branded build picks
+   `GoEat-0.0.2-windows-x64-setup.exe`, or the portable zip with
+   `--asset-pattern`, never a server build. `--dry-run` downloads it, matches
+   SHA256SUMS.txt and verifies the signature with the pinned key.
 3. **Install from the app** — the shell passes `GOEAT_UPDATER`,
    `GOEAT_INSTALL_KIND` (installer | portable | deb | appimage) and
    `GOEAT_SHELL_PID` (plus `APPIMAGE`). `POST /about/update` (admin, desktop

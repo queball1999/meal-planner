@@ -1,0 +1,135 @@
+name: Build Branded Updater
+
+# Builds the Go Eat-branded QUpdateTool updater (phase 15) for the desktop
+# app: desktop/updater-brand.yaml and desktop/gpg-public.asc compiled into one
+# binary. Called by desktop_windows.yaml / desktop_linux.yaml before the
+# Tauri build, which bundles it and stamps its SHA-256 into the Go sidecar
+# (cmd/build_sidecar), so Go Eat can refuse to launch a tampered updater.
+#
+# QUpdateTool is PINNED to a commit, not a branch, so an upstream change
+# can't silently alter what ships. Bump QUPDATETOOL_REF deliberately (to a
+# tag once QUpdateTool2.0 has one).
+#
+# The artifact is an input to the installers, never a release asset: an
+# updater.exe on the release page would look like an installer to people
+# and to the updater's own asset picker. build_manager.yaml only collects
+# release-* artifacts.
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: Runner to build on
+        required: true
+        type: string
+      artifact-name:
+        description: Name of the uploaded artifact
+        required: true
+        type: string
+    outputs:
+      sha256:
+        description: SHA-256 of the built updater binary
+        value: ${{ jobs.build.outputs.sha256 }}
+
+env:
+  QUPDATETOOL_REPO: queball1999/QUpdateTool2.0
+  # main after "feat: add a themed setup wizard" (PR #3), which includes the
+  # all-or-nothing archive install the portable zip update depends on.
+  QUPDATETOOL_REF: d62e7a4eb20d68581a37d8fd1b3090e702d7933b
+
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+
+    outputs:
+      sha256: ${{ steps.hash.outputs.sha256 }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Go Eat
+        uses: actions/checkout@v7
+        with:
+          path: goeat
+
+      - name: Checkout QUpdateTool (pinned)
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.QUPDATETOOL_REPO }}
+          ref: ${{ env.QUPDATETOOL_REF }}
+          path: qupdatetool
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: qupdatetool/requirements*.txt
+
+      - name: Install updater dependencies
+        working-directory: qupdatetool
+        # GUI build: Go Eat starts the updater with --gui so people see the
+        # download, verification and install while the app is closed.
+        run: pip install -r requirements-gui.txt -r requirements-dev.txt
+
+      - name: Run updater test suite
+        working-directory: qupdatetool
+        # The updater ships inside every desktop release; a failure here
+        # should stop the release, not be found by someone mid-update.
+        run: python -m pytest -q
+
+      - name: Build branded updater
+        working-directory: qupdatetool
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            icon=../goeat/desktop/src-tauri/icons/icon.ico
+          else
+            icon=../goeat/desktop/src-tauri/icons/icon.png
+          fi
+          python tools/build_branded.py \
+            --brand  ../goeat/desktop/updater-brand.yaml \
+            --icon   "$icon" \
+            --key    ../goeat/desktop/gpg-public.asc \
+            --name   updater \
+            --commit "${{ github.sha }}" \
+            --gui \
+            --clean
+
+      - name: Verify the updater actually runs
+        working-directory: qupdatetool
+        # Exit 10 (update available) or 11 (up to date) proves the brand, the
+        # key and the release source all resolved. 8 (no usable release) is
+        # also accepted, for a repository with no stable release yet.
+        run: |
+          binary=dist/updater
+          [ "${{ runner.os }}" = "Windows" ] && binary=dist/updater.exe
+          set +e
+          "$binary" --check-only --no-gui --current-version 0.0.0 --log-file none
+          code=$?
+          set -e
+          echo "updater --check-only exited with $code"
+          if [ "$code" != "10" ] && [ "$code" != "11" ] && [ "$code" != "8" ]; then
+            echo "::error::The branded updater did not run correctly (exit $code)"
+            exit 1
+          fi
+
+      - name: Compute updater hash
+        id: hash
+        working-directory: qupdatetool
+        run: |
+          binary=dist/updater
+          [ "${{ runner.os }}" = "Windows" ] && binary=dist/updater.exe
+          digest=$(sha256sum "$binary" | cut -d" " -f1)
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+          echo "Updater SHA-256: $digest"
+
+      - name: Upload updater
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            qupdatetool/dist/updater
+            qupdatetool/dist/updater.exe
+          if-no-files-found: error

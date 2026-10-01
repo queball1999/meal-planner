@@ -11,7 +11,16 @@ on:
   workflow_call:
 
 jobs:
+  # The branded QUpdateTool updater this build bundles (phase 15). Built on
+  # the same OS, since PyInstaller doesn't cross-compile.
+  updater:
+    uses: ./.github/workflows/build_updater.yaml
+    with:
+      os: windows-latest
+      artifact-name: updater-windows
+
   build-windows:
+    needs: updater
     runs-on: windows-latest
 
     defaults:
@@ -56,6 +65,14 @@ jobs:
             echo "DESKTOP_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
             echo "GOEAT_VERSION=$tag"                 >> "$GITHUB_ENV"
           fi
+
+      - name: Download branded updater
+        # Bundled by the Makefile when present; cmd/build_sidecar stamps its
+        # SHA-256 into the Go sidecar so the app can check it before launch.
+        uses: actions/download-artifact@v8
+        with:
+          name: updater-windows
+          path: desktop/src-tauri/updater
 
       - name: Build installer + portable zip
         run: make desktop-windows

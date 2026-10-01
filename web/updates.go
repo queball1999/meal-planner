@@ -37,9 +37,13 @@ type aboutUpdates struct {
 	Enabled    bool
 	Comparable bool // false for dev builds: nothing to compare against
 	Desktop    bool
-	Current    string
-	Available  bool
-	Checking   bool
+	// UpdaterSHA256 is the bundled updater's hash on desktop ("" when this
+	// build has none), shortened for display.
+	UpdaterSHA256      string
+	UpdaterSHA256Short string
+	Current            string
+	Available          bool
+	Checking           bool
 
 	Latest      string
 	LatestName  string
@@ -52,13 +56,17 @@ type aboutUpdates struct {
 func (s *Server) buildAboutUpdates(ctx context.Context) aboutUpdates {
 	st := s.updates.Status()
 	u := aboutUpdates{
-		Enabled:    settings.LiveUpdateCheck(ctx, s.store, s.cfg),
-		Comparable: st.Comparable,
-		Desktop:    s.cfg.Desktop,
-		Current:    st.Current,
-		Available:  st.Available,
-		Checking:   st.Checking,
-		Err:        st.Err,
+		Enabled:       settings.LiveUpdateCheck(ctx, s.store, s.cfg),
+		Comparable:    st.Comparable,
+		Desktop:       s.cfg.Desktop,
+		UpdaterSHA256: s.updaterSHA256,
+		Current:       st.Current,
+		Available:     st.Available,
+		Checking:      st.Checking,
+		Err:           st.Err,
+	}
+	if len(u.UpdaterSHA256) > 12 {
+		u.UpdaterSHA256Short = u.UpdaterSHA256[:12]
 	}
 	if st.Latest != nil {
 		u.Latest = st.Latest.Version

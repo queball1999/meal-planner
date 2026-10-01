@@ -3,3 +3,6 @@ src-tauri/target/
 # Built by cmd/build_sidecar before every dev/build run.
 src-tauri/binaries/goeat-*
 src-tauri/gen/
+# The branded QUpdateTool updater: built in CI (build_updater.yaml) and
+# downloaded here before the desktop build bundles it.
+src-tauri/updater/

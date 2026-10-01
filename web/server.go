@@ -52,6 +52,9 @@ type Server struct {
 	// updates knows whether a newer stable release is out (phase 15), for
 	// the footer flag and the About page's Updates card.
 	updates *updatecheck.Checker
+	// updaterSHA256 is the bundled updater's expected SHA-256 (desktop
+	// builds from CI only); it must match before the updater is started.
+	updaterSHA256 string
 
 	autoPlanMu        sync.Mutex
 	autoPlanCheckedAt time.Time // last RunAutoPlanScheduler tick, whether or not it fired
@@ -133,6 +136,12 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 // read its last-run state through the same instance that's actually ticking.
 func (s *Server) RunHAScheduler(ctx context.Context) {
 	s.haScheduler.Run(ctx)
+}
+
+// SetBundledUpdater records the SHA-256 the desktop build stamped for its
+// bundled updater (main.updaterSHA256). "" means none was bundled.
+func (s *Server) SetBundledUpdater(sha256Hex string) {
+	s.updaterSHA256 = sha256Hex
 }
 
 // RunUpdateCheckScheduler checks for a newer release a minute after start and

@@ -19,6 +19,11 @@ import (
 
 var version = "dev"
 
+// updaterSHA256 is the SHA-256 of the branded QUpdateTool updater bundled
+// with a desktop build, stamped by cmd/build_sidecar; "" when none was
+// bundled (a server build, or a local desktop build without one).
+var updaterSHA256 string
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -86,6 +91,7 @@ func main() {
 	}
 
 	srv := web.NewServer(cfg, store, gen, version, box)
+	srv.SetBundledUpdater(updaterSHA256)
 
 	// First-run claim: with no account yet, the setup wizard demands a token
 	// printed here (stderr, once) or taken from SETUP_TOKEN (§15).

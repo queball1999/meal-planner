@@ -136,3 +136,29 @@ func TestUpdateCheckIsAdminOnly(t *testing.T) {
 		t.Errorf("admin: %d to %q", w.Code, w.Header().Get("Location"))
 	}
 }
+
+// TestAboutShowsBundledUpdater: a desktop build shows whether CI bundled the
+// updater, and the hash it will check before starting it.
+func TestAboutShowsBundledUpdater(t *testing.T) {
+	f := newRBACFixtureWith(t, func(c *config.Config) { c.UpdateCheck = true; c.Desktop = true })
+	withRelease(t, f, "v0.0.2", "v0.0.3")
+
+	if body := f.do("root", "GET", "/about", nil).Body.String(); !strings.Contains(body, "not bundled") {
+		t.Error("desktop build without an updater should say so")
+	}
+
+	f.srv.SetBundledUpdater(strings.Repeat("ab", 32))
+	body := f.do("root", "GET", "/about", nil).Body.String()
+	if !strings.Contains(body, "bundled") || !strings.Contains(body, "<code>abababababab</code>") {
+		t.Error("bundled updater hash missing from About")
+	}
+}
+
+func TestServerAboutHidesUpdaterChip(t *testing.T) {
+	f := newRBACFixtureWith(t, func(c *config.Config) { c.UpdateCheck = true })
+	withRelease(t, f, "v0.0.2", "v0.0.3")
+
+	if body := f.do("root", "GET", "/about", nil).Body.String(); strings.Contains(body, "Updater</span>") {
+		t.Error("a server has no bundled updater to report")
+	}
+}

@@ -7,11 +7,18 @@
 // always bundles a fresh server. The target triple comes from
 // TAURI_ENV_TARGET_TRIPLE when Tauri sets it, else from `rustc -vV`.
 //
+// When the branded QUpdateTool updater has been placed in
+// desktop/src-tauri/updater/ (CI does this; see build_updater.yaml), its
+// SHA-256 is stamped into the binary as main.updaterSHA256, so the app can
+// refuse to launch an updater that has been swapped since (phase 15).
+//
 //	go run ./cmd/build_sidecar [-version v1.2.3]
 package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -64,8 +71,23 @@ func main() {
 		log.Fatalf("build_sidecar: %v", err)
 	}
 
+	ldflags := "-s -w -X main.version=" + *version
+	updater := filepath.Join(root, "desktop", "src-tauri", "updater", "updater")
+	if target[0] == "windows" {
+		updater += ".exe"
+	}
+	switch sum, err := fileSHA256(updater); {
+	case err == nil:
+		ldflags += " -X main.updaterSHA256=" + sum
+		fmt.Fprintf(os.Stderr, "build_sidecar: bundled updater %s sha256 %s\n", updater, sum)
+	case os.IsNotExist(err):
+		fmt.Fprintf(os.Stderr, "build_sidecar: no updater at %s; this build can't install updates itself\n", updater)
+	default:
+		log.Fatalf("build_sidecar: hash updater: %v", err)
+	}
+
 	cmd := exec.Command("go", "build", "-trimpath",
-		"-ldflags", "-s -w -X main.version="+*version,
+		"-ldflags", ldflags,
 		"-o", out, ".")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+target[0], "GOARCH="+target[1])
@@ -74,6 +96,16 @@ func main() {
 		log.Fatalf("build_sidecar: go build: %v", err)
 	}
 	fmt.Fprintf(os.Stderr, "build_sidecar: built %s (%s)\n", out, *version)
+}
+
+// fileSHA256 is the hex SHA-256 of the file at path.
+func fileSHA256(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // hostTriple reads the host target triple from `rustc -vV`.

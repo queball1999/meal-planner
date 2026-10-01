@@ -171,7 +171,19 @@ endif
 # GOEAT_VERSION into the Go binary. CI sets it to the full git tag (v1.2.3-dev).
 GOEAT_VERSION ?= v$(DESKTOP_VERSION)
 export GOEAT_VERSION
-TAURI_BUILD = cd $(DESKTOP_DIR) && npx tauri build --config '{"version":"$(DESKTOP_VERSION)"}'
+
+# The branded QUpdateTool updater (phase 15). CI builds it
+# (build_updater.yaml) and drops it in desktop/src-tauri/updater/; when it's
+# there it is bundled beside the app, and cmd/build_sidecar stamps its SHA-256
+# into the Go sidecar. A local build without it still works - the app just
+# can't install updates itself.
+UPDATER_DIR     := $(TAURI_DIR)/updater
+UPDATER_WINDOWS := $(wildcard $(UPDATER_DIR)/updater.exe)
+UPDATER_LINUX   := $(wildcard $(UPDATER_DIR)/updater)
+COMMA           := ,
+UPDATER_RES_WINDOWS := $(if $(UPDATER_WINDOWS),$(COMMA)"bundle":{"resources":{"updater/updater.exe":"updater.exe"}})
+UPDATER_RES_LINUX   := $(if $(UPDATER_LINUX),$(COMMA)"bundle":{"resources":{"updater/updater":"updater"}})
+TAURI_BUILD = cd $(DESKTOP_DIR) && npx tauri build --config '{"version":"$(DESKTOP_VERSION)"$(1)}'
 
 ## desktop-deps: install the Tauri CLI into desktop/node_modules
 desktop-deps:
@@ -189,7 +201,7 @@ desktop-icons: desktop-deps
 
 ## desktop-windows: installer + portable zip into output/windows (run on Windows)
 desktop-windows: desktop-deps
-	$(TAURI_BUILD) --bundles nsis
+	$(call TAURI_BUILD,$(UPDATER_RES_WINDOWS)) --bundles nsis
 	@mkdir -p $(OUT_WINDOWS)
 	@for f in "$(DESKTOP_RELEASE)"/bundle/nsis/*_$(DESKTOP_VERSION)_*-setup.exe; do \
 		cp "$$f" "$(OUT_WINDOWS)/$(DESKTOP_NAME)-windows-x64-setup.exe"; \
@@ -202,7 +214,7 @@ desktop-windows: desktop-deps
 	rm -rf "$$stage" "$$stage.zip" && mkdir -p "$$stage" && \
 	cp "$(DESKTOP_RELEASE)/goeat-desktop.exe" "$$stage/Go Eat.exe" && \
 	cp "$(DESKTOP_RELEASE)/goeat.exe" "$$stage/goeat.exe" && \
-	cp "$(DESKTOP_DIR)/portable.txt" "$$stage/portable.txt" && \
+	cp "$(DESKTOP_DIR)/portable.txt" "$$stage/portable.txt" && 	if [ -n "$(UPDATER_WINDOWS)" ]; then 		cp "$(UPDATER_WINDOWS)" "$$stage/updater.exe"; 	fi && \
 	if [ -f "$(DESKTOP_RELEASE)/WebView2Loader.dll" ]; then \
 		cp "$(DESKTOP_RELEASE)/WebView2Loader.dll" "$$stage/"; \
 	fi && \
@@ -212,7 +224,9 @@ desktop-windows: desktop-deps
 
 ## desktop-linux: .deb installer + portable AppImage into output/linux (run on Linux)
 desktop-linux: desktop-deps
-	$(TAURI_BUILD) --bundles deb,appimage
+	@# Artifact downloads drop the executable bit.
+	@if [ -n "$(UPDATER_LINUX)" ]; then chmod +x "$(UPDATER_LINUX)"; fi
+	$(call TAURI_BUILD,$(UPDATER_RES_LINUX)) --bundles deb,appimage
 	@mkdir -p $(OUT_LINUX)
 	@for f in "$(DESKTOP_RELEASE)"/bundle/deb/*_$(DESKTOP_VERSION)_*.deb; do \
 		cp "$$f" "$(OUT_LINUX)/$(DESKTOP_NAME)-linux-amd64.deb"; \

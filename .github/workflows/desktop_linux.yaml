@@ -11,7 +11,17 @@ on:
   workflow_call:
 
 jobs:
+  # The branded QUpdateTool updater this build bundles (phase 15). Built on
+  # the same OS, since PyInstaller doesn't cross-compile. Same runner as the
+  # app, for the same glibc reason as below.
+  updater:
+    uses: ./.github/workflows/build_updater.yaml
+    with:
+      os: ubuntu-22.04
+      artifact-name: updater-linux
+
   build-linux:
+    needs: updater
     # The oldest supported runner: an AppImage only runs on systems whose
     # glibc is at least as new as the one it was built against.
     runs-on: ubuntu-22.04
@@ -62,6 +72,14 @@ jobs:
             echo "DESKTOP_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
             echo "GOEAT_VERSION=$tag"                 >> "$GITHUB_ENV"
           fi
+
+      - name: Download branded updater
+        # Bundled by the Makefile when present; cmd/build_sidecar stamps its
+        # SHA-256 into the Go sidecar so the app can check it before launch.
+        uses: actions/download-artifact@v8
+        with:
+          name: updater-linux
+          path: desktop/src-tauri/updater
 
       - name: Build .deb + AppImage
         run: make desktop-linux
