@@ -200,6 +200,13 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+.site-footer__update {
+    color: var(--accent-text);
+    font-weight: 600;
+    text-decoration: none;
+}
+.site-footer__update:hover { text-decoration: underline; }
+
 /* ── Header search ─────────────────────────────────────────────────────────
  * Two entry points: an inline field on desktop (.header-search) and an icon
  * that opens the field in a popover on mobile (.header-search-btn). Both use

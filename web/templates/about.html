@@ -36,6 +36,74 @@
     </div>
 </div>
 
+{{with .Updates}}
+<div class="card" id="updates">
+    <div class="form-section__head">
+        <h2 class="form-section__title" style="margin:0">Updates</h2>
+        {{if .Comparable}}
+        <form method="POST" action="/about/update-check">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-ghost btn-sm">{{icon "refresh"}} Check now</button>
+        </form>
+        {{end}}
+    </div>
+
+    {{if not .Comparable}}
+    <p class="form-section__desc">
+        This is a development build ({{.Current}}), so there's no release to
+        compare it with. Release builds check GitHub for newer versions.
+    </p>
+    {{else}}
+    <div class="stats-strip">
+        <div class="stats-chip">
+            <span class="stats-chip__label">This version</span>
+            <span class="stats-chip__value">{{.Current}}</span>
+            <span class="stats-chip__hint">{{if .Available}}<span class="badge badge-warning">update available</span>{{else if .Latest}}<span class="badge badge-success">up to date</span>{{else}}running now{{end}}</span>
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Latest release</span>
+            {{if .Latest}}
+            <span class="stats-chip__value">{{.Latest}}</span>
+            <span class="stats-chip__hint">{{if .PublishedAt}}published {{.PublishedAt}} &middot; {{end}}<a href="{{.LatestURL}}" target="_blank" rel="noopener">release notes</a></span>
+            {{else if .CheckedAgo}}
+            <span class="stats-chip__value">none yet</span>
+            <span class="stats-chip__hint">nothing stable has been published</span>
+            {{else}}
+            <span class="stats-chip__value">unknown</span>
+            <span class="stats-chip__hint">not checked yet</span>
+            {{end}}
+        </div>
+        <div class="stats-chip">
+            <span class="stats-chip__label">Last checked</span>
+            {{if .Checking}}<span class="stats-chip__value probe-value--checking">Checking…</span>{{else}}<span class="stats-chip__value">{{if .CheckedAgo}}{{.CheckedAgo}}{{else}}not yet{{end}}</span>{{end}}
+            <span class="stats-chip__hint">{{if .Err}}<span class="probe-value--down">{{.Err}}</span>{{else if .Enabled}}checks every 12 hours{{else}}automatic checks are off{{end}}</span>
+        </div>
+    </div>
+
+    {{if .Available}}
+    <p class="form-section__desc">
+        {{if .Desktop}}
+        Download {{.Latest}} from the <a href="{{.LatestURL}}" target="_blank" rel="noopener">release page</a>
+        and run it to update. Your data stays where it is.
+        {{else}}
+        Update this server the way it was installed: pull the new Docker image
+        and recreate the container, or replace the binary with the one from the
+        <a href="{{.LatestURL}}" target="_blank" rel="noopener">release page</a>.
+        Migrations run on start.
+        {{end}}
+    </p>
+    {{end}}
+
+    {{if not .Enabled}}
+    <p class="form-section__desc">
+        Automatic checks are off (Settings &rarr; General &rarr; Check for
+        updates). Check now still works.
+    </p>
+    {{end}}
+    {{end}}
+</div>
+{{end}}
+
 <div class="card">
     <div class="form-section__head">
         <h2 class="form-section__title" style="margin:0">Connectivity</h2>

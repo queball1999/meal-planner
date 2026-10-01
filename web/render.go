@@ -56,6 +56,14 @@ type pageData struct {
 	// real render - the only way to know the duration before it's over.
 	PageLoadMs float64
 	TemplateMs float64
+
+	// UpdateLatest is set when a newer release is out and the viewer is an
+	// admin: the footer then reads "v0.0.1 (update available)", linking to
+	// UpdateURL - the GitHub release on a server, About → Updates on desktop,
+	// where it can be installed.
+	UpdateLatest   string
+	UpdateURL      string
+	UpdateExternal bool // UpdateURL is the GitHub release page, not a page of this app
 }
 
 // leadingStepNum matches an ordinal prefix the LLM (or an imported recipe)
@@ -281,6 +289,8 @@ func (s *Server) renderWithPage(w http.ResponseWriter, r *http.Request, name, pa
 	if start, ok := middleware.RequestStart(r); ok {
 		pd.PageLoadMs = float64(time.Since(start)) / float64(time.Millisecond)
 	}
+	pd.UpdateLatest, pd.UpdateURL = s.footerUpdate(r)
+	pd.UpdateExternal = pd.UpdateLatest != "" && !s.cfg.Desktop
 
 	templateStart := time.Now()
 	tmpl, err := template.New("").

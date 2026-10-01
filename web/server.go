@@ -22,6 +22,7 @@ import (
 	"goeat/pricing"
 	"goeat/scrape"
 	"goeat/settings"
+	"goeat/updatecheck"
 )
 
 // Server holds shared dependencies and the fully-wired HTTP handler.
@@ -47,6 +48,10 @@ type Server struct {
 	handler      http.Handler
 
 	startedAt time.Time // process start, for the About page's uptime tile
+
+	// updates knows whether a newer stable release is out (phase 15), for
+	// the footer flag and the About page's Updates card.
+	updates *updatecheck.Checker
 
 	autoPlanMu        sync.Mutex
 	autoPlanCheckedAt time.Time // last RunAutoPlanScheduler tick, whether or not it fired
@@ -111,6 +116,7 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		itemImageDir:   cfg.ItemImageDir,
 		box:            box,
 		startedAt:      time.Now(),
+		updates:        updatecheck.New(version),
 		repricingPlans: make(map[int64]bool),
 		pendingChat:    make(map[int64]*agent.Pending),
 		resumableGen:   make(map[int64]*plan.TruncatedError),
@@ -127,6 +133,14 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 // read its last-run state through the same instance that's actually ticking.
 func (s *Server) RunHAScheduler(ctx context.Context) {
 	s.haScheduler.Run(ctx)
+}
+
+// RunUpdateCheckScheduler checks for a newer release a minute after start and
+// every 12 hours after, while UPDATE_CHECK is on (read live each time).
+func (s *Server) RunUpdateCheckScheduler(ctx context.Context) {
+	s.updates.Run(ctx, func(ctx context.Context) bool {
+		return settings.LiveUpdateCheck(ctx, s.store, s.cfg)
+	})
 }
 
 // llmGen returns the current LLM generator (nil when none is configured).

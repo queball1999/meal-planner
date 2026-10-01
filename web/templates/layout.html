@@ -102,7 +102,9 @@
     </main>
 
     <footer class="site-footer" role="contentinfo">
-        <span>{{.AppName}} &middot; {{.Version}}</span>
+        <span>{{.AppName}} &middot; {{.Version}}{{if .UpdateLatest}}
+            <a class="site-footer__update" href="{{.UpdateURL}}"{{if .UpdateExternal}} target="_blank" rel="noopener"{{end}}
+               title="{{.UpdateLatest}} is available">(update available)</a>{{end}}</span>
         {{if gt .PageLoadMs 0.0}}
         <span class="site-footer__timing">Page: {{dur .PageLoadMs}} &middot; Template: {{dur .TemplateMs}}</span>
         {{end}}

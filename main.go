@@ -120,6 +120,10 @@ func main() {
 	// store scraping); no-ops until ITEM_IMAGE_DIR is set.
 	go srv.RunImageBackfillScheduler(ctx)
 
+	// Asks GitHub twice a day whether a newer release is out (footer flag,
+	// About → Updates); off with UPDATE_CHECK=off, skipped for dev builds.
+	go srv.RunUpdateCheckScheduler(ctx)
+
 	log.Printf("go-eat %s listening on %s", version, cfg.ListenAddr)
 	if err := srv.Run(ctx, os.Stdout); err != nil {
 		log.Fatalf("server: %v", err)

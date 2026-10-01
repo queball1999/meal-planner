@@ -60,6 +60,9 @@ type aboutPageData struct {
 	Probes []probeResult
 
 	Processes []backgroundProcess
+
+	// Updates is the Updates card: is a newer release out (phase 15).
+	Updates aboutUpdates
 }
 
 // handleAbout renders the About page: build/version info plus live runtime,
@@ -135,6 +138,7 @@ func (s *Server) buildAboutData(ctx context.Context, householdID int64) aboutPag
 
 	data.Probes = probePlaceholders()
 	data.Processes = s.buildBackgroundProcesses(ctx, householdID)
+	data.Updates = s.buildAboutUpdates(ctx)
 	return data
 }
 
@@ -245,6 +249,7 @@ func (s *Server) buildBackgroundProcesses(ctx context.Context, householdID int64
 		})
 	}
 
+	procs = append(procs, s.updateCheckProcess(ctx))
 	return procs
 }
 

@@ -55,6 +55,9 @@ type Config struct {
 	// deleting households. Off, everyone works in the one household setup
 	// created; household roles (owner/editor/viewer) apply either way.
 	MultiTenant bool
+	// UpdateCheck (UPDATE_CHECK, default on) asks GitHub twice a day whether
+	// a newer stable release is out (phase 15). Read-only; never downloads.
+	UpdateCheck bool
 
 	// ── AI provider (§11.2) ───────────────────────────────────────────────
 	// Provider selects the active profile: anthropic | openai | google | openai_compatible
@@ -284,6 +287,7 @@ func Load() (*Config, error) {
 	cfg.DeriveKrogerCredentials()
 
 	cfg.MultiTenant, _ = strconv.ParseBool(os.Getenv("ENABLE_MULTI_TENANT"))
+	cfg.UpdateCheck = ParseOnOff(os.Getenv("UPDATE_CHECK"), true)
 
 	cfg.Desktop = os.Getenv("GOEAT_DESKTOP") == "1"
 	if cfg.Desktop && !loopbackAddr(cfg.ListenAddr) {
@@ -396,6 +400,21 @@ func validSetupToken(tok string) bool {
 
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// ParseOnOff reads an on/off switch: "on"/"off" (the Settings page's values)
+// or anything strconv.ParseBool takes. Blank or unrecognised gives def.
+func ParseOnOff(raw string, def bool) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "on":
+		return true
+	case "off":
+		return false
+	}
+	if v, err := strconv.ParseBool(strings.TrimSpace(raw)); err == nil {
 		return v
 	}
 	return def

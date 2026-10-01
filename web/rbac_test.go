@@ -45,6 +45,7 @@ type rbacFixture struct {
 	// root is an instance admin with no seats.
 	a, b    tenantRows
 	cookies map[string]*http.Cookie
+	srv     *Server
 }
 
 type tenantRows struct {
@@ -119,6 +120,7 @@ func newRBACFixtureWith(t *testing.T, tweak func(*config.Config)) *rbacFixture {
 		tweak(cfg)
 	}
 	s := NewServer(cfg, store, nil, "test", nil)
+	f.srv = s
 	// The route mux behind LoadSession, without CSRF: these tests are about
 	// who may do what, and a CSRF 403 would mask a role 403.
 	mux := http.NewServeMux()

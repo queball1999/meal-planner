@@ -84,6 +84,16 @@ var Defs = []Definition{
 		Options:    Timezones,
 		Help:       "Every date and time in the app (logs, price updates, recipe dates) is shown in this zone. Takes effect immediately.",
 		FromConfig: func(c *config.Config) string { return c.Timezone }},
+	{Key: UpdateCheckKey, Label: "Check for updates", Category: "General", Kind: KindSelect,
+		Options: []string{"on", "off"},
+		Help: "Asks GitHub twice a day whether a newer Go Eat release is out, and flags it in the footer " +
+			"and on the About page. Only reads release information; nothing is downloaded. Takes effect immediately.",
+		FromConfig: func(c *config.Config) string {
+			if c.UpdateCheck {
+				return "on"
+			}
+			return "off"
+		}},
 
 	{Key: "PROVIDER", Label: "Default provider", Category: "AI Provider", Kind: KindSelect,
 		Options:    []string{"anthropic", "openai", "google", "openai_compatible"},
@@ -400,6 +410,9 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 	}
 	if v, ok := get("WEEK_START_DAY"); ok {
 		cfg.WeekStartDay = v
+	}
+	if v, ok := get(UpdateCheckKey); ok {
+		cfg.UpdateCheck = config.ParseOnOff(v, cfg.UpdateCheck)
 	}
 	if v, ok := get("AUTO_PLAN_HOUR"); ok {
 		if n, err := strconv.Atoi(v); err == nil && n >= -1 && n <= 23 {
