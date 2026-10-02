@@ -61,7 +61,11 @@ func (s *Server) startVideoImport(w http.ResponseWriter, r *http.Request, househ
 		}
 		id, err := importer.Import(ctx, householdID, rawURL)
 		var final plan.JobEvent
-		if err != nil {
+		var dup *recipes.DuplicateError
+		if errors.As(err, &dup) {
+			j.Status = plan.JobDone
+			final = plan.JobEvent{Type: "done", Message: fmt.Sprintf("/recipes/%d?already", dup.ID)}
+		} else if err != nil {
 			log.Printf("video import %s: %v", rawURL, err)
 			j.Status, j.Error = plan.JobFailed, err.Error()
 			final = plan.JobEvent{Type: "error", Message: videoImportMessage(err)}

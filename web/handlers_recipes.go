@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,17 +43,33 @@ func (s *Server) handleRecipeImport(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
+	if cr, err := recipes.FindBySource(r.Context(), s.store, hh.ID, rawURL); err == nil && cr != nil {
+		s.openDuplicate(w, r, cr.ID)
+		return
+	}
 	if video.IsVideoURL(rawURL) {
 		s.startVideoImport(w, r, hh.ID, rawURL)
 		return
 	}
 
 	id, err := recipes.Import(r.Context(), s.store, hh.ID, rawURL, s.imageDir)
+	var dup *recipes.DuplicateError
+	if errors.As(err, &dup) {
+		s.openDuplicate(w, r, dup.ID)
+		return
+	}
 	if err != nil {
 		s.setNotify(w, NotifyDanger, fmt.Sprintf("Import failed: %v", err))
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
+	http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
+}
+
+// openDuplicate sends an import of an already-imported recipe to the copy the
+// household has, instead of saving a second one.
+func (s *Server) openDuplicate(w http.ResponseWriter, r *http.Request, id int64) {
+	s.setNotify(w, NotifyInfo, "This recipe is already in your recipes - here it is. Delete it first if you want a fresh import.")
 	http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
 }
 
@@ -176,6 +193,12 @@ func (s *Server) handleRecipeDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.owns(w, r, db.ResRecipe, id) {
+		return
+	}
+	// ?already: a video import (a background job, so no response to set the
+	// notice on) found the recipe was imported before.
+	if r.URL.Query().Has("already") {
+		s.openDuplicate(w, r, id)
 		return
 	}
 	ctx := r.Context()

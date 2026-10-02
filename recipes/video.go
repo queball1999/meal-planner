@@ -51,10 +51,16 @@ type VideoImporter struct {
 }
 
 // Import reads rawURL and saves the recipe in it to householdID's catalog,
-// returning the new recipe's ID.
+// returning the new recipe's ID. A post the household already imported
+// returns a *DuplicateError - checked again on yt-dlp's canonical URL right
+// after the download, since share links (vm.tiktok.com/…) only resolve there,
+// and before the slow transcribe and model steps.
 func (v VideoImporter) Import(ctx context.Context, householdID int64, rawURL string) (int64, error) {
 	if v.Gen == nil {
 		return 0, errors.New("recipes: video import needs an AI provider - set one up in Settings")
+	}
+	if err := checkDuplicate(ctx, v.Store, householdID, rawURL); err != nil {
+		return 0, err
 	}
 
 	work, err := os.MkdirTemp("", "goeat-video-*")
@@ -66,6 +72,9 @@ func (v VideoImporter) Import(ctx context.Context, householdID int64, rawURL str
 	v.progress("Downloading the video…")
 	media, err := video.Fetch(ctx, v.Tools, rawURL, work)
 	if err != nil {
+		return 0, err
+	}
+	if err := checkDuplicate(ctx, v.Store, householdID, media.URL); err != nil {
 		return 0, err
 	}
 

@@ -19,12 +19,21 @@ import (
 
 // Import fetches rawURL, parses a Recipe via scrape.ParseRecipe, optionally
 // downloads the image, persists everything to the DB, and returns the new
-// catalog recipe ID. Image download failures are non-fatal.
+// catalog recipe ID. Image download failures are non-fatal. A page the
+// household already imported - by the pasted URL or the one it redirects to -
+// returns a *DuplicateError instead of a second copy.
 func Import(ctx context.Context, store db.Store, householdID int64, rawURL, imageDir string) (int64, error) {
+	if err := checkDuplicate(ctx, store, householdID, rawURL); err != nil {
+		return 0, err
+	}
+
 	// 1. Fetch the page.
 	res, err := safefetch.Fetch(ctx, rawURL, nil)
 	if err != nil {
 		return 0, fmt.Errorf("recipes: fetch %q: %w", rawURL, err)
+	}
+	if err := checkDuplicate(ctx, store, householdID, res.FinalURL); err != nil {
+		return 0, err
 	}
 
 	// 2. Parse the recipe.

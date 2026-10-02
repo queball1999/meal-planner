@@ -93,7 +93,7 @@
         title.textContent = 'Recipe imported!';
         status.textContent = 'Opening it…';
         /* Only ever a same-site recipe path. */
-        var dest = /^\/recipes\/\d+$/.test(e.data) ? e.data : '/recipes';
+        var dest = /^\/recipes\/\d+(\?already)?$/.test(e.data) ? e.data : '/recipes';
         setTimeout(function () { window.location.href = dest; }, 700);
     });
 
