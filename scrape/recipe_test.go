@@ -116,3 +116,23 @@ func TestParseRecipeDecodesEntities(t *testing.T) {
 		t.Errorf("steps = %q", r.Steps)
 	}
 }
+
+func TestParseRecipeAuthor(t *testing.T) {
+	cases := map[string]string{
+		`"author": "Jane Cook"`:                                         "Jane Cook",
+		`"author": {"@type": "Person", "name": "Jane Cook"}`:            "Jane Cook",
+		`"author": [{"@type": "Person", "name": "Jane &amp; Sam"}, {}]`: "Jane & Sam",
+		`"author": {"@type": "Organization"}`:                           "",
+	}
+	for field, want := range cases {
+		body := `<script type="application/ld+json">{"@type": "Recipe", "name": "Soup", ` + field +
+			`, "recipeIngredient": ["1 onion"]}</script>`
+		r, err := ParseRecipe(body, "https://example.com/soup")
+		if err != nil {
+			t.Fatalf("%s: %v", field, err)
+		}
+		if r.Author != want {
+			t.Errorf("%s: Author = %q, want %q", field, r.Author, want)
+		}
+	}
+}

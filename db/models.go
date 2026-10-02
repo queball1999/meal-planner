@@ -807,12 +807,15 @@ type CatalogRecipe struct {
 	SourceKind  string // "ai" | "imported" | "manual"
 	SourceURL   string
 	SourceSite  string
-	ImagePath   string // relative path under RECIPE_IMAGE_DIR; "" = no image
-	Servings    int
-	PrepMinutes int
-	CookMinutes int
-	Tags        []string
-	CreatedAt   time.Time
+	// SourceAuthor credits the recipe's creator: a video's uploader or a
+	// page's JSON-LD author; "" when unknown.
+	SourceAuthor string
+	ImagePath    string // relative path under RECIPE_IMAGE_DIR; "" = no image
+	Servings     int
+	PrepMinutes  int
+	CookMinutes  int
+	Tags         []string
+	CreatedAt    time.Time
 }
 
 // CatalogRecipeIngredient is one ingredient line in a catalog recipe.
@@ -843,16 +846,17 @@ type CatalogRecipeFilter struct {
 
 // CreateCatalogRecipeParams bundles inputs for creating a catalog recipe.
 type CreateCatalogRecipeParams struct {
-	HouseholdID int64
-	Title       string
-	SourceKind  string
-	SourceURL   string
-	SourceSite  string
-	ImagePath   string
-	Servings    int
-	PrepMinutes int
-	CookMinutes int
-	Tags        []string
+	HouseholdID  int64
+	Title        string
+	SourceKind   string
+	SourceURL    string
+	SourceSite   string
+	SourceAuthor string
+	ImagePath    string
+	Servings     int
+	PrepMinutes  int
+	CookMinutes  int
+	Tags         []string
 }
 
 // UpdateCatalogRecipeParams bundles the editable fields of a catalog recipe.

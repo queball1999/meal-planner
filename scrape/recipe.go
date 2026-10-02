@@ -24,6 +24,7 @@ type Recipe struct {
 	Steps       []string
 	SourceURL   string
 	SourceSite  string // hostname
+	Author      string // who wrote the recipe; "" when the page doesn't say
 }
 
 // RecipeIngredient is one parsed ingredient line.
@@ -163,6 +164,7 @@ func applyRecipeObj(obj map[string]any, r *Recipe) bool {
 
 	r.Title = strVal(obj, "name")
 	r.Description = cleanText(strVal(obj, "description"))
+	r.Author = cleanText(extractAuthor(obj["author"]))
 	r.ImageURL = extractImageURL(obj["image"])
 	r.PrepMinutes = parseDuration(anyToString(obj["prepTime"]))
 	r.CookMinutes = parseDuration(anyToString(obj["cookTime"]))
@@ -207,6 +209,26 @@ func extractImageURL(v any) string {
 	case []any:
 		if len(img) > 0 {
 			return extractImageURL(img[0])
+		}
+	}
+	return ""
+}
+
+// extractAuthor reads a JSON-LD author: a name string, a Person or
+// Organization object, or a list of either (the first one wins).
+func extractAuthor(v any) string {
+	switch a := v.(type) {
+	case string:
+		return strings.TrimSpace(a)
+	case map[string]any:
+		if n, ok := a["name"].(string); ok {
+			return strings.TrimSpace(n)
+		}
+	case []any:
+		for _, item := range a {
+			if n := extractAuthor(item); n != "" {
+				return n
+			}
 		}
 	}
 	return ""

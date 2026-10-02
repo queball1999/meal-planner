@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"goeat/db"
+	"goeat/scrape"
 )
 
 func TestSourceKey(t *testing.T) {
@@ -86,5 +87,32 @@ func TestImportReturnsDuplicateBeforeFetching(t *testing.T) {
 	// Another household's recipe is not a duplicate.
 	if found, err := FindBySource(ctx, store, other.ID, "https://example.invalid/recipe/pasta"); err != nil || found != nil {
 		t.Fatalf("FindBySource(other household) = %v, %v; want nil", found, err)
+	}
+}
+
+func TestSaveKeepsSourceAuthor(t *testing.T) {
+	ctx := context.Background()
+	store, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	hh, err := store.CreateHousehold(ctx, db.CreateHouseholdParams{Name: "T", HouseholdSize: 2, Timezone: "UTC"})
+	if err != nil {
+		t.Fatalf("household: %v", err)
+	}
+	id, err := save(ctx, store, hh.ID, &scrape.Recipe{Title: "Soup", Author: "nytcooking"}, "https://www.tiktok.com/@nytcooking/video/1", "")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	cr, err := store.GetCatalogRecipe(ctx, id)
+	if err != nil || cr == nil {
+		t.Fatalf("get: %v", err)
+	}
+	if cr.SourceAuthor != "nytcooking" {
+		t.Errorf("SourceAuthor = %q, want nytcooking", cr.SourceAuthor)
 	}
 }

@@ -58,16 +58,17 @@ func Import(ctx context.Context, store db.Store, householdID int64, rawURL, imag
 // go through splitIngredient.
 func save(ctx context.Context, store db.Store, householdID int64, recipe *scrape.Recipe, sourceURL, imagePath string) (int64, error) {
 	cr, err := store.CreateCatalogRecipe(ctx, db.CreateCatalogRecipeParams{
-		HouseholdID: householdID,
-		Title:       recipe.Title,
-		SourceKind:  "imported",
-		SourceURL:   sourceURL,
-		SourceSite:  recipe.SourceSite,
-		ImagePath:   imagePath,
-		Servings:    recipe.Servings,
-		PrepMinutes: recipe.PrepMinutes,
-		CookMinutes: recipe.CookMinutes,
-		Tags:        dedupTags(recipe.Tags),
+		HouseholdID:  householdID,
+		Title:        recipe.Title,
+		SourceKind:   "imported",
+		SourceURL:    sourceURL,
+		SourceSite:   recipe.SourceSite,
+		SourceAuthor: recipe.Author,
+		ImagePath:    imagePath,
+		Servings:     recipe.Servings,
+		PrepMinutes:  recipe.PrepMinutes,
+		CookMinutes:  recipe.CookMinutes,
+		Tags:         dedupTags(recipe.Tags),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("recipes: save: %w", err)

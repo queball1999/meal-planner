@@ -12,7 +12,8 @@
                 {{if $r.Servings}}<span>{{$r.Servings}} servings</span>{{end}}
                 {{if $r.PrepMinutes}}<span>· {{$r.PrepMinutes}}m prep</span>{{end}}
                 {{if $r.CookMinutes}}<span>· {{$r.CookMinutes}}m cook</span>{{end}}
-                {{if $r.SourceSite}}<span>· from <a href="{{$r.SourceURL}}" target="_blank" rel="noopener noreferrer">{{$r.SourceSite}}</a></span>{{end}}
+                {{if $r.SourceSite}}<span>· from <a href="{{$r.SourceURL}}" target="_blank" rel="noopener noreferrer">{{$r.SourceSite}}</a>{{if $r.SourceAuthor}} by {{$r.SourceAuthor}}{{end}}</span>
+                {{else if $r.SourceAuthor}}<span>· by {{$r.SourceAuthor}}</span>{{end}}
             </div>
             {{if $r.Tags}}
             <div style="margin-top:0.5rem">

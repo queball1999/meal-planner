@@ -116,6 +116,7 @@ func (v VideoImporter) Import(ctx context.Context, householdID int64, rawURL str
 	}
 	recipe.SourceURL = media.URL
 	recipe.SourceSite = video.Host(media.URL)
+	recipe.Author = media.Uploader
 
 	v.progress("Saving the recipe…")
 	imagePath := ""
