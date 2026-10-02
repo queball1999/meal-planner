@@ -83,6 +83,35 @@
             <div class="guide-step__head">{{icon "pencil"}}<span class="guide-step__title">Anything else</span></div>
             <p class="guide-step__desc">Cookbooks, family recipes, private posts: use <em>Enter manually</em> below.</p>
         </div>
+        {{/* Server-only: shown disabled, never hidden (phase 16 commit 12). */}}
+        {{$s := .Data.Share}}
+        <div class="guide-step" data-share-target="{{$s.Mode}}"{{if ne $s.Mode "ready"}} aria-disabled="true" style="opacity:.6"{{end}}>
+            <div class="guide-step__head">{{icon "share"}}<span class="guide-step__title">Share from your phone</span>
+                {{if eq $s.Mode "ready"}}<span class="badge badge-success">Ready</span>
+                {{else}}<span class="badge badge-muted">Not available in this deployment</span>{{end}}
+            </div>
+            {{if eq $s.Mode "desktop"}}
+            <p class="guide-step__desc">
+                The desktop app only runs on this computer, so your phone can't reach it. To share
+                TikTok, Instagram and YouTube posts straight to Go Eat from your phone, run Go Eat as a
+                server - we recommend the <a href="{{$s.DockerURL}}" target="_blank" rel="noopener noreferrer">Docker image from GitHub</a>.
+            </p>
+            {{else if eq $s.Mode "needs_https"}}
+            <p class="guide-step__desc">
+                Phones only install web apps from an <strong>https://</strong> address, and this server is
+                being reached over plain http. Put it behind HTTPS (a reverse proxy like Caddy, or the
+                <a href="{{$s.DockerURL}}" target="_blank" rel="noopener noreferrer">Docker setup from GitHub</a>)
+                and set <code>PUBLIC_BASE_URL</code> to the https address.
+            </p>
+            {{else}}
+            <p class="guide-step__desc">
+                On Android, open Go Eat in Chrome and choose <em>Install app</em> (or <em>Add to Home screen</em>)
+                from the browser menu. Then in TikTok, Instagram or YouTube tap <em>Share</em> → <em>Go Eat</em>
+                and the link lands here, ready to import. iPhones don't let web apps receive shares - copy
+                the link and paste it above instead.
+            </p>
+            {{end}}
+        </div>
     </div>
 </details>
 
@@ -94,13 +123,15 @@
             <div class="field" style="flex:1">
                 <label class="field-label" for="import-url">Recipe URL</label>
                 <input class="field-input" id="import-url" name="url" type="url"
-                       placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required>
+                       placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required
+                       {{with .Data.URL}}value="{{.}}"{{end}}>
             </div>
             <div class="field field--action" style="align-self:flex-end">
                 <button type="submit" class="btn btn-primary" data-import-submit>{{icon "download"}} Import</button>
             </div>
         </div>
-        <p class="field-hint">Recipe websites and cooking videos both work - see what's supported above.</p>
+        {{if .Data.URL}}<p class="field-hint"><strong>Shared link ready</strong> - press Import to bring it in.</p>
+        {{else}}<p class="field-hint">Recipe websites and cooking videos both work - see what's supported above.</p>{{end}}
     </form>
 </div>
 

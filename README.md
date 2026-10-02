@@ -153,6 +153,12 @@ live on the `whisper-models` volume, which both containers mount at `/models`. A
 use a whisper.cpp server elsewhere on your network instead: set **whisper.cpp server URL** in
 AI Setup.
 
+**Sharing from your phone (server installs only).** On a server reached over HTTPS, Go Eat can
+be installed from Chrome on Android (*Install app*), and then appears in TikTok's, Instagram's
+and YouTube's Share sheet - the shared link opens Import Recipe, ready to import. It isn't
+available in the desktop app (a phone can't reach it) or over plain http; Import Recipe shows
+it as unavailable there. iOS doesn't let web apps receive shares.
+
 ## Architecture
 
 ```

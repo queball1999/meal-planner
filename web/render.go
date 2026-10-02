@@ -35,6 +35,9 @@ type pageData struct {
 	Households []*db.HouseholdMembership
 	// MultiTenant is ENABLE_MULTI_TENANT (one household vs. many).
 	MultiTenant bool
+	// WebApp links the web app manifest and service worker (web/pwa.go):
+	// every deployment but the desktop app.
+	WebApp bool
 	CSRFField   template.HTML // <input type="hidden"> for forms
 	CSRFToken   string        // raw token for JS fetch calls
 	Notify      string        // one-shot notification message (cleared after display)
@@ -280,6 +283,7 @@ func (s *Server) renderWithPage(w http.ResponseWriter, r *http.Request, name, pa
 		IsAdmin:       middleware.UserFromCtx(r).IsAdmin(),
 		Households:    middleware.MembershipsFromCtx(r),
 		MultiTenant:   s.cfg.MultiTenant,
+		WebApp:        !s.cfg.Desktop,
 		CSRFField:     csrf.TemplateField(r),
 		CSRFToken:     csrf.Token(r),
 		Data:          data,

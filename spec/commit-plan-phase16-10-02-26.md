@@ -183,11 +183,13 @@ pointer to the Docker image (`ghcr.io/queball1999/meal-planner`), never hidden.
 
 7. **Import page layout.** "What can I import?" moves above Import from URL;
    it and Enter manually start open.
+   Status: done (ee0bb2b).
 
 8. **Busy import button.** Website imports run inside the POST (several
    seconds on a slow site), so the Import button disables on submit and says
    "Importing…" ("Starting video import…" for a video link). Stops double
    clicks making two copies.
+   Status: done (0a6db3f). Also re-enables on back/forward-cache restore.
 
 9. **Duplicate check.** Before fetching, look up the household's recipes by
    source URL (normalized: scheme, www./m., trailing slash, fragment and
@@ -196,16 +198,21 @@ pointer to the Docker image (`ghcr.io/queball1999/meal-planner`), never hidden.
    before the slow transcribe + model steps (share links like vm.tiktok.com
    only resolve there). A hit opens the existing recipe with a notice instead
    of saving a copy.
+   Status: done (b8a5715). Video posts compare by platform + post ID, so a
+   Short and its watch?v= link match. Matching is per household.
 
 10. **Credit the creator.** `catalog_recipes.source_author` (migration 40):
     a video's uploader, a web recipe's JSON-LD author. Shown next to the
     source link on the recipe page.
+    Status: done (7a3eda2). Also shown under the site on the recipes list.
 
 11. **Links in the caption.** When a video has no recipe, the recipe-page
     links in its caption and creator comments (not other video/social links)
     are offered as one-click "Import this page" buttons on the progress page.
     Bio links aren't readable (yt-dlp doesn't fetch profiles), so the hint
     stays.
+    Status: done (cb14fca). The finished-job replay now keeps a list of
+    closing events (links, then error) instead of one.
 
 12. **Phone share target.** Web app manifest + a pass-through service worker,
     `share_target` → `GET /recipes/share`, which pulls the first URL out of
@@ -214,3 +221,8 @@ pointer to the Docker image (`ghcr.io/queball1999/meal-planner`), never hidden.
     has no share target). Server-only: in the desktop app the manifest isn't
     linked and the import page shows the feature disabled; on a plain-http
     server it's shown as needing HTTPS.
+    Status: done (uncommitted when written). Verified against a running
+    server: manifest, /sw.js and icons serve under the existing CSP, and
+    /recipes/share sends a signed-out phone to login. Not verified on a real
+    phone. Known gap: the login page doesn't return to the shared link, so a
+    signed-out share has to be shared again after signing in.

@@ -19,10 +19,20 @@ import (
 
 type recipeImportPageData struct {
 	Video videoImportState
+	Share shareTargetState
+	// URL prefills the import field - a link shared from the phone
+	// (/recipes/share).
+	URL string
 }
 
 func (s *Server) handleRecipeImportPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "recipe_import", recipeImportPageData{Video: s.videoImportState()})
+	data := recipeImportPageData{Video: s.videoImportState(), Share: s.shareAvailability(r)}
+	if u := strings.TrimSpace(r.URL.Query().Get("url")); u != "" {
+		if p, err := url.ParseRequestURI(u); err == nil && (p.Scheme == "http" || p.Scheme == "https") {
+			data.URL = u
+		}
+	}
+	s.render(w, r, "recipe_import", data)
 }
 
 func (s *Server) handleRecipeImport(w http.ResponseWriter, r *http.Request) {

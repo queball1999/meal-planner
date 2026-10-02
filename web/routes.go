@@ -18,6 +18,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// Health check - used by reverse proxies; exempt from auth and CSRF.
 	mux.HandleFunc("GET /health", s.handleHealth)
 
+	// Installable web app (web/pwa.go): public, the browser fetches the
+	// manifest without cookies. 404 in the desktop app.
+	mux.HandleFunc("GET /manifest.webmanifest", s.handleManifest)
+	mux.HandleFunc("GET /sw.js", s.handleServiceWorker)
+
 	// Auth flows
 	mux.HandleFunc("GET /auth/login", s.handleLoginPage)
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
@@ -159,6 +164,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /recipes/import", view(http.HandlerFunc(s.handleRecipeImportPage)))
 	mux.Handle("POST /recipes/import", edit(http.HandlerFunc(s.handleRecipeImport)))
 	mux.Handle("POST /recipes/import/manual", edit(http.HandlerFunc(s.handleRecipeImportManual)))
+	mux.Handle("GET /recipes/share", view(http.HandlerFunc(s.handleRecipeShare)))
 	mux.Handle("GET /recipes/import/video", view(http.HandlerFunc(s.handleVideoImportPage)))
 	mux.Handle("GET /recipes/import/video/status", view(http.HandlerFunc(s.handleVideoImportStatus)))
 	mux.Handle("GET /recipes", view(http.HandlerFunc(s.handleRecipesPage)))
