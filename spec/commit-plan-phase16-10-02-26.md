@@ -169,3 +169,48 @@ so desktop or plain-binary installs can also use a whisper server elsewhere
 Later (after the local path is verified): cloud transcription backends,
 Docker image (`apk add yt-dlp ffmpeg`; upstream whisper Linux builds are
 glibc, Alpine is musl), on-screen text from frames.
+
+## Import polish (2026-10-02, second pass)
+
+Asked after the video import landed: what else should recipe import handle?
+Five follow-ups, one commit each, plus the import page layout tweak.
+
+Rule for server-only features: Go Eat runs three ways (desktop app,
+standalone binary, Docker). A feature that only works on a reachable server
+(the phone share target needs an HTTPS origin a phone can open) is shown
+disabled in the desktop app with "Not available in this deployment" and a
+pointer to the Docker image (`ghcr.io/queball1999/meal-planner`), never hidden.
+
+7. **Import page layout.** "What can I import?" moves above Import from URL;
+   it and Enter manually start open.
+
+8. **Busy import button.** Website imports run inside the POST (several
+   seconds on a slow site), so the Import button disables on submit and says
+   "Importing…" ("Starting video import…" for a video link). Stops double
+   clicks making two copies.
+
+9. **Duplicate check.** Before fetching, look up the household's recipes by
+   source URL (normalized: scheme, www./m., trailing slash, fragment and
+   tracking params ignored). Website: the fetched page's final URL is checked
+   too. Video: yt-dlp's canonical URL is checked right after the download,
+   before the slow transcribe + model steps (share links like vm.tiktok.com
+   only resolve there). A hit opens the existing recipe with a notice instead
+   of saving a copy.
+
+10. **Credit the creator.** `catalog_recipes.source_author` (migration 40):
+    a video's uploader, a web recipe's JSON-LD author. Shown next to the
+    source link on the recipe page.
+
+11. **Links in the caption.** When a video has no recipe, the recipe-page
+    links in its caption and creator comments (not other video/social links)
+    are offered as one-click "Import this page" buttons on the progress page.
+    Bio links aren't readable (yt-dlp doesn't fetch profiles), so the hint
+    stays.
+
+12. **Phone share target.** Web app manifest + a pass-through service worker,
+    `share_target` → `GET /recipes/share`, which pulls the first URL out of
+    url/text/title (TikTok puts it in text) and opens Import Recipe with it
+    filled in - no import starts from a GET. Android/Chrome only (iOS Safari
+    has no share target). Server-only: in the desktop app the manifest isn't
+    linked and the import page shows the feature disabled; on a plain-http
+    server it's shown as needing HTTPS.

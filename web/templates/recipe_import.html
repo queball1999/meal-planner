@@ -46,27 +46,9 @@
 {{if .IsAdmin}}<script src="/static/js/video-tools.js" defer></script>{{end}}
 {{end}}
 
-<div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">Import from URL</h2>
-    <form method="POST" action="/recipes/import" class="pref-form">
-        {{.CSRFField}}
-        <div class="field-row">
-            <div class="field" style="flex:1">
-                <label class="field-label" for="import-url">Recipe URL</label>
-                <input class="field-input" id="import-url" name="url" type="url"
-                       placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required>
-            </div>
-            <div class="field field--action" style="align-self:flex-end">
-                <button type="submit" class="btn btn-primary">{{icon "download"}} Import</button>
-            </div>
-        </div>
-        <p class="field-hint">Recipe websites and cooking videos both work - see what's supported below.</p>
-    </form>
-</div>
-
-<details class="card form-section" style="margin-bottom:1.5rem">
+<details class="card form-section" style="margin-bottom:1.5rem" open>
     <summary class="form-section__title" style="cursor:pointer;list-style:none">
-        {{icon "help"}} What can I import? <span style="font-weight:400;color:var(--color-text-muted)">(click to expand)</span>
+        {{icon "help"}} What can I import?
     </summary>
     <div class="guide" style="margin-top:1rem">
         <div class="guide-step">
@@ -104,9 +86,27 @@
     </div>
 </details>
 
-<details class="card form-section">
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">Import from URL</h2>
+    <form method="POST" action="/recipes/import" class="pref-form">
+        {{.CSRFField}}
+        <div class="field-row">
+            <div class="field" style="flex:1">
+                <label class="field-label" for="import-url">Recipe URL</label>
+                <input class="field-input" id="import-url" name="url" type="url"
+                       placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required>
+            </div>
+            <div class="field field--action" style="align-self:flex-end">
+                <button type="submit" class="btn btn-primary">{{icon "download"}} Import</button>
+            </div>
+        </div>
+        <p class="field-hint">Recipe websites and cooking videos both work - see what's supported above.</p>
+    </form>
+</div>
+
+<details class="card form-section" open>
     <summary class="form-section__title" style="cursor:pointer;list-style:none">
-        {{icon "edit"}} Enter manually <span style="font-weight:400;color:var(--color-text-muted)">(click to expand)</span>
+        {{icon "edit"}} Enter manually
     </summary>
     <form method="POST" action="/recipes/import/manual" class="pref-form" style="margin-top:1rem">
         {{.CSRFField}}
