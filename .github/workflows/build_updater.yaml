@@ -82,11 +82,13 @@ jobs:
 
       - name: Build branded updater
         working-directory: qupdatetool
+        # The icon path must be absolute: PyInstaller resolves --icon against
+        # its --specpath (qupdatetool/build), not the working directory.
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            icon=../goeat/desktop/src-tauri/icons/icon.ico
+            icon="$GITHUB_WORKSPACE/goeat/desktop/src-tauri/icons/icon.ico"
           else
-            icon=../goeat/desktop/src-tauri/icons/icon.png
+            icon="$GITHUB_WORKSPACE/goeat/desktop/src-tauri/icons/icon.png"
           fi
           python tools/build_branded.py \
             --brand  ../goeat/desktop/updater-brand.yaml \
