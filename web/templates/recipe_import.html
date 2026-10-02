@@ -88,7 +88,7 @@
 
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">Import from URL</h2>
-    <form method="POST" action="/recipes/import" class="pref-form">
+    <form method="POST" action="/recipes/import" class="pref-form" data-import-form>
         {{.CSRFField}}
         <div class="field-row">
             <div class="field" style="flex:1">
@@ -97,7 +97,7 @@
                        placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required>
             </div>
             <div class="field field--action" style="align-self:flex-end">
-                <button type="submit" class="btn btn-primary">{{icon "download"}} Import</button>
+                <button type="submit" class="btn btn-primary" data-import-submit>{{icon "download"}} Import</button>
             </div>
         </div>
         <p class="field-hint">Recipe websites and cooking videos both work - see what's supported above.</p>
@@ -108,7 +108,7 @@
     <summary class="form-section__title" style="cursor:pointer;list-style:none">
         {{icon "edit"}} Enter manually
     </summary>
-    <form method="POST" action="/recipes/import/manual" class="pref-form" style="margin-top:1rem">
+    <form method="POST" action="/recipes/import/manual" class="pref-form" style="margin-top:1rem" data-import-form>
         {{.CSRFField}}
 
         <div class="field-row" style="margin-bottom:0.75rem">
@@ -154,11 +154,41 @@
                       rows="8" placeholder="Boil pasta until al dente.&#10;Toss with butter and lemon." required></textarea>
         </div>
 
-        <button type="submit" class="btn btn-primary">{{icon "plus"}} Save recipe</button>
+        <button type="submit" class="btn btn-primary" data-import-submit>{{icon "plus"}} Save recipe</button>
     </form>
 </details>
 
 <div style="margin-top:1.5rem">
     <a href="/recipes" class="btn btn-ghost">{{icon "arrow-left"}} Back to recipes</a>
 </div>
+<script nonce="{{cspNonce}}">
+/* A website import runs inside the POST - several seconds on a slow site -
+ * so a second click would import the recipe twice. Lock the button and say
+ * what is happening; the ring comes from .btn.is-loading. */
+(function () {
+    var VIDEO_HOST = /^https?:\/\/([a-z0-9-]+\.)*(tiktok\.com|instagram\.com|youtube\.com|youtu\.be)\//i;
+    document.querySelectorAll('[data-import-form]').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            var btn = form.querySelector('[data-import-submit]');
+            if (!btn) return;
+            var url = form.querySelector('input[name="url"]');
+            var label = 'Saving…';
+            if (url) label = VIDEO_HOST.test(url.value.trim()) ? 'Starting video import…' : 'Importing…';
+            btn.disabled = true;
+            btn.classList.add('is-loading');
+            btn.dataset.label = btn.dataset.label || btn.lastChild.textContent;
+            btn.lastChild.textContent = ' ' + label;
+        });
+    });
+    /* Back from a failed import: the page may come from the back/forward
+     * cache with the button still locked. */
+    window.addEventListener('pageshow', function () {
+        document.querySelectorAll('[data-import-submit].is-loading').forEach(function (btn) {
+            btn.disabled = false;
+            btn.classList.remove('is-loading');
+            if (btn.dataset.label) btn.lastChild.textContent = btn.dataset.label;
+        });
+    });
+})();
+</script>
 {{end}}
