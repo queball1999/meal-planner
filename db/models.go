@@ -183,7 +183,7 @@ type MealFeedback struct {
 type AIRun struct {
 	ID               int64
 	HouseholdID      int64
-	Purpose          string // "free_text_parse" | "generation" | "price_estimate" | "normalize"
+	Purpose          string // "free_text_parse" | "generation" | "price_estimate" | "normalize" | "video_recipe"
 	Provider         string
 	Model            string
 	PromptTokens     int

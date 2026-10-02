@@ -61,6 +61,7 @@ type settingsPageData struct {
 	Providers    []aiProviderView
 	SharedFields []settingsFieldView // sampling params, applied to every provider
 	Categories   []settingsCategoryView
+	ToolsDir     string // TOOLS_DIR, shown on the Video recipe import card
 }
 
 var kindNames = map[settings.Kind]string{
@@ -72,6 +73,20 @@ var kindNames = map[settings.Kind]string{
 }
 
 func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
+	s.renderSettings(w, r, "settings")
+}
+
+// handleSettingsAIPage is Settings → AI Setup: the AI Provider and Video
+// recipe import cards. Same template and data as the General tab - the page
+// slug picks which cards show and which tab is highlighted, and the page's
+// scripts skip whatever isn't on it.
+func (s *Server) handleSettingsAIPage(w http.ResponseWriter, r *http.Request) {
+	s.renderSettings(w, r, "settings_ai")
+}
+
+// renderSettings builds the settings page data and renders it as page
+// ("settings" for General, "settings_ai" for AI Setup).
+func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, page string) {
 	rows, err := s.store.ListSettings(r.Context())
 	if err != nil {
 		http.Error(w, "failed to load settings", http.StatusInternalServerError)
@@ -197,13 +212,14 @@ func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 		generalCategories = append(generalCategories, c)
 	}
 
-	s.render(w, r, "settings", settingsPageData{
+	s.renderWithPage(w, r, "settings", page, settingsPageData{
 		HasLLM:       s.llmGen() != nil,
 		ActiveID:     active,
 		ActiveLabel:  activeLabel,
 		Providers:    providers,
 		SharedFields: sharedAI,
 		Categories:   generalCategories,
+		ToolsDir:     s.videoTools.Dir,
 	})
 }
 

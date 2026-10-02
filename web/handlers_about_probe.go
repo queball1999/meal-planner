@@ -159,7 +159,7 @@ func (s *Server) probeLLM(ctx context.Context) probeResult {
 	if s.llmGen() == nil {
 		res.Status = "off"
 		res.Label = "Not configured"
-		res.Detail = "set a provider in Settings → AI Provider"
+		res.Detail = "set a provider in Settings → AI Setup"
 		return res
 	}
 	res.Detail = s.llmGen().ProviderName() + " · " + s.llmGen().ModelName()

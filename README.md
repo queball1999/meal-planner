@@ -73,6 +73,7 @@ All options are set via environment variables (or `.env`). See [`.env.example`](
 | `LISTEN_ADDR` | `:8080` | Host:port to bind. |
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | Canonical URL (used in redirects). |
 | `RECIPE_IMAGE_DIR` | `./data/recipe-images` | Where downloaded recipe images are stored. |
+| `TOOLS_DIR` | `./data/tools` | Where video recipe import looks for yt-dlp, ffmpeg and whisper.cpp before `PATH`. |
 | `WEEK_START_DAY` | `sunday` | `sunday` or `monday`. |
 | `PROVIDER` | *(unset)* | `anthropic` \| `openai` \| `openai_compatible`. Enables AI meal generation. |
 | `ANTHROPIC_API_KEY` | *(unset)* | Required when `PROVIDER=anthropic`. |

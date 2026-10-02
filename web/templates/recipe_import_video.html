@@ -1,0 +1,119 @@
+{{define "title"}}Importing Video Recipe - {{.AppName}}{{end}}
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">{{icon "fork"}} Importing from a video</h1>
+    <p class="page-subtitle">Reading the caption, listening to the video, and writing up the recipe. Usually under a minute.</p>
+</div>
+
+<div class="wizard-progress" id="vid-progress" role="progressbar" aria-label="Import progress">
+    <div class="wizard-progress__step" data-step-indicator="0">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Download</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="1">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Transcribe</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="2">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Ask AI</span>
+    </div>
+    <div class="wizard-progress__step" data-step-indicator="3">
+        <span class="wizard-step-dot">{{icon "check"}}</span><span class="wizard-step-label">Save</span>
+    </div>
+</div>
+
+<div class="skeleton-card" id="vid-card">
+    <div class="skeleton-card__icon icon-spin" aria-hidden="true" id="vid-icon">{{icon "autorenew"}}</div>
+    <h2 class="skeleton-card__title" id="vid-title">Working…</h2>
+    <p class="skeleton-card__body" id="vid-status">Connecting…</p>
+    <p id="vid-back" hidden style="margin-top:var(--sp-4)">
+        <a href="/recipes/import" class="btn btn-primary">{{icon "arrow-left"}} Back to Import Recipe</a>
+    </p>
+</div>
+<template id="vid-icon-check">{{icon "check"}}</template>
+<template id="vid-icon-close">{{icon "close"}}</template>
+
+<details class="card form-section" id="vid-debug" style="margin:0 auto">
+    <summary style="cursor:pointer;font-weight:var(--weight-semi)">{{icon "robot"}} Debug: AI reply</summary>
+    <pre class="llm-debug-pre" id="vid-live" style="margin-top:var(--sp-4)">Waiting for the AI…</pre>
+</details>
+
+<script nonce="{{cspNonce}}">
+(function () {
+    var es = new EventSource('/recipes/import/video/status');
+    var title  = document.getElementById('vid-title');
+    var status = document.getElementById('vid-status');
+    var icon   = document.getElementById('vid-icon');
+    var live   = document.getElementById('vid-live');
+
+    /* Status lines come from recipes.VideoImporter; each step is matched by
+     * a keyword, forward only (see plan_generate.html). "caption only"
+     * lands on Transcribe too: that step ran, it just had nothing to use. */
+    var stepEls = Array.from(document.querySelectorAll('#vid-progress [data-step-indicator]'));
+    var STEP_KEYWORDS = [['downloading'], ['transcrib', 'caption only'], ['asking the ai'], ['saving']];
+    var currentStep = -1;
+    function setStep(n) {
+        if (n <= currentStep) return;
+        currentStep = n;
+        stepEls.forEach(function (el) {
+            var i = parseInt(el.dataset.stepIndicator, 10);
+            el.classList.toggle('wizard-progress__step--complete', i < currentStep);
+            el.classList.toggle('wizard-progress__step--active', i === currentStep);
+        });
+    }
+    function advanceStep(message) {
+        var text = String(message || '').toLowerCase();
+        for (var i = currentStep + 1; i < STEP_KEYWORDS.length; i++) {
+            if (STEP_KEYWORDS[i].some(function (k) { return text.indexOf(k) !== -1; })) { setStep(i); return; }
+        }
+    }
+
+    var settled = false;
+    es.addEventListener('status', function (e) {
+        if (settled) return;
+        status.textContent = e.data;
+        advanceStep(e.data);
+    });
+
+    var liveBuffer = '';
+    es.addEventListener('llm_start', function () { liveBuffer = ''; live.textContent = ''; });
+    es.addEventListener('llm_delta', function (e) {
+        liveBuffer += e.data;
+        live.textContent = liveBuffer;
+        live.scrollTop = live.scrollHeight;
+    });
+
+    es.addEventListener('done', function (e) {
+        settled = true;
+        es.close();
+        stepEls.forEach(function (el) {
+            el.classList.add('wizard-progress__step--complete');
+            el.classList.remove('wizard-progress__step--active');
+        });
+        icon.classList.remove('icon-spin');
+        icon.innerHTML = document.getElementById('vid-icon-check').innerHTML;
+        title.textContent = 'Recipe imported!';
+        status.textContent = 'Opening it…';
+        /* Only ever a same-site recipe path. */
+        var dest = /^\/recipes\/\d+$/.test(e.data) ? e.data : '/recipes';
+        setTimeout(function () { window.location.href = dest; }, 700);
+    });
+
+    es.addEventListener('error', function (e) {
+        if (settled || typeof e.data !== 'string') return; // native reconnect blip
+        settled = true;
+        es.close();
+        var active = document.querySelector('#vid-progress .wizard-progress__step--active');
+        if (active) active.classList.add('wizard-progress__step--error');
+        icon.classList.remove('icon-spin');
+        icon.innerHTML = document.getElementById('vid-icon-close').innerHTML;
+        title.textContent = 'Import failed';
+        status.textContent = e.data;
+        document.getElementById('vid-back').hidden = false;
+    });
+
+    es.onerror = function () {
+        if (settled || es.readyState === EventSource.CLOSED) return;
+        status.textContent = 'Connection lost - retrying…';
+    };
+})();
+</script>
+{{end}}

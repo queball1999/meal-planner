@@ -24,6 +24,7 @@ import (
 	"goeat/scrape"
 	"goeat/settings"
 	"goeat/updatecheck"
+	"goeat/video"
 )
 
 // Server holds shared dependencies and the fully-wired HTTP handler.
@@ -37,16 +38,21 @@ type Server struct {
 	// the very next AI request instead of requiring a restart. Read them
 	// only through llmGen()/priceChain(), never as bare fields, or a request
 	// racing a settings save can read a half-updated pair.
-	genMu        sync.RWMutex
-	gen          llm.Generator // nil when no LLM is configured
-	chain        *pricing.Chain
-	jobs         *plan.JobManager
-	haScheduler  *homeassistant.Scheduler
-	version      string
-	imageDir     string        // writable dir for recipe images (§5.7); "" = skip download
-	itemImageDir string        // writable dir for catalog-item images (00010); "" = skip download
-	box          *cryptbox.Box // seals/opens secrets at rest (HA token)
-	handler      http.Handler
+	genMu          sync.RWMutex
+	gen            llm.Generator // nil when no LLM is configured
+	chain          *pricing.Chain
+	jobs           *plan.JobManager
+	videoJobs      *plan.JobManager // video recipe imports (phase 16), one per household
+	videoTools     video.Tools      // where yt-dlp / ffmpeg / whisper.cpp are found
+	videoInstaller *video.Installer // downloads those tools (Settings → AI Setup)
+	videoMu        sync.Mutex
+	videoLast      map[int64]plan.JobEvent // how each household's last video import ended
+	haScheduler    *homeassistant.Scheduler
+	version        string
+	imageDir       string        // writable dir for recipe images (§5.7); "" = skip download
+	itemImageDir   string        // writable dir for catalog-item images (00010); "" = skip download
+	box            *cryptbox.Box // seals/opens secrets at rest (HA token)
+	handler        http.Handler
 
 	startedAt time.Time // process start, for the About page's uptime tile
 
@@ -119,6 +125,10 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		gen:            gen,
 		chain:          chain,
 		jobs:           plan.NewJobManager(),
+		videoJobs:      plan.NewJobManager(),
+		videoTools:     video.Tools{Dir: cfg.ToolsDir},
+		videoLast:      make(map[int64]plan.JobEvent),
+		videoInstaller: video.NewInstaller(video.Tools{Dir: cfg.ToolsDir}),
 		haScheduler:    homeassistant.NewScheduler(store, cfg, box),
 		version:        version,
 		imageDir:       cfg.RecipeImageDir,

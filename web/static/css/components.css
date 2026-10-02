@@ -3164,3 +3164,42 @@ img[data-lightbox]:focus-visible { outline: 2px solid var(--accent); outline-off
 }
 .lightbox__close:hover,
 .lightbox__close:focus-visible { background: rgba(255, 255, 255, 0.24); }
+
+/* ── Video import tools (Settings card + Import Recipe banner) ──────────────
+ * Rows rendered by /static/js/video-tools.js. The model in use is shown with
+ * a background fill, never an outline (rounded rows). */
+.vt-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+    padding: var(--sp-3);
+    margin-top: var(--sp-2);
+    border-radius: var(--radius);
+    background: var(--bg);
+}
+.vt-row--active { background: var(--accent-bg); }
+.vt-row__main { flex: 1 1 18rem; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.vt-row__name { font-weight: 600; display: flex; align-items: center; gap: var(--sp-2); }
+.vt-row__actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.vt-row code { word-break: break-all; }
+.vt-check { font-size: var(--text-sm); }
+.vt-check--ok { color: var(--success); }
+.vt-check--bad { color: var(--danger); }
+.vt-msg--ok { color: var(--success); }
+.vt-msg--warn { color: var(--warning); }
+.vt-msg--bad { color: var(--danger); }
+.vt-bar {
+    height: 0.4rem;
+    margin-top: var(--sp-1);
+    border-radius: var(--radius-full);
+    background: var(--border);
+    overflow: hidden;
+}
+.vt-bar__fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s ease;
+}
+.banner .vt-bar { background: var(--bg); }

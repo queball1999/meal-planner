@@ -11,16 +11,17 @@ import (
 	"goeat/db"
 	"goeat/middleware"
 	"goeat/recipes"
+	"goeat/video"
 )
 
 // ── Recipe import (§5.7) ──────────────────────────────────────────────────────
 
 type recipeImportPageData struct {
-	// populated on GET after a successful import or notify redirect
+	Video videoImportState
 }
 
 func (s *Server) handleRecipeImportPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "recipe_import", recipeImportPageData{})
+	s.render(w, r, "recipe_import", recipeImportPageData{Video: s.videoImportState()})
 }
 
 func (s *Server) handleRecipeImport(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +40,10 @@ func (s *Server) handleRecipeImport(w http.ResponseWriter, r *http.Request) {
 	if _, err := url.ParseRequestURI(rawURL); err != nil {
 		s.setNotify(w, NotifyDanger, "Invalid URL.")
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
+		return
+	}
+	if video.IsVideoURL(rawURL) {
+		s.startVideoImport(w, r, hh.ID, rawURL)
 		return
 	}
 

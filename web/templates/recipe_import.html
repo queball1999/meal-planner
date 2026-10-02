@@ -2,8 +2,45 @@
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "fork"}} Import Recipe</h1>
-    <p class="page-subtitle">Paste a recipe URL to import it automatically, or enter one by hand.</p>
+    <p class="page-subtitle">Paste a recipe or cooking-video URL to import it automatically, or enter one by hand.</p>
 </div>
+
+{{/* ── Video import capability banner ─────────────────────────────────
+     Shown when a video link couldn't be fully imported here. Admins get a
+     "Download now" button (video-tools.js); everyone else is told who can. */}}
+{{$v := .Data.Video}}
+{{if not $v.HasLLM}}
+<div class="banner banner-info" role="status">
+    <span>{{icon "information"}}</span>
+    <span><strong>Video links need an AI provider.</strong> Recipe websites still import fine.
+        {{if .IsAdmin}}<a href="/settings/ai">Set one up in Settings → AI Setup</a>.{{else}}Ask an admin to set one up.{{end}}</span>
+</div>
+{{else if ne $v.Capability "full"}}
+<div class="banner banner-warning" role="status" data-video-banner{{if $v.Running}} data-video-running{{end}}
+     style="flex-wrap:wrap;align-items:center">
+    <span>{{icon "alert"}}</span>
+    <span style="flex:1 1 20rem">
+        {{if eq $v.Capability "none"}}
+        <strong>Video links can't be imported yet.</strong> The tools that read TikTok, Instagram and
+        YouTube posts haven't been downloaded to this server. Recipe websites still import fine.
+        {{else}}
+        <strong>Video import is limited.</strong> Speech-to-text isn't downloaded, so only a video's
+        caption and comments are read - and most creators say the recipe out loud.
+        {{end}}
+        {{if not .IsAdmin}}Ask an admin to download the tools in Settings → AI Setup.{{end}}
+        <span data-video-progress hidden style="display:block;margin-top:var(--sp-2)"></span>
+    </span>
+    {{if .IsAdmin}}
+    <span style="display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap">
+        {{if $v.CanInstall}}
+        <button type="button" class="btn btn-primary btn-sm" data-video-download>{{icon "download"}} Download now{{if $v.DownloadMB}} (~{{$v.DownloadMB}} MB){{end}}</button>
+        {{end}}
+        <a class="btn btn-ghost btn-sm" href="/settings/ai#video-tools">{{icon "cog"}} Setup details</a>
+    </span>
+    {{end}}
+</div>
+{{if .IsAdmin}}<script src="/static/js/video-tools.js" defer></script>{{end}}
+{{end}}
 
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">Import from URL</h2>
@@ -19,9 +56,49 @@
                 <button type="submit" class="btn btn-primary">{{icon "download"}} Import</button>
             </div>
         </div>
-        <p class="field-hint">Works with most recipe sites that publish structured data (Schema.org).</p>
+        <p class="field-hint">Recipe websites and cooking videos both work - see what's supported below.</p>
     </form>
 </div>
+
+<details class="card form-section" style="margin-bottom:1.5rem">
+    <summary class="form-section__title" style="cursor:pointer;list-style:none">
+        {{icon "help"}} What can I import? <span style="font-weight:400;color:var(--color-text-muted)">(click to expand)</span>
+    </summary>
+    <div class="guide" style="margin-top:1rem">
+        <div class="guide-step">
+            <div class="guide-step__head">{{icon "book"}}<span class="guide-step__title">Recipe websites</span></div>
+            <p class="guide-step__desc">
+                Most recipe sites and food blogs - anything that publishes standard recipe data
+                (Schema.org), which covers the big recipe sites and blogs using recipe plugins like
+                WP Recipe Maker or Tasty Recipes. Paste the page of one recipe, not a search or category page.
+                Pages behind a paywall or login can't be read.
+            </p>
+        </div>
+        <div class="guide-step">
+            <div class="guide-step__head">{{icon "video"}}<span class="guide-step__title">Cooking videos</span>
+                {{if and $v.HasLLM (eq $v.Capability "full")}}<span class="badge badge-success">Ready</span>
+                {{else if and $v.HasLLM (eq $v.Capability "caption")}}<span class="badge badge-warning">Captions only</span>
+                {{else}}<span class="badge badge-muted">Not set up</span>{{end}}
+            </div>
+            <ul class="guide-step__desc" style="padding-left:1.2rem">
+                <li><strong>TikTok</strong> - <code>tiktok.com/@user/video/…</code> and <code>vm.tiktok.com/…</code> share links</li>
+                <li><strong>Instagram</strong> - Reels and video posts (<code>instagram.com/reel/…</code>). Some posts need a login and can't be read.</li>
+                <li><strong>YouTube</strong> - Shorts and regular videos up to 15 minutes</li>
+            </ul>
+            <p class="guide-step__desc">
+                Go Eat reads the caption, the creator's own and pinned comments (YouTube and Instagram),
+                and listens to what's said, then the AI writes it up as a recipe. Amounts the video never
+                states are estimated and the recipe is tagged <span class="badge badge-muted">estimated-amounts</span> -
+                check them before you cook. Text that only appears on screen isn't read yet, and if the
+                creator says the recipe is "at the link in bio", import that page instead.
+            </p>
+        </div>
+        <div class="guide-step">
+            <div class="guide-step__head">{{icon "pencil"}}<span class="guide-step__title">Anything else</span></div>
+            <p class="guide-step__desc">Cookbooks, family recipes, private posts: use <em>Enter manually</em> below.</p>
+        </div>
+    </div>
+</details>
 
 <details class="card form-section">
     <summary class="form-section__title" style="cursor:pointer;list-style:none">
