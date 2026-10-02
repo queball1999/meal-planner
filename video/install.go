@@ -512,6 +512,9 @@ func (t Tools) install(ctx context.Context, client *http.Client, component, mode
 		return "", errors.New("TOOLS_DIR is not set")
 	}
 	if !CanInstall(component) {
+		if component == CompWhisper && isMusl() {
+			return "", errors.New("whisper.cpp has no build for Alpine (musl) - use a whisper.cpp server instead (in Docker, the whisper container)")
+		}
 		return "", fmt.Errorf("no %s download for %s - install it with your system's package manager", component, platformKey())
 	}
 	var a asset
@@ -540,10 +543,20 @@ func (t Tools) install(ctx context.Context, client *http.Client, component, mode
 	}
 
 	downloads := filepath.Join(t.Dir, ".downloads")
+	part := filepath.Join(downloads, component+".part")
+	if component == CompModel {
+		// A model downloads next to where it ends up, under a dot-name, and
+		// is renamed into place only once complete and verified: the models
+		// folder can be its own volume (Docker's /models), where a rename
+		// from TOOLS_DIR would cross filesystems, and the whisper sidecar
+		// starts the moment a ggml-*.bin appears - it must never see a
+		// half-written one.
+		downloads = t.ModelsDir()
+		part = filepath.Join(downloads, "."+ModelFile(model)+".part")
+	}
 	if err := os.MkdirAll(downloads, 0o755); err != nil {
 		return "", err
 	}
-	part := filepath.Join(downloads, component+".part")
 	defer os.Remove(part)
 	progress("downloading", 0, a.Size)
 	if err := download(ctx, client, a, part, func(n int64) { progress("downloading", n, a.Size) }); err != nil {
@@ -559,7 +572,7 @@ func (t Tools) install(ctx context.Context, client *http.Client, component, mode
 		if err := os.Rename(part, filepath.Join(dir, ModelFile(model))); err != nil {
 			return "", err
 		}
-		return a.Version, t.SetActiveModel(model)
+		return a.Version, t.UseModel(ctx, model)
 	}
 
 	exe := map[string]string{CompYtDlp: exeName(ToolYtDlp), CompFFmpeg: exeName(ToolFFmpeg), CompWhisper: exeName(ToolWhisper)}[component]

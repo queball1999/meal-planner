@@ -28,12 +28,18 @@ FROM alpine:3.22
 
 # CA roots for outbound HTTPS (AI providers, Kroger API, scraping), and an
 # unprivileged user to run as. /data is created here, owned by that user, so
-# a fresh named volume mounted over it inherits the ownership.
+# a fresh named volume mounted over it inherits the ownership. Same for
+# /models, the whisper sidecar's model volume (docker-compose.yml).
 RUN apk add --no-cache ca-certificates \
 	&& addgroup -S -g 10001 goeat \
 	&& adduser -S -D -H -u 10001 -G goeat goeat \
-	&& mkdir -p /data \
-	&& chown goeat:goeat /data
+	&& mkdir -p /data /models \
+	&& chown goeat:goeat /data /models
+
+# Video recipe import tools (yt-dlp, FFmpeg) are not part of the image: an
+# admin downloads them from Settings → AI Setup onto the data volume.
+# Speech-to-text runs in the whisper sidecar (whisper/Dockerfile).
+ENV TOOLS_DIR=/data/tools
 
 WORKDIR /app
 

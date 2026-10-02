@@ -133,7 +133,10 @@
             rowsEl.innerHTML = s.tools.filter(function (t) { return t.id !== 'model'; }).map(function (t) {
                 var info = TOOLS[t.id];
                 var state;
-                if (t.installed) {
+                if (t.source === 'server') {
+                    state = t.installed ? '<span class="badge badge-success">Connected</span>'
+                                        : '<span class="badge badge-warning">Not answering</span>';
+                } else if (t.installed) {
                     state = '<span class="badge badge-success">Installed</span>';
                 } else {
                     state = '<span class="badge ' + (t.id === 'whisper' ? 'badge-warning' : 'badge-danger') + '">Missing</span>';
@@ -141,15 +144,23 @@
                 var where = '';
                 if (t.installed && t.source === 'downloaded') where = 'Downloaded' + (t.version ? ' - version ' + esc(t.version) : '');
                 if (t.installed && t.source === 'system') where = 'Using the copy installed on this system: <code>' + esc(t.path) + '</code>';
+                if (t.source === 'server') {
+                    where = 'Transcribing on the whisper.cpp server at <code>' + esc(t.path) + '</code>' +
+                            (t.installed ? '' : ' - it isn’t answering. In Docker it starts once a speech model is downloaded below.');
+                }
 
                 var actions = '';
-                if (!t.installed && t.can_install) {
+                if (t.source === 'server') {
+                    actions = '';
+                } else if (!t.installed && t.can_install) {
                     actions = '<button type="button" class="btn btn-primary btn-sm" data-vt-install="' + t.id + '">Download (' + mb(t.size) + ')</button>';
                 } else if (t.installed && t.source === 'downloaded') {
                     actions = '<button type="button" class="btn btn-ghost btn-sm" data-vt-install="' + t.id + '">' + (t.id === 'yt-dlp' ? 'Update' : 'Reinstall') + '</button>' +
                               '<button type="button" class="btn btn-ghost btn-sm" data-vt-remove="' + t.id + '">Remove</button>';
                 } else if (!t.installed) {
-                    actions = '<span class="field-hint">No download for this system - install it with your package manager.</span>';
+                    actions = '<span class="field-hint">' + (t.id === 'whisper'
+                        ? 'No download for this system - set a whisper.cpp server below instead.'
+                        : 'No download for this system - install it with your package manager.') + '</span>';
                 }
 
                 var prog = '';
@@ -246,6 +257,15 @@
         });
 
         watch(render, function (e) { say(e.message, 'bad'); });
+
+        /* Changing the server URL (saved by the page's autosave) changes
+           which rows apply - redraw once the save has gone through. */
+        var urlInput = document.getElementById('set-WHISPER_URL');
+        if (urlInput) {
+            urlInput.addEventListener('change', function () {
+                setTimeout(function () { watch(render); }, 900);
+            });
+        }
     }
 
     /* ── Import Recipe banner ────────────────────────────────────────── */

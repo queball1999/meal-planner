@@ -38,13 +38,14 @@ type Server struct {
 	// the very next AI request instead of requiring a restart. Read them
 	// only through llmGen()/priceChain(), never as bare fields, or a request
 	// racing a settings save can read a half-updated pair.
-	genMu          sync.RWMutex
-	gen            llm.Generator // nil when no LLM is configured
-	chain          *pricing.Chain
-	jobs           *plan.JobManager
-	videoJobs      *plan.JobManager // video recipe imports (phase 16), one per household
-	videoTools     video.Tools      // where yt-dlp / ffmpeg / whisper.cpp are found
-	videoInstaller *video.Installer // downloads those tools (Settings → AI Setup)
+	genMu     sync.RWMutex
+	gen       llm.Generator // nil when no LLM is configured
+	chain     *pricing.Chain
+	jobs      *plan.JobManager
+	videoJobs *plan.JobManager // video recipe imports (phase 16), one per household
+	// videoInstaller downloads and checks yt-dlp / ffmpeg / whisper.cpp
+	// (Settings → AI Setup); videoTools() is where they're found.
+	videoInstaller *video.Installer
 	videoMu        sync.Mutex
 	videoLast      map[int64]plan.JobEvent // how each household's last video import ended
 	haScheduler    *homeassistant.Scheduler
@@ -126,9 +127,8 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		chain:          chain,
 		jobs:           plan.NewJobManager(),
 		videoJobs:      plan.NewJobManager(),
-		videoTools:     video.Tools{Dir: cfg.ToolsDir},
 		videoLast:      make(map[int64]plan.JobEvent),
-		videoInstaller: video.NewInstaller(video.Tools{Dir: cfg.ToolsDir}),
+		videoInstaller: video.NewInstaller(video.Tools{Dir: cfg.ToolsDir, ModelsPath: cfg.WhisperModelsDir}),
 		haScheduler:    homeassistant.NewScheduler(store, cfg, box),
 		version:        version,
 		imageDir:       cfg.RecipeImageDir,
@@ -143,8 +143,17 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		setupLimiter:   newAttemptLimiter(10, 15*time.Minute),
 		loginLimiter:   newAttemptLimiter(loginRateMax, time.Minute),
 	}
+	s.videoInstaller.ServerURL = func() string {
+		return settings.LiveWhisperURL(context.Background(), store, cfg)
+	}
 	s.handler = s.buildHandler()
 	return s
+}
+
+// videoTools is where video imports find their tools, with the live
+// WHISPER_URL setting applied.
+func (s *Server) videoTools() video.Tools {
+	return s.videoInstaller.Current()
 }
 
 // RunHAScheduler runs the Home Assistant shopping-list pull loop until ctx is

@@ -35,11 +35,23 @@ func (t Tools) Capability() (level string, missing []string) {
 		missing = append(missing, CompFFmpeg)
 	}
 	core := len(missing) == 0
-	if _, err := t.Find(ToolWhisper); err != nil {
-		missing = append(missing, CompWhisper)
-	}
-	if _, _, err := t.ModelPath(); err != nil {
-		missing = append(missing, CompModel)
+	if t.ServerURL != "" {
+		// A running server always has a model loaded. When it isn't up, a
+		// missing model in the shared folder is the usual reason (the
+		// Docker sidecar waits for one), so downloading one is the fix.
+		if cachedServerHealth(t.ServerURL) != nil {
+			missing = append(missing, CompWhisper)
+			if _, _, err := t.ModelPath(); err != nil {
+				missing = append(missing, CompModel)
+			}
+		}
+	} else {
+		if _, err := t.Find(ToolWhisper); err != nil {
+			missing = append(missing, CompWhisper)
+		}
+		if _, _, err := t.ModelPath(); err != nil {
+			missing = append(missing, CompModel)
+		}
 	}
 	switch {
 	case !core:
@@ -70,6 +82,9 @@ type Check struct {
 type Installer struct {
 	Tools  Tools
 	Client *http.Client
+	// ServerURL, when set, supplies Tools.ServerURL live (the WHISPER_URL
+	// setting can change without a restart).
+	ServerURL func() string
 
 	mu        sync.Mutex
 	running   bool
@@ -92,19 +107,33 @@ func NewInstaller(t Tools) *Installer {
 	}
 }
 
+// Current is Tools with the live whisper server URL filled in.
+func (in *Installer) Current() Tools {
+	t := in.Tools
+	if in.ServerURL != nil {
+		t.ServerURL = in.ServerURL()
+	}
+	return t
+}
+
 // ErrInstallRunning is returned by Start while another install is going.
 var ErrInstallRunning = errors.New("an install is already running")
 
 // Start installs components (any of Components; model names the Whisper
 // model for CompModel) one after another in the background, then runs
-// Verify. It returns at once.
+// Verify. It returns at once. With a whisper server configured, CompWhisper
+// is skipped: the server is the speech-to-text.
 func (in *Installer) Start(components []string, model string) error {
-	if in.Tools.Dir == "" {
+	t := in.Current()
+	if t.Dir == "" {
 		return errors.New("TOOLS_DIR is not set, so there is nowhere to install to")
 	}
 	want := map[string]bool{}
 	for _, c := range components {
 		want[c] = true
+	}
+	if t.ServerURL != "" {
+		delete(want, CompWhisper)
 	}
 	var order []string
 	for _, c := range Components {
@@ -136,7 +165,7 @@ func (in *Installer) Start(components []string, model string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 		defer cancel()
 		for _, c := range order {
-			version, err := in.Tools.install(ctx, in.Client, c, model, func(state string, done, total int64) {
+			version, err := t.install(ctx, in.Client, c, model, func(state string, done, total int64) {
 				in.set(c, func(p *Progress) {
 					p.State, p.Done = state, done
 					if total > 0 {
@@ -174,7 +203,7 @@ func (in *Installer) set(c string, f func(*Progress)) {
 func (in *Installer) Verify(ctx context.Context) map[string]Check {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	checks := in.Tools.verify(ctx)
+	checks := in.Current().verify(ctx)
 	in.mu.Lock()
 	in.checks, in.checkedAt = checks, time.Now()
 	in.mu.Unlock()
@@ -202,19 +231,38 @@ func (t Tools) verify(ctx context.Context) map[string]Check {
 		line, _, _ := strings.Cut(firstLine(s, "ffmpeg"), " Copyright")
 		return line
 	})
-	checks[CompWhisper] = versionCheck(ToolWhisper, []string{"--version"}, func(s string) string {
-		for _, l := range strings.Split(s, "\n") {
-			if v, ok := strings.CutPrefix(strings.TrimSpace(l), "whisper.cpp version:"); ok {
-				return "whisper.cpp " + strings.TrimSpace(v)
-			}
+	_, model, modelErr := t.ModelPath()
+	if t.ServerURL != "" {
+		// Right after a model download the Docker sidecar is still starting
+		// (it waits for a model to appear), so give it a moment.
+		wait := time.Duration(0)
+		if modelErr == nil {
+			wait = 20 * time.Second
 		}
-		return "whisper.cpp"
-	})
+		if err := waitForServer(ctx, t.ServerURL, wait); err != nil {
+			checks[CompWhisper] = Check{Detail: "whisper.cpp server " + err.Error()}
+		} else {
+			checks[CompWhisper] = Check{OK: true, Detail: "whisper.cpp server at " + t.ServerURL}
+		}
+		if modelErr != nil && checks[CompWhisper].OK {
+			// An external server with models of its own.
+			model, modelErr = "the server's model", nil
+		}
+	} else {
+		checks[CompWhisper] = versionCheck(ToolWhisper, []string{"--version"}, func(s string) string {
+			for _, l := range strings.Split(s, "\n") {
+				if v, ok := strings.CutPrefix(strings.TrimSpace(l), "whisper.cpp version:"); ok {
+					return "whisper.cpp " + strings.TrimSpace(v)
+				}
+			}
+			return "whisper.cpp"
+		})
+	}
 
 	// The model check transcribes a second of silence: it proves whisper
 	// can load the model, not just that both files exist.
-	switch _, model, err := t.ModelPath(); {
-	case err != nil:
+	switch {
+	case modelErr != nil:
 		checks[CompModel] = Check{Detail: "Not installed"}
 	case !checks[CompWhisper].OK:
 		checks[CompModel] = Check{Detail: model + " - can't test until whisper.cpp runs"}
@@ -298,13 +346,16 @@ type Snapshot struct {
 	Models     []ModelState `json:"models"`
 	CheckedAt  string       `json:"checked_at,omitempty"`
 	ToolsDir   string       `json:"tools_dir"`
+	// ServerURL is the whisper.cpp server transcribing instead of a local
+	// whisper-cli; "" when transcription runs here.
+	ServerURL string `json:"server_url"`
 }
 
 // Snapshot reports the current state of every component.
 func (in *Installer) Snapshot() Snapshot {
-	t := in.Tools
+	t := in.Current()
 	level, missing := t.Capability()
-	s := Snapshot{Capability: level, Missing: missing, ToolsDir: t.Dir}
+	s := Snapshot{Capability: level, Missing: missing, ToolsDir: t.Dir, ServerURL: t.ServerURL}
 
 	_, activeModel, modelErr := t.ModelPath()
 	installedModels := map[string]bool{}
@@ -322,6 +373,9 @@ func (in *Installer) Snapshot() Snapshot {
 			if modelErr == nil {
 				ts.Installed, ts.Source, ts.Version = true, "downloaded", activeModel
 			}
+		} else if c == CompWhisper && t.ServerURL != "" {
+			ts.CanInstall, ts.Source, ts.Path = false, "server", t.ServerURL
+			ts.Installed = cachedServerHealth(t.ServerURL) == nil
 		} else if path, err := t.Find(tools[c]); err == nil {
 			ts.Installed, ts.Path = true, path
 			ts.Source = "system"

@@ -1,0 +1,19 @@
+# Local override: build the whisper sidecar from whisper/ instead of pulling
+# ghcr.io/queball1999/goeat-whisper. Temporary - until CI has published that
+# image (and it's set public on GitHub), pulling it fails with "denied".
+#
+# The Makefile's docker-* targets add this file automatically while it exists:
+#   make docker-rebuild
+# or by hand:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yaml up -d --build
+#
+# Delete this file once the published image pulls, and the targets go back to
+# plain docker-compose.yml.
+#
+# First build compiles whisper.cpp: about 2 minutes, cached after that.
+services:
+  whisper:
+    build:
+      context: ./whisper
+    image: goeat-whisper:local
+    pull_policy: build

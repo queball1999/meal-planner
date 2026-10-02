@@ -16,6 +16,9 @@ import (
 // sugar" for "ground turkey"), and the model that structures the recipe is
 // told so.
 func Transcribe(ctx context.Context, t Tools, wavPath string) (text, model string, err error) {
+	if t.ServerURL != "" {
+		return transcribeServer(ctx, t, wavPath)
+	}
 	whisper, err := t.Find(ToolWhisper)
 	if err != nil {
 		return "", "", err

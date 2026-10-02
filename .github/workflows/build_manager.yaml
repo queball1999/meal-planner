@@ -117,9 +117,19 @@ jobs:
       packages: write
     secrets: inherit
 
+  # The whisper.cpp sidecar for video recipe import (docker-compose.yml).
+  # Released with the app so both images always carry the same version tag.
+  build-whisper:
+    needs: [build-windows, build-linux, build-server]
+    uses: ./.github/workflows/whisper_image.yaml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
   release:
     runs-on: ubuntu-24.04
-    needs: [guard, build-windows, build-linux, build-server, build-docker]
+    needs: [guard, build-windows, build-linux, build-server, build-docker, build-whisper]
 
     permissions:
       contents: write

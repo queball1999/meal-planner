@@ -106,6 +106,66 @@ bonus, never required.
    all downloaded, hash-checked and verified in 18 s. Settings card and
    banner not yet clicked through in the running app.
 
+## Speech-to-text per install type (commits 5-6, added 2026-10-02)
+
+| Install | yt-dlp + FFmpeg | Speech-to-text |
+|---|---|---|
+| Desktop (Windows / Linux) | downloaded from AI Setup into the app data folder | local whisper-cli, downloaded from AI Setup |
+| Plain server binary (no Docker) | downloaded from AI Setup | local whisper-cli (glibc Linux, Windows), or point WHISPER_URL at any whisper.cpp server |
+| Docker | downloaded from AI Setup into /data/tools (yt-dlp's musllinux build, static FFmpeg) | the `whisper` sidecar container, WHISPER_URL=http://whisper:8081 |
+
+whisper.cpp has no musl build, so the Alpine app image can't run whisper-cli
+itself; the sidecar is how Docker gets speech-to-text. Pattern from
+QSS/audio-transcription-server (internal-only whisper-server, CPU only,
+`--no-gpu`, audio POSTed to `/inference`), with three changes:
+
+- **Model on a shared volume, downloaded from Go Eat.** whisper-server exits
+  (code 3) if its model is missing at startup. The `whisper-models` volume is
+  mounted at `/models` in both containers (WHISPER_MODELS_DIR=/models in the
+  app); our image's entrypoint waits for a model, then starts the server.
+  Same path in both containers, so "Use this" on a model can call the
+  server's `POST /load` with the app's own path. Not nested under /data:
+  Docker would create the nested mount point root-owned inside the existing
+  goeat-data volume, and the app runs as an unprivileged user.
+- **Portable CPU build.** ATS builds the image on the host (GGML_NATIVE=ON).
+  We publish from CI, so native would bake in the runner's CPU and SIGILL
+  elsewhere. Built with GGML_NATIVE=OFF + GGML_BACKEND_DL=ON +
+  GGML_CPU_ALL_VARIANTS=ON: every CPU variant ships, the best one is picked at
+  runtime (how upstream's own release zips are built).
+- **Published image** `ghcr.io/<owner>/goeat-whisper`, amd64 on
+  ubuntu-24.04 and arm64 on the native ubuntu-24.04-arm runner (C++ under QEMU
+  is far too slow), merged into one multi-arch tag. Released with Go Eat.
+
+WHISPER_URL is a Settings value (AI Setup card), read live like UPDATE_CHECK,
+so desktop or plain-binary installs can also use a whisper server elsewhere
+(a home server) instead of transcribing locally.
+
+5. **whisper.cpp server backend.** `video.Tools.ServerURL`: Transcribe POSTs
+   the WAV to `<url>/inference` instead of running whisper-cli; Capability
+   probes `<url>/health` (cached briefly); Verify checks health and
+   transcribes a second of silence through the server; SetActiveModel calls
+   `/load`. WHISPER_URL + WHISPER_MODELS_DIR config, AI Setup card shows the
+   server row and the URL field.
+   Status: done (uncommitted). Unit-tested against a fake whisper-server;
+   live: the @nytcooking TikTok transcribed through the real container in
+   1.6 s (tiny.en). `/load` is only sent when WHISPER_MODELS_DIR is set
+   (shared folder): whisper-server has a bug where a /load for a path it
+   can't see leaves it reporting "loading model" until restarted.
+
+6. **whisper image, CI, compose.** `whisper/Dockerfile` + `entrypoint.sh`,
+   `.github/workflows/whisper_image.yaml` (called from build_manager),
+   compose `whisper` service + `whisper-models` volume, app image gets
+   TOOLS_DIR=/data/tools and an app-owned /models.
+   Status: done (uncommitted); CI workflow not yet run. Local amd64 image:
+   146 MB, ~90 s to build, waits with no model, picked the haswell CPU
+   variant at runtime, switches models via /load. App + whisper together:
+   unreachable until a model lands, healthy seconds after. Found and fixed
+   on the way: models downloaded into TOOLS_DIR/.downloads and were renamed
+   into /models - a cross-volume rename that fails in Docker, and the
+   sidecar could start on a half-written file. Models now download as
+   .ggml-<name>.bin.part inside the models folder. yt-dlp (musllinux) and
+   the static FFmpeg verified running on Alpine.
+
 Later (after the local path is verified): cloud transcription backends,
 Docker image (`apk add yt-dlp ffmpeg`; upstream whisper Linux builds are
 glibc, Alpine is musl), on-screen text from frames.

@@ -218,6 +218,12 @@ var Defs = []Definition{
 		Help:       "Optional auth token (Browserless TOKEN). Leave empty when the service is unauthenticated.",
 		FromConfig: func(c *config.Config) string { return c.RenderToken }},
 
+	{Key: WhisperURLKey, Label: "whisper.cpp server URL", Category: "Speech-to-text", Kind: KindString,
+		Help: "Transcribe video recipes with a whisper.cpp server instead of on this machine. " +
+			"Docker sets http://whisper:8081 (the whisper container). Leave empty to use the downloaded " +
+			"whisper.cpp here. Takes effect immediately.",
+		FromConfig: func(c *config.Config) string { return c.WhisperURL }},
+
 	{Key: "RECIPE_IMAGE_DIR", Label: "Recipe image directory", Category: "Storage", Kind: KindString,
 		Help:       "Writable directory for downloaded recipe images, served at /recipe-images/. Empty disables image download.",
 		FromConfig: func(c *config.Config) string { return c.RecipeImageDir }},
@@ -410,6 +416,9 @@ func Apply(ctx context.Context, store db.Store, cfg *config.Config, warn func(fo
 	}
 	if v, ok := get("WEEK_START_DAY"); ok {
 		cfg.WeekStartDay = v
+	}
+	if v, ok := get(WhisperURLKey); ok {
+		cfg.WhisperURL = v
 	}
 	if v, ok := get(UpdateCheckKey); ok {
 		cfg.UpdateCheck = config.ParseOnOff(v, cfg.UpdateCheck)

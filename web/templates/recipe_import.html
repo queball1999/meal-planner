@@ -23,6 +23,10 @@
         {{if eq $v.Capability "none"}}
         <strong>Video links can't be imported yet.</strong> The tools that read TikTok, Instagram and
         YouTube posts haven't been downloaded to this server. Recipe websites still import fine.
+        {{else if $v.ServerURL}}
+        <strong>Video import is limited.</strong> The speech-to-text server at <code>{{$v.ServerURL}}</code>
+        isn't answering, so only a video's caption and comments are read.
+        {{if $v.NeedsModel}}It starts once a speech model is downloaded.{{else}}Check that the whisper container is running.{{end}}
         {{else}}
         <strong>Video import is limited.</strong> Speech-to-text isn't downloaded, so only a video's
         caption and comments are read - and most creators say the recipe out loud.

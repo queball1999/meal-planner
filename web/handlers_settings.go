@@ -62,6 +62,9 @@ type settingsPageData struct {
 	SharedFields []settingsFieldView // sampling params, applied to every provider
 	Categories   []settingsCategoryView
 	ToolsDir     string // TOOLS_DIR, shown on the Video recipe import card
+	// WhisperURL is the WHISPER_URL field, rendered inside the Video recipe
+	// import card rather than as a category card of its own.
+	WhisperURL *settingsFieldView
 }
 
 var kindNames = map[settings.Kind]string{
@@ -205,8 +208,17 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, page str
 	// as a plain category card here - it belongs next to the per-store
 	// scraping config it configures, not among the General settings.
 	generalCategories := make([]settingsCategoryView, 0, len(categories))
+	var whisperURL *settingsFieldView
 	for _, c := range categories {
 		if c.Name == "Scraping" {
+			continue
+		}
+		if c.Name == "Speech-to-text" { // lives on the AI Setup tab's video card
+			for i := range c.Fields {
+				if c.Fields[i].Key == settings.WhisperURLKey {
+					whisperURL = &c.Fields[i]
+				}
+			}
 			continue
 		}
 		generalCategories = append(generalCategories, c)
@@ -219,7 +231,8 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, page str
 		Providers:    providers,
 		SharedFields: sharedAI,
 		Categories:   generalCategories,
-		ToolsDir:     s.videoTools.Dir,
+		ToolsDir:     s.videoTools().Dir,
+		WhisperURL:   whisperURL,
 	})
 }
 

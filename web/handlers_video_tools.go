@@ -31,7 +31,7 @@ func (s *Server) handleVideoToolsInstall(w http.ResponseWriter, r *http.Request)
 	}
 	components := r.Form["component"]
 	if r.FormValue("missing") == "1" {
-		_, components = s.videoTools.Capability()
+		_, components = s.videoTools().Capability()
 	}
 	if len(components) == 0 {
 		writeJSON(w, http.StatusOK, s.videoInstaller.Snapshot())
@@ -58,7 +58,7 @@ func (s *Server) handleVideoToolsVerify(w http.ResponseWriter, r *http.Request) 
 // handleVideoToolsModel: POST /settings/video-tools/model - name=<model>
 // makes an installed model the one transcription uses.
 func (s *Server) handleVideoToolsModel(w http.ResponseWriter, r *http.Request) {
-	if err := s.videoTools.SetActiveModel(r.FormValue("name")); err != nil {
+	if err := s.videoTools().UseModel(r.Context(), r.FormValue("name")); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -75,9 +75,9 @@ func (s *Server) handleVideoToolsRemove(w http.ResponseWriter, r *http.Request) 
 	}
 	var err error
 	if m := r.FormValue("model"); m != "" {
-		err = s.videoTools.RemoveModel(m)
+		err = s.videoTools().RemoveModel(m)
 	} else {
-		err = s.videoTools.Remove(r.FormValue("component"))
+		err = s.videoTools().Remove(r.FormValue("component"))
 	}
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -94,24 +94,38 @@ type videoImportState struct {
 	Missing    []string // component ids
 	CanInstall bool     // every missing component has a download for this machine
 	Running    bool     // an install is in progress
+	// ServerURL is the whisper.cpp server doing speech-to-text, "" for local.
+	ServerURL string
+	// NeedsModel: no speech model downloaded yet (with a server, the Docker
+	// sidecar is waiting for one).
+	NeedsModel bool
 	// DownloadMB is roughly what "Download now" fetches.
 	DownloadMB int64
 }
 
 func (s *Server) videoImportState() videoImportState {
-	level, missing := s.videoTools.Capability()
+	tools := s.videoTools()
+	level, missing := tools.Capability()
 	st := videoImportState{
 		HasLLM:     s.llmGen() != nil,
 		Capability: level,
 		Missing:    missing,
-		CanInstall: s.videoTools.Dir != "",
+		CanInstall: tools.Dir != "",
 		Running:    s.videoInstaller.Snapshot().Running,
+		ServerURL:  tools.ServerURL,
 	}
 	var size int64
+	installable := 0
 	for _, c := range missing {
+		st.NeedsModel = st.NeedsModel || c == video.CompModel
+		if c == video.CompWhisper && tools.ServerURL != "" {
+			continue // the server, not a download
+		}
+		installable++
 		st.CanInstall = st.CanInstall && video.CanInstall(c)
 		size += video.DownloadSize(c, video.DefaultModel)
 	}
+	st.CanInstall = st.CanInstall && installable > 0
 	st.DownloadMB = (size + 1<<20 - 1) >> 20
 	return st
 }

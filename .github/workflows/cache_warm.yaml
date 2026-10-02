@@ -17,6 +17,7 @@ on:
       - go.mod
       - go.sum
       - Dockerfile
+      - whisper/**
       - desktop/package-lock.json
       - desktop/src-tauri/Cargo.lock
       - desktop/src-tauri/Cargo.toml
@@ -57,6 +58,12 @@ jobs:
 
   build-docker:
     uses: ./.github/workflows/docker_image.yaml
+    permissions:
+      contents: read
+      packages: write
+
+  build-whisper:
+    uses: ./.github/workflows/whisper_image.yaml
     permissions:
       contents: read
       packages: write

@@ -29,6 +29,13 @@ type Tools struct {
 	// "" uses the one picked in Settings (ActiveModel), else the first
 	// installed one in ModelPreference order.
 	Model string
+	// ModelsPath overrides where Whisper models live (WHISPER_MODELS_DIR).
+	// "" means Dir/models. The Docker setup puts them on a volume shared
+	// with the whisper sidecar.
+	ModelsPath string
+	// ServerURL (WHISPER_URL), when set, sends audio to a whisper.cpp server
+	// instead of running whisper-cli here (see server.go).
+	ServerURL string
 }
 
 // toolDirs is where each tool lives under Tools.Dir. The extra
@@ -75,8 +82,12 @@ func (e *MissingError) Unwrap() error { return ErrToolMissing }
 // and base is the best speed/accuracy trade-off on a CPU.
 var ModelPreference = []string{"base.en", "small.en", "tiny.en", "base", "small", "tiny"}
 
-// ModelsDir is where Whisper models live: TOOLS_DIR/models.
+// ModelsDir is where Whisper models live: WHISPER_MODELS_DIR, else
+// TOOLS_DIR/models.
 func (t Tools) ModelsDir() string {
+	if t.ModelsPath != "" {
+		return t.ModelsPath
+	}
 	if t.Dir == "" {
 		return ""
 	}

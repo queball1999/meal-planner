@@ -249,6 +249,19 @@
         <div class="guide-step">
             <div class="guide-step__head"><span class="guide-step__num">2</span><span class="guide-step__title">Download the tools</span></div>
             <p class="guide-step__desc">yt-dlp and FFmpeg are required. whisper.cpp and a speech model let Go Eat listen to the video - most creators say the recipe out loud rather than writing it in the caption.</p>
+            {{with .Data.WhisperURL}}
+            <details class="ai-sampling"{{if .Value}} open{{end}}>
+                <summary class="ai-sampling__summary">Speech-to-text on another server{{if .Value}} <span class="badge badge-accent">in use</span>{{end}}</summary>
+                <div class="field settings-field">
+                    <label class="field-label" for="set-{{.Key}}">
+                        {{.Label}}
+                        {{if eq .Source "admin"}}<span class="badge badge-accent" title="Overrides the .env value">edited</span>{{end}}
+                    </label>
+                    <input class="field-input" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}" placeholder="http://whisper:8081">
+                    <span class="field-hint">{{.Help}} With a server, whisper.cpp isn't downloaded here; speech models still are, into the folder the server reads.</span>
+                </div>
+            </details>
+            {{end}}
             <div data-vt-rows></div>
             <p style="margin-top:var(--sp-3)">
                 <button type="button" class="btn btn-primary" data-vt-install-missing hidden>{{icon "download"}} Download everything missing</button>

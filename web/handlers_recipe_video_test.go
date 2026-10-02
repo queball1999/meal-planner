@@ -73,7 +73,11 @@ func TestRecipeImportPageBanner(t *testing.T) {
 		{"nothing installed, member", false, videoImportState{HasLLM: true, Capability: "none", CanInstall: true},
 			[]string{"can't be imported yet", "Ask an admin"}, []string{"data-video-download", "video-tools.js"}},
 		{"captions only", true, videoImportState{HasLLM: true, Capability: "caption", CanInstall: true, Running: true},
-			[]string{"Video import is limited", "data-video-running", "Captions only"}, nil},
+			[]string{"Video import is limited", "data-video-running", "Captions only", "Speech-to-text isn't downloaded"}, nil},
+		{"server waiting for a model", true, videoImportState{HasLLM: true, Capability: "caption", CanInstall: true, ServerURL: "http://whisper:8081", NeedsModel: true},
+			[]string{"server at <code>http://whisper:8081</code>", "starts once a speech model is downloaded", "data-video-download"}, nil},
+		{"server down, nothing to download", true, videoImportState{HasLLM: true, Capability: "caption", ServerURL: "http://whisper:8081"},
+			[]string{"whisper container is running"}, []string{"data-video-download"}},
 		{"ready", true, videoImportState{HasLLM: true, Capability: "full"},
 			[]string{"badge-success\">Ready"}, []string{"data-video-banner", "Video links need"}},
 	}
@@ -98,8 +102,7 @@ func TestRecipeImportPageBanner(t *testing.T) {
 }
 
 func TestVideoToolsInstallRejectsBadInput(t *testing.T) {
-	tools := video.Tools{Dir: t.TempDir()}
-	s := &Server{videoTools: tools, videoInstaller: video.NewInstaller(tools)}
+	s := &Server{videoInstaller: video.NewInstaller(video.Tools{Dir: t.TempDir()})}
 
 	post := func(form url.Values) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/settings/video-tools/install", strings.NewReader(form.Encode()))

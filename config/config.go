@@ -152,6 +152,14 @@ type Config struct {
 	// deliberately not editable from the Settings page. Defaults to
 	// ./data/tools, or GOEAT_DATA_DIR/tools on desktop.
 	ToolsDir string
+	// WhisperModelsDir (WHISPER_MODELS_DIR) overrides where Whisper models
+	// are kept (default TOOLS_DIR/models). Docker sets /models: a volume
+	// shared with the whisper sidecar, mounted at the same path in both.
+	WhisperModelsDir string
+	// WhisperURL (WHISPER_URL) is a whisper.cpp server to transcribe with
+	// instead of a local whisper-cli, e.g. http://whisper:8081 in Docker.
+	// Also editable in Settings → AI Setup, read live.
+	WhisperURL string
 
 	// ItemImageDir is the writable directory for catalog-item images
 	// (00010_items.sql). Served at /item-images/{name}. If empty, image
@@ -307,6 +315,8 @@ func Load() (*Config, error) {
 	if cfg.Desktop {
 		cfg.DesktopInstall = loadDesktopInstall()
 	}
+	cfg.WhisperModelsDir = os.Getenv("WHISPER_MODELS_DIR")
+	cfg.WhisperURL = os.Getenv("WHISPER_URL")
 	cfg.ToolsDir = os.Getenv("TOOLS_DIR")
 	if cfg.ToolsDir == "" {
 		cfg.ToolsDir = "./data/tools"

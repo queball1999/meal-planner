@@ -35,7 +35,7 @@ func (s *Server) startVideoImport(w http.ResponseWriter, r *http.Request, househ
 		http.Redirect(w, r, "/recipes/import", http.StatusSeeOther)
 		return
 	}
-	if level, _ := s.videoTools.Capability(); level == video.CapNone {
+	if level, _ := s.videoTools().Capability(); level == video.CapNone {
 		who := "Ask an admin to download them in Settings → AI Setup."
 		if middleware.UserFromCtx(r).IsAdmin() {
 			who = "Use Download now above, or Settings → AI Setup."
@@ -53,7 +53,7 @@ func (s *Server) startVideoImport(w http.ResponseWriter, r *http.Request, househ
 		importer := recipes.VideoImporter{
 			Store:       s.store,
 			Gen:         gen,
-			Tools:       s.videoTools,
+			Tools:       s.videoTools(),
 			ImageDir:    s.imageDir,
 			Progress:    j.EmitStatus,
 			OnDelta:     j.EmitDelta,

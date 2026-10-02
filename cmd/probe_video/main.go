@@ -48,8 +48,10 @@ func main() {
 	if err != nil || gen == nil {
 		log.Fatal("no LLM configured: ", err)
 	}
-	tools := video.Tools{Dir: cfg.ToolsDir}
-	fmt.Printf("provider=%s model=%s tools=%s\n\n", gen.ProviderName(), gen.ModelName(), tools.Dir)
+	tools := video.Tools{Dir: cfg.ToolsDir, ModelsPath: cfg.WhisperModelsDir,
+		ServerURL: settings.LiveWhisperURL(context.Background(), store, cfg)}
+	fmt.Printf("provider=%s model=%s tools=%s whisper server=%q\n\n",
+		gen.ProviderName(), gen.ModelName(), tools.Dir, tools.ServerURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()

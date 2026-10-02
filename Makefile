@@ -43,37 +43,42 @@ run:
 # - wipes the database and recipe images and puts the app back at the
 # first-run setup wizard. There is no separate rm -rf step needed.
 
+# While docker-compose.dev.yaml exists, every target below layers it on top
+# of docker-compose.yml (it builds the whisper sidecar locally instead of
+# pulling it). Delete that file to go back to the plain compose file.
+COMPOSE = docker compose$(if $(wildcard docker-compose.dev.yaml), -f docker-compose.yml -f docker-compose.dev.yaml)
+
 ## docker-up: start the stack (no rebuild)
 docker-up:
-	docker compose up -d
+	$(COMPOSE) up -d
 
 ## docker-rebuild: rebuild the image and restart the container
 docker-rebuild:
-	docker compose up -d --build
+	$(COMPOSE) up -d --build
 
 ## docker-build: rebuild the image without (re)starting the container
 docker-build:
-	docker compose build
+	$(COMPOSE) build
 
 ## docker-restart: restart the container
 docker-restart:
-	docker compose restart
+	$(COMPOSE) restart
 
 ## docker-down: stop and remove the stack (keeps the goeat-data volume)
 docker-down:
-	docker compose down
+	$(COMPOSE) down
 
 ## docker-reset: stop the stack AND delete the goeat-data volume (resets db + setup wizard)
 docker-reset:
-	docker compose down -v
+	$(COMPOSE) down -v
 
 ## docker-logs: follow container logs
 docker-logs:
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 ## docker-ps: list containers
 docker-ps:
-	docker compose ps
+	$(COMPOSE) ps
 
 # --- Backup and restore ---
 #
@@ -120,7 +125,7 @@ docker-restore:
 	src=$$(find "$$extract" -mindepth 1 -maxdepth 1 -type d); \
 	if [ -z "$$src" ]; then echo "Archive did not contain the expected backup folder"; rm -rf "$$extract"; exit 1; fi; \
 	[ -f "$$src/.env" ] && cp "$$src/.env" .env && echo "Restored .env"; \
-	docker compose down; \
+	$(COMPOSE) down; \
 	echo "Restoring goeat-data volume..."; \
 	MSYS_NO_PATHCONV=1 docker run --rm -v goeat-data:/volume -v "$$src":/backup alpine sh -c 'rm -rf /volume/..?* /volume/.[!.]* /volume/*; tar xzf /backup/goeat-data.tar.gz -C /volume'; \
 	rm -rf "$$extract"; \
