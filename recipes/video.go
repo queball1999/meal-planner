@@ -105,12 +105,16 @@ func (v VideoImporter) Import(ctx context.Context, householdID int64, rawURL str
 	if text.Caption == "" && text.Transcript == "" && len(text.Comments) == 0 {
 		return 0, fmt.Errorf("recipes: %w - it has no caption and no speech", ErrNoRecipeInVideo)
 	}
+	links := CaptionLinks(text)
 
 	v.progress("Asking the AI to write up the recipe…")
 	if v.OnModelCall != nil {
 		v.OnModelCall()
 	}
 	recipe, err := StructureVideoRecipe(ctx, v.Gen, text, v.OnDelta)
+	if errors.Is(err, ErrNoRecipeInVideo) && len(links) > 0 {
+		return 0, &LinksError{Err: err, Links: links}
+	}
 	if err != nil {
 		return 0, err
 	}

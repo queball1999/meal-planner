@@ -45,7 +45,7 @@ func (s *Server) startVideoImport(w http.ResponseWriter, r *http.Request, househ
 		return
 	}
 
-	s.setVideoResult(householdID, nil)
+	s.setVideoResult(householdID)
 	_, started := s.videoJobs.Start(context.Background(), householdID, func(j *plan.Job) {
 		ctx, cancel := context.WithTimeout(context.Background(), videoImportTimeout)
 		defer cancel()
@@ -60,21 +60,30 @@ func (s *Server) startVideoImport(w http.ResponseWriter, r *http.Request, househ
 			OnModelCall: j.EmitLLMStart,
 		}
 		id, err := importer.Import(ctx, householdID, rawURL)
-		var final plan.JobEvent
+		var final []plan.JobEvent
 		var dup *recipes.DuplicateError
-		if errors.As(err, &dup) {
+		var linked *recipes.LinksError
+		switch {
+		case errors.As(err, &dup):
 			j.Status = plan.JobDone
-			final = plan.JobEvent{Type: "done", Message: fmt.Sprintf("/recipes/%d?already", dup.ID)}
-		} else if err != nil {
+			final = []plan.JobEvent{{Type: "done", Message: fmt.Sprintf("/recipes/%d?already", dup.ID)}}
+		case err != nil:
 			log.Printf("video import %s: %v", rawURL, err)
 			j.Status, j.Error = plan.JobFailed, err.Error()
-			final = plan.JobEvent{Type: "error", Message: videoImportMessage(err)}
-		} else {
+			if errors.As(err, &linked) {
+				// One link per line, sent before "error" so the page has
+				// them when it shows the failure.
+				final = append(final, plan.JobEvent{Type: "links", Message: strings.Join(linked.Links, "\n")})
+			}
+			final = append(final, plan.JobEvent{Type: "error", Message: videoImportMessage(err)})
+		default:
 			j.Status = plan.JobDone
-			final = plan.JobEvent{Type: "done", Message: fmt.Sprintf("/recipes/%d", id)}
+			final = []plan.JobEvent{{Type: "done", Message: fmt.Sprintf("/recipes/%d", id)}}
 		}
-		s.setVideoResult(householdID, &final)
-		j.Emit(final)
+		s.setVideoResult(householdID, final...)
+		for _, e := range final {
+			j.Emit(e)
+		}
 	})
 	if !started {
 		s.setNotify(w, NotifyInfo, "A video import is already running - showing its progress.")
@@ -112,34 +121,38 @@ func (s *Server) handleVideoImportStatus(w http.ResponseWriter, r *http.Request)
 	// the browser has connected): replay how it ended.
 	final := s.videoResult(hh.ID)
 	if final == nil {
-		final = &plan.JobEvent{Type: "error", Message: "No video import is running. Paste a link on the Import Recipe page."}
+		final = []plan.JobEvent{{Type: "error", Message: "No video import is running. Paste a link on the Import Recipe page."}}
 	}
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", final.Type, final.Message)
+	for _, e := range final {
+		fmt.Fprintf(w, "event: %s\n", e.Type)
+		for _, line := range strings.Split(e.Message, "\n") {
+			fmt.Fprintf(w, "data: %s\n", line)
+		}
+		fmt.Fprint(w, "\n")
+	}
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
 }
 
-// setVideoResult records (or, with nil, clears) how a household's last video
-// import ended. In memory: it only has to outlive the gap between the job
-// finishing and the progress page connecting.
-func (s *Server) setVideoResult(householdID int64, e *plan.JobEvent) {
+// setVideoResult records (or, with no events, clears) how a household's last
+// video import ended: its closing events, replayed in order. In memory: it
+// only has to outlive the gap between the job finishing and the progress page
+// connecting.
+func (s *Server) setVideoResult(householdID int64, events ...plan.JobEvent) {
 	s.videoMu.Lock()
 	defer s.videoMu.Unlock()
-	if e == nil {
+	if len(events) == 0 {
 		delete(s.videoLast, householdID)
 		return
 	}
-	s.videoLast[householdID] = *e
+	s.videoLast[householdID] = events
 }
 
-func (s *Server) videoResult(householdID int64) *plan.JobEvent {
+func (s *Server) videoResult(householdID int64) []plan.JobEvent {
 	s.videoMu.Lock()
 	defer s.videoMu.Unlock()
-	if e, ok := s.videoLast[householdID]; ok {
-		return &e
-	}
-	return nil
+	return s.videoLast[householdID]
 }
 
 // videoImportMessage is the error a person sees on the progress page:

@@ -36,15 +36,15 @@ func TestVideoImportMessage(t *testing.T) {
 }
 
 func TestVideoResultIsPerHouseholdAndClearable(t *testing.T) {
-	s := &Server{videoLast: make(map[int64]plan.JobEvent)}
-	s.setVideoResult(1, &plan.JobEvent{Type: "done", Message: "/recipes/7"})
-	if got := s.videoResult(1); got == nil || got.Message != "/recipes/7" {
+	s := &Server{videoLast: make(map[int64][]plan.JobEvent)}
+	s.setVideoResult(1, plan.JobEvent{Type: "done", Message: "/recipes/7"})
+	if got := s.videoResult(1); len(got) != 1 || got[0].Message != "/recipes/7" {
 		t.Fatalf("household 1 result = %+v", got)
 	}
 	if s.videoResult(2) != nil {
 		t.Error("household 2 must not see household 1's import")
 	}
-	s.setVideoResult(1, nil)
+	s.setVideoResult(1)
 	if s.videoResult(1) != nil {
 		t.Error("a new import should clear the last result")
 	}

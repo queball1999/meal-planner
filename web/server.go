@@ -47,7 +47,7 @@ type Server struct {
 	// (Settings → AI Setup); videoTools() is where they're found.
 	videoInstaller *video.Installer
 	videoMu        sync.Mutex
-	videoLast      map[int64]plan.JobEvent // how each household's last video import ended
+	videoLast      map[int64][]plan.JobEvent // how each household's last video import ended
 	haScheduler    *homeassistant.Scheduler
 	version        string
 	imageDir       string        // writable dir for recipe images (§5.7); "" = skip download
@@ -127,7 +127,7 @@ func NewServer(cfg *config.Config, store db.Store, gen llm.Generator, version st
 		chain:          chain,
 		jobs:           plan.NewJobManager(),
 		videoJobs:      plan.NewJobManager(),
-		videoLast:      make(map[int64]plan.JobEvent),
+		videoLast:      make(map[int64][]plan.JobEvent),
 		videoInstaller: video.NewInstaller(video.Tools{Dir: cfg.ToolsDir, ModelsPath: cfg.WhisperModelsDir}),
 		haScheduler:    homeassistant.NewScheduler(store, cfg, box),
 		version:        version,

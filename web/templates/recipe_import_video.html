@@ -24,12 +24,23 @@
     <div class="skeleton-card__icon icon-spin" aria-hidden="true" id="vid-icon">{{icon "autorenew"}}</div>
     <h2 class="skeleton-card__title" id="vid-title">Working…</h2>
     <p class="skeleton-card__body" id="vid-status">Connecting…</p>
+    <div id="vid-links" hidden style="margin-top:var(--sp-4)">
+        <p class="skeleton-card__body">The caption links to a page that may have the full recipe:</p>
+        <div id="vid-links-list" style="display:flex;flex-direction:column;gap:var(--sp-2);align-items:center;margin-top:var(--sp-2)"></div>
+    </div>
     <p id="vid-back" hidden style="margin-top:var(--sp-4)">
         <a href="/recipes/import" class="btn btn-primary">{{icon "arrow-left"}} Back to Import Recipe</a>
     </p>
 </div>
 <template id="vid-icon-check">{{icon "check"}}</template>
 <template id="vid-icon-close">{{icon "close"}}</template>
+<template id="vid-link-form">
+    <form method="POST" action="/recipes/import" style="margin:0">
+        {{.CSRFField}}
+        <input type="hidden" name="url">
+        <button type="submit" class="btn btn-secondary btn-sm">{{icon "download"}} <span></span></button>
+    </form>
+</template>
 
 <details class="card form-section" id="vid-debug" style="margin:0 auto">
     <summary style="cursor:pointer;font-weight:var(--weight-semi)">{{icon "robot"}} Debug: AI reply</summary>
@@ -79,6 +90,24 @@
         liveBuffer += e.data;
         live.textContent = liveBuffer;
         live.scrollTop = live.scrollHeight;
+    });
+
+    /* "links": recipe pages named in the caption (recipes.CaptionLinks), one
+     * per line, offered when the video itself had no recipe. */
+    es.addEventListener('links', function (e) {
+        var list = document.getElementById('vid-links-list');
+        var tpl = document.getElementById('vid-link-form');
+        list.innerHTML = '';
+        String(e.data || '').split('\n').forEach(function (link) {
+            if (!/^https?:\/\//i.test(link)) return;
+            var form = tpl.content.firstElementChild.cloneNode(true);
+            form.querySelector('input[name="url"]').value = link;
+            var host = link.replace(/^https?:\/\/(www\.)?/i, '');
+            form.querySelector('button span').textContent = 'Import ' + (host.length > 50 ? host.slice(0, 49) + '…' : host);
+            form.querySelector('button').title = link;
+            list.appendChild(form);
+        });
+        document.getElementById('vid-links').hidden = !list.children.length;
     });
 
     es.addEventListener('done', function (e) {
