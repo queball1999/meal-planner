@@ -66,10 +66,10 @@ type conn struct {
 
 	writeMu sync.Mutex // serializes Send calls: x/net/websocket requires this
 
-	mu      sync.Mutex
-	pending map[int64]chan rpcMessage
-	closed  chan struct{}
-	closeMu sync.Once
+	mu       sync.Mutex
+	pending  map[int64]chan rpcMessage
+	closed   chan struct{}
+	closeMu  sync.Once
 	closeErr error
 
 	// events carries every unsolicited message (Method set, ID zero) - most

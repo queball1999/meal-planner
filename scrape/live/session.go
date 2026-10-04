@@ -19,7 +19,7 @@ const (
 	// closed without clicking Cancel, a browser tab left open - so it cannot
 	// leak a Browserless tab forever. Reset on every frame relayed and every
 	// input forwarded.
-	idleSessionTimeout = 5 * time.Minute
+	idleSessionTimeout  = 5 * time.Minute
 	connectTimeout      = 20 * time.Second
 	screencastMaxWidth  = 1024
 	screencastMaxHeight = 768
