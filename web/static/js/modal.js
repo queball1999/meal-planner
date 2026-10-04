@@ -66,6 +66,7 @@ window.goeat = window.goeat || {};
         if (overlay.parentElement !== document.body) {
             document.body.appendChild(overlay);
         }
+        dirtyModals.delete(overlay); // a reopened modal starts clean
         overlay.classList.add('active');
         const main = document.querySelector('main');
         if (main) main.setAttribute('inert', '');
@@ -85,6 +86,7 @@ window.goeat = window.goeat || {};
         const overlay = document.getElementById(id);
         if (!overlay) return;
         overlay.classList.remove('active');
+        dirtyModals.delete(overlay);
         const main = document.querySelector('main');
         if (main) main.removeAttribute('inert');
 
@@ -117,9 +119,50 @@ window.goeat = window.goeat || {};
         // .modal-dialog is a child, so anything inside it stops here with e.target
         // being that child instead.
         if (e.target instanceof HTMLElement && e.target.matches('[data-modal]')) {
+            // The press must have started on the backdrop too: a text selection
+            // or slider drag that begins inside the dialog and is released out
+            // in the free space fires its click on the overlay, and must not
+            // close the dialog mid-gesture.
+            if (!pressStartedOnBackdrop) return;
+            // An edited modal refuses a backdrop dismissal (the one close
+            // nobody aims at) and says so; × , Cancel and Escape still work.
+            // `data-modal-allow-dirty-close` opts a modal out.
+            if (dirtyModals.has(e.target) && !e.target.hasAttribute('data-modal-allow-dirty-close')) {
+                if (window.showToast) window.showToast('Cannot close: edits have been made. Use Cancel or the x to discard.', 'info');
+                return;
+            }
             closeModal(e.target.id);
         }
     });
+
+    // Where the current press began. pointerdown covers mouse, touch and pen.
+    let pressStartedOnBackdrop = false;
+    document.addEventListener('pointerdown', function (e) {
+        pressStartedOnBackdrop = e.target instanceof HTMLElement && e.target.matches('[data-modal]');
+    }, true);
+
+    // Dirtiness comes from trusted input/change events, never from diffing
+    // values against a snapshot taken at open: modals that fill themselves
+    // after opening (the generate dialog's pantry list) would otherwise look
+    // edited before anyone touched them. Assigning .value fires no events,
+    // so programmatic prefill and reset stay invisible to this.
+    const dirtyModals = new WeakSet();
+    function markDirty(e) {
+        if (!e.isTrusted || !(e.target instanceof Element)) return;
+        // Choices.js's search box is a real input: typing to filter a
+        // dropdown is not an edit.
+        if (e.target.closest('.choices__input, [data-modal-ignore-dirty]')) return;
+        const overlay = e.target.closest('[data-modal].active');
+        if (overlay) dirtyModals.add(overlay);
+    }
+    document.addEventListener('input', markDirty, true);
+    document.addEventListener('change', markDirty, true);
+    // For edits that arrive as a button click rather than an input event
+    // (adding a row to a list), so a stray backdrop click can't throw it away.
+    window.goeat.markModalDirty = function (el) {
+        const overlay = el && el.closest('[data-modal].active');
+        if (overlay) dirtyModals.add(overlay);
+    };
 
     // Any element with data-modal-open="someModalId" opens that modal.
     //

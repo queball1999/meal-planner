@@ -19,7 +19,7 @@
      Two steps: step 1 is "anything you want to eat" (recipe picker + free
      text), step 2 is "anything already in the fridge or pantry": rows of
      ingredient + quantity + unit (on_hand_name / on_hand_qty / on_hand_unit),
-     added by tapping a pantry item or typing a new one. handlers_plan.go
+     added by searching the pantry/catalog (Choices.js) or typing a new one. handlers_plan.go
      saves them to the pantry and tells the plan. Only step 2 submits.
 
      The modal's own form always posts to /plan/generate. */}}
@@ -85,20 +85,13 @@
     <div class="field">
       <label class="field-label" for="onhand-name">Add an ingredient</label>
       <div class="onhand-add">
-        <input class="field-input onhand-add__name" id="onhand-name" type="text" list="onhand-datalist"
-               placeholder="e.g. chicken breast" autocomplete="off">
+        <select class="field-input onhand-add__name" id="onhand-name"></select>
         <input class="field-input onhand-add__qty" id="onhand-qty" type="number" inputmode="decimal"
                min="0.01" step="any" value="1" aria-label="Quantity">
         {{template "unitSelect" dict "name" "" "id" "onhand-unit" "current" "each" "class" "onhand-add__unit"}}
         <button type="button" class="btn btn-primary onhand-add__btn" id="onhand-add">{{icon "plus"}} Add</button>
       </div>
-      <datalist id="onhand-datalist"></datalist>
-      <p class="field-hint">Anything you add here is saved to your <a href="/pantry">Pantry</a> too.</p>
-    </div>
-
-    <div class="field" id="onhand-suggest-wrap" hidden>
-      <span class="field-label">In your pantry - tap to add</span>
-      <div class="onhand-suggest" id="onhand-suggest"></div>
+      <p class="field-hint">Search your pantry and items, or type a new one and press Enter. Anything you add is saved to your <a href="/pantry">Pantry</a> too.</p>
     </div>
 
     <div class="field">
@@ -166,9 +159,7 @@
     var listEl = document.getElementById('onhand-list');
     var emptyEl = document.getElementById('onhand-empty');
     var countEl = document.getElementById('onhand-count');
-    var suggestWrap = document.getElementById('onhand-suggest-wrap');
-    var suggestEl = document.getElementById('onhand-suggest');
-    var datalist = document.getElementById('onhand-datalist');
+    var nameChoices = null; // built on first open: choices.min.js loads deferred
     var unitTpl = document.getElementById('onhand-unit-tpl');
     var known = {};   // lowercased name -> {name, quantity, unit, stocked}
     var rows = {};    // lowercased name -> <li>
@@ -187,11 +178,6 @@
         var n = Object.keys(rows).length;
         emptyEl.hidden = n > 0;
         countEl.textContent = n ? '(' + n + ')' : '';
-        Array.prototype.forEach.call(suggestEl.children, function (b) {
-            var on = Object.prototype.hasOwnProperty.call(rows, b.dataset.key);
-            b.classList.toggle('is-selected', on);
-            b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        });
     }
 
     function removeRow(key) {
@@ -274,35 +260,72 @@
         li.appendChild(rm);
         listEl.appendChild(li);
         rows[key] = li;
+        if (window.goeat && window.goeat.markModalDirty) window.goeat.markModalDirty(modal);
         refreshState();
     }
 
-    // The typed-in row: add it to the list, then clear it for the next one.
+    // The picked or typed-in ingredient: add it to the list, then clear the
+    // field for the next one.
     function addFromInputs() {
-        var name = addName.value.trim();
-        if (!name) { addName.focus(); return false; }
+        var name = (addName.value || '').trim();
+        if (!name) {
+            if (nameChoices) nameChoices.showDropdown(); else addName.focus();
+            return false;
+        }
         addRow(name, parseFloat(addQty.value), addUnit.value);
-        addName.value = '';
-        addQty.value = '1';
-        setUnit(addUnit, 'each');
+        clearAddRow();
         return true;
     }
 
-    // Typing (or datalist-picking) a name that's already in the pantry fills
-    // in how much of it there is.
-    addName.addEventListener('input', function () {
-        var k = known[addName.value.trim().toLowerCase()];
+    function clearAddRow() {
+        if (nameChoices) {
+            nameChoices.removeActiveItems();
+            nameChoices.clearInput();
+        } else {
+            addName.value = '';
+        }
+        addQty.value = '1';
+        setUnit(addUnit, 'each');
+    }
+
+    // Picking an ingredient that's already in the pantry fills in how much of
+    // it there is.
+    addName.addEventListener('change', function () {
+        var k = known[(addName.value || '').trim().toLowerCase()];
         if (k && k.stocked) {
             addQty.value = fmt(k.quantity);
             setUnit(addUnit, k.unit);
         }
     });
     document.getElementById('onhand-add').addEventListener('click', addFromInputs);
-    [addName, addQty].forEach(function (el) {
-        el.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); addFromInputs(); }
-        });
+    addQty.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); addFromInputs(); }
     });
+
+    // Plain substring matching, every hit scored alike: Fuse breaks score ties
+    // by list order and the list comes back stocked-first, so "egg" puts Eggs
+    // above Eggplant and fuzzy noise stays out. addChoices lets a name that
+    // isn't in the list be typed in and selected with Enter.
+    function buildNameChoices() {
+        if (nameChoices || !window.Choices) return;
+        nameChoices = new window.Choices(addName, {
+            searchEnabled: true,
+            shouldSort: false,
+            searchResultLimit: 50,
+            fuseOptions: { includeScore: true, threshold: 0, ignoreLocation: true, ignoreFieldNorm: true },
+            itemSelectText: '',
+            placeholder: true,
+            placeholderValue: 'Search or type an ingredient…',
+            searchPlaceholderValue: 'Search or type a new one…',
+            noChoicesText: 'Type a name and press Enter to add it',
+            noResultsText: 'Not found - press Enter to add it',
+            addChoices: true,
+            addItems: true,
+            addItemText: function (value) { return 'Press Enter to add "' + value + '"'; },
+            allowHTML: false,
+        });
+        if (window.goeat && window.goeat.floatChoicesDropdown) window.goeat.floatChoicesDropdown(addName, nameChoices);
+    }
 
     function loadPantry() {
         fetch('/plan/pantry-options', { headers: { 'Accept': 'application/json' } })
@@ -313,27 +336,24 @@
 
     function fillPantry(items) {
         known = {};
-        datalist.innerHTML = '';
-        suggestEl.innerHTML = '';
-        var stocked = 0;
+        var stocked = [], other = [];
         items.forEach(function (it) {
             var name = it.name || it.label;
             known[name.toLowerCase()] = { name: name, quantity: it.quantity || 0, unit: it.unit || '', stocked: !!it.stocked };
-            datalist.appendChild(new Option(name));
-            if (!it.stocked) return;
-            stocked++;
-            var b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'onhand-chip';
-            b.dataset.key = name.toLowerCase();
-            b.textContent = it.label;
-            b.addEventListener('click', function () {
-                if (rows[b.dataset.key]) removeRow(b.dataset.key);
-                else addRow(name, it.quantity, it.unit);
-            });
-            suggestEl.appendChild(b);
+            (it.stocked ? stocked : other).push({ value: name, label: it.label });
         });
-        suggestWrap.hidden = stocked === 0;
+        if (nameChoices) {
+            var groups = [{ id: 0, label: '', choices: [{ value: '', label: 'Search or type an ingredient…', placeholder: true }] }];
+            if (stocked.length) groups.push({ id: 1, label: 'In your pantry', choices: stocked });
+            if (other.length) groups.push({ id: 2, label: 'Other items you buy', choices: other });
+            nameChoices.clearStore();
+            nameChoices.setChoices(groups, 'value', 'label', true);
+            return;
+        }
+        // choices.js failed to load: a plain <select> still posts the pick.
+        addName.innerHTML = '';
+        addName.appendChild(new Option('Pick an ingredient…', ''));
+        stocked.concat(other).forEach(function (c) { addName.appendChild(new Option(c.label, c.value)); });
         refreshState();
     }
 
@@ -353,7 +373,7 @@
         }
         // Generate was clicked with an ingredient still typed in the add row:
         // count it rather than silently dropping it.
-        if (addName.value.trim()) addFromInputs();
+        if ((addName.value || '').trim()) addFromInputs();
     });
 
     scopeChoices.forEach(function (r) {
@@ -489,9 +509,8 @@
         q.value = '';
         document.getElementById('must-include-text').value = '';
         Object.keys(rows).forEach(removeRow);
-        addName.value = '';
-        addQty.value = '1';
-        setUnit(addUnit, 'each');
+        buildNameChoices();
+        clearAddRow();
         step = 1;
         step1.hidden = false;
         step2.hidden = true;
