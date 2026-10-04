@@ -9,7 +9,7 @@
     </div>
     <div class="page-header__actions">
         <a href="/scan" class="btn btn-ghost">{{icon "barcode"}} Scan barcode</a>
-        <button type="button" class="btn btn-primary" data-modal-open="add-pantry" data-requires="edit">
+        <button type="button" class="btn btn-primary" data-modal-open="add-pantry">
             {{icon "plus"}} Add item
         </button>
     </div>
@@ -54,8 +54,26 @@
                         {{.Name}}
                     </span>
                 </td>
-                <td data-label="Quantity">{{fmtQty .QuantityOnHand}}</td>
-                <td data-label="Unit">{{if .Unit}}<span class="badge {{pill "unit" .Unit}}">{{.Unit}}</span>{{end}}</td>
+                <td data-label="Quantity">
+                    <span class="qty-stepper" data-pantry-row="{{.ID}}">
+                        <button type="button" class="qty-stepper__btn" data-qty-dec
+                                aria-label="Decrease {{.Name}}">{{icon "minus"}}</button>
+                        <input class="qty-stepper__input" type="number" inputmode="decimal" min="0" step="any"
+                               value="{{fmtQty .QuantityOnHand}}" data-qty-input
+                               aria-label="Quantity of {{.Name}}">
+                        <button type="button" class="qty-stepper__btn" data-qty-inc
+                                aria-label="Increase {{.Name}}">{{icon "plus"}}</button>
+                    </span>
+                </td>
+                <td data-label="Unit">
+                    {{- $u := .Unit}}
+                    <select class="field-input field-input--inline" data-unit-select
+                            aria-label="Unit for {{.Name}}">
+                        {{- range unitOptionsFor $u}}
+                        <option value="{{.}}"{{if eq . $u}} selected{{end}}>{{.}}</option>
+                        {{- end}}
+                    </select>
+                </td>
                 <td data-label="Updated">{{(local .UpdatedAt).Format "Jan 2, 2006"}}</td>
                 <td data-label="" class="data-table__actions">
                     <form method="POST" action="/pantry/{{.ID}}/delete" style="display:inline">
@@ -94,6 +112,7 @@
     <input type="hidden" id="hid-scan-code" name="barcode">
 </form>
 <script src="/static/js/barcode-hid.js" defer></script>
+<script src="/static/js/pantry.js" defer></script>
 <script nonce="{{cspNonce}}">
 document.addEventListener('barcode:scanned', function(e) {
     document.getElementById('hid-scan-code').value = e.detail.code;

@@ -1,36 +1,36 @@
 {{define "title"}}{{.Data.Recipe.Title}} - {{.AppName}}{{end}}
 {{define "content"}}
 {{$r := .Data.Recipe}}
-<div class="page-header">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-        <div>
-            <nav aria-label="Breadcrumb" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.25rem">
-                <a href="/recipes">Recipes</a> &rsaquo; {{$r.Title}}
-            </nav>
-            <h1 class="page-title" style="margin-bottom:0.25rem">{{$r.Title}}</h1>
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;font-size:0.85rem;color:var(--text-muted)">
-                {{if $r.Servings}}<span>{{$r.Servings}} servings</span>{{end}}
-                {{if $r.PrepMinutes}}<span>· {{$r.PrepMinutes}}m prep</span>{{end}}
-                {{if $r.CookMinutes}}<span>· {{$r.CookMinutes}}m cook</span>{{end}}
-                {{if $r.SourceSite}}<span>· from <a href="{{$r.SourceURL}}" target="_blank" rel="noopener noreferrer">{{$r.SourceSite}}</a>{{if $r.SourceAuthor}} by {{$r.SourceAuthor}}{{end}}</span>
-                {{else if $r.SourceAuthor}}<span>· by {{$r.SourceAuthor}}</span>{{end}}
-            </div>
-            {{if $r.Tags}}
-            <div style="margin-top:0.5rem">
-                {{range $r.Tags}}<span class="badge">{{.}}</span> {{end}}
-            </div>
-            {{end}}
+<div class="page-header recipe-head">
+    {{if $r.ImagePath}}
+    <img class="recipe-head__image" src="/recipe-images/{{$r.ImagePath}}" alt="{{$r.Title}}">
+    {{end}}
+    <div class="recipe-head__body">
+        <nav class="recipe-head__crumbs" aria-label="Breadcrumb">
+            <a href="/recipes">Recipes</a> &rsaquo; {{$r.Title}}
+        </nav>
+        <h1 class="page-title recipe-head__title">{{$r.Title}}</h1>
+        <div class="recipe-head__meta">
+            {{if $r.Servings}}<span class="recipe-head__chip">{{$r.Servings}} servings</span>{{end}}
+            {{if $r.PrepMinutes}}<span class="recipe-head__chip">{{$r.PrepMinutes}}m prep</span>{{end}}
+            {{if $r.CookMinutes}}<span class="recipe-head__chip">{{$r.CookMinutes}}m cook</span>{{end}}
         </div>
-        {{if $r.ImagePath}}
-        <img src="/recipe-images/{{$r.ImagePath}}"
-             alt="{{$r.Title}}"
-             style="width:180px;height:120px;object-fit:cover;border-radius:var(--radius-lg);flex-shrink:0">
+        {{if or $r.SourceSite $r.SourceAuthor}}
+        <p class="recipe-head__source">
+            {{if $r.SourceSite}}From <a href="{{$r.SourceURL}}" target="_blank" rel="noopener noreferrer">{{$r.SourceSite}}</a>{{if $r.SourceAuthor}} by {{$r.SourceAuthor}}{{end}}
+            {{else}}By {{$r.SourceAuthor}}{{end}}
+        </p>
+        {{end}}
+        {{if $r.Tags}}
+        <div class="recipe-head__tags">
+            {{range $r.Tags}}<span class="badge">{{.}}</span> {{end}}
+        </div>
         {{end}}
     </div>
 </div>
 
 {{if and (not .Data.Ingredients) (not .Data.Steps) $r.SourceURL}}
-<div class="banner banner-info" role="alert" style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
+<div class="banner banner-info recipe-banner" role="alert">
     <span>This recipe has no ingredients or instructions saved. Pull them from the source page:</span>
     <form method="POST" action="/recipes/{{$r.ID}}/reimport">
         {{.CSRFField}}
@@ -39,39 +39,39 @@
 </div>
 {{end}}
 
-<div style="display:grid;grid-template-columns:1fr 2fr;gap:1.5rem;align-items:start">
+<div class="recipe-layout">
 
-    <div class="card" style="padding:1rem">
-        <h2 style="font-size:1rem;margin-bottom:0.75rem">Ingredients</h2>
+    <section class="card recipe-card recipe-card--ingredients">
+        <h2 class="recipe-card__title">Ingredients</h2>
         {{if .Data.Ingredients}}
-        <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem">
+        <ul class="recipe-ingredients">
             {{range .Data.Ingredients}}
-            <li style="text-align:left">
-                {{if or .Quantity .Unit}}<span style="color:var(--text-muted)">{{if .Quantity}}{{fmtQty .Quantity}}{{end}}{{if and .Quantity .Unit}} {{end}}{{if .Unit}}{{.Unit}}{{end}}</span> {{end}}<span>{{.Name}}</span>
+            <li class="recipe-ingredients__item">
+                {{if or .Quantity .Unit}}<span class="recipe-ingredients__qty">{{if .Quantity}}{{fmtQty .Quantity}}{{end}}{{if and .Quantity .Unit}} {{end}}{{if .Unit}}{{.Unit}}{{end}}</span>{{end}}<span class="recipe-ingredients__name">{{.Name}}</span>
             </li>
             {{end}}
         </ul>
         {{else}}
-        <p style="color:var(--text-muted);font-size:0.875rem">No ingredients recorded.</p>
+        <p class="recipe-card__empty">No ingredients recorded.</p>
         {{end}}
-    </div>
+    </section>
 
-    <div class="card" style="padding:1rem">
-        <h2 style="font-size:1rem;margin-bottom:0.75rem">Instructions</h2>
+    <section class="card recipe-card recipe-card--steps">
+        <h2 class="recipe-card__title">Instructions</h2>
         {{if .Data.Steps}}
-        <ol style="padding-left:1.25rem;margin:0;display:flex;flex-direction:column;gap:0.75rem">
+        <ol class="recipe-steps">
             {{range .Data.Steps}}
-            <li>{{stepText .Text}}</li>
+            <li class="recipe-steps__item">{{stepText .Text}}</li>
             {{end}}
         </ol>
         {{else}}
-        <p style="color:var(--text-muted);font-size:0.875rem">No instructions recorded.</p>
+        <p class="recipe-card__empty">No instructions recorded.</p>
         {{end}}
-    </div>
+    </section>
 
 </div>
 
-<div style="margin-top:1.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+<div class="recipe-actions">
     <a href="/recipes" class="btn btn-ghost">{{icon "arrow-left"}} Back</a>
 
     <button type="button" class="btn btn-secondary" data-toggle-edit data-requires="edit">{{icon "pencil"}} Edit recipe</button>
@@ -91,7 +91,7 @@
 </div>
 
 {{/* ── Edit panel ─────────────────────────────────────────────────────────── */}}
-<div id="recipeEdit" hidden style="margin-top:1.5rem;display:grid;grid-template-columns:2fr 1fr;gap:1.5rem;align-items:start">
+<div id="recipeEdit" class="recipe-edit" hidden>
     <div class="card form-section">
         <h2 class="form-section__title">{{icon "pencil"}} Edit recipe</h2>
         <form method="POST" action="/recipes/{{$r.ID}}/edit" class="pref-form">
@@ -101,7 +101,7 @@
                 <input class="field-input" id="e-title" name="title" type="text" value="{{$r.Title}}" required>
             </div>
 
-            <div class="field-row" style="gap:var(--sp-3)">
+            <div class="field-row recipe-edit__row">
                 <div class="field field--sm">
                     <label class="field-label" for="e-servings">Servings</label>
                     <input class="field-input" id="e-servings" name="servings" type="number" min="0" value="{{$r.Servings}}">

@@ -758,10 +758,25 @@ func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Cont
 		// mid-pass, silently leaving items unpriced and the plan total at $0.
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 		defer cancel()
+		j.SetCancel(cancel) // the progress screen's Cancel button
 
 		j.EmitStatus("Asking the AI to build your week… (this can take a while depending on your provider)")
 
 		planID, err := generate(ctx, pricer, checker, j)
+		if err != nil && j.Canceled() {
+			// The household pulled the plug. Drop the half-built plan so it
+			// doesn't linger as the "latest" plan in a generating/error state.
+			if planID != 0 {
+				dctx, dcancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+				_ = s.store.DeletePlan(dctx, hhID, planID)
+				dcancel()
+			}
+			s.setResumableGen(hhID, nil)
+			j.Status = plan.JobFailed
+			j.Error = "canceled"
+			j.Emit(plan.JobEvent{Type: "canceled", Message: "Generation canceled"})
+			return
+		}
 		if err != nil {
 			log.Printf("plan generation error household=%d: %v", hhID, err)
 			// A cut-off reply keeps its whole generation in memory so the
@@ -834,6 +849,20 @@ func (s *Server) resumableGenFor(hhID int64) *plan.TruncatedError {
 	return s.resumableGen[hhID]
 }
 
+// handlePlanGenerateCancel aborts the household's in-flight generation. The
+// job itself reports the outcome over the progress screen's event stream.
+func (s *Server) handlePlanGenerateCancel(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Error(w, "no household", http.StatusUnauthorized)
+		return
+	}
+	if job := s.jobs.Get(hh.ID); job != nil {
+		job.Cancel()
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handlePlanGenerateResume is the progress screen's "Try again" after a reply
 // was cut off at the output-token limit: it re-sends the exact request that
 // was cut off, now with max_tokens as its budget, and finishes that same
@@ -896,7 +925,13 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	requested := s.buildRequestedMeals(r, hh.ID)
-	onHand := parseOnHand(r.Form["on_hand_items"], r.FormValue("on_hand_text")) // r.Form parsed by buildRequestedMeals
+	// r.Form parsed by buildRequestedMeals. The dialog's rows (name, quantity,
+	// unit) are saved to the pantry first, so what the plan is told about
+	// matches what the Pantry page says; on_hand_items/on_hand_text are the
+	// older name-only inputs, still honoured.
+	entries := parseOnHandEntries(r.Form["on_hand_name"], r.Form["on_hand_qty"], r.Form["on_hand_unit"])
+	s.saveOnHandToPantry(r, hh.ID, entries)
+	onHand := parseOnHand(append(onHandLabels(entries), r.Form["on_hand_items"]...), r.FormValue("on_hand_text"))
 	// "scope=remaining" is the generate form's "just the remaining days"
 	// choice, offered only when regenerating the live week mid-week (see
 	// must_include_modal.html) - skip the days that have already happened
@@ -1019,6 +1054,106 @@ func parseOnHand(picked []string, typed string) []string {
 		}
 	}
 	return out
+}
+
+// onHandEntry is one row of the generate dialog's "already have" list: an
+// ingredient with how much of it there is.
+type onHandEntry struct {
+	Name     string
+	Quantity float64
+	Unit     string
+}
+
+// label renders the entry the way the pantry picker always has ("Rice (2 kg)")
+// so the plan knows how much there is to use up.
+func (e onHandEntry) label() string {
+	qty := pricing.FormatQty(e.Quantity)
+	if e.Unit != "" {
+		qty += " " + e.Unit
+	}
+	return e.Name + " (" + qty + ")"
+}
+
+// parseOnHandEntries zips the dialog's parallel name/qty/unit fields into
+// entries. Blank names are dropped, a missing or unusable quantity means 1,
+// a missing unit means "each", and a repeated name keeps its last row.
+func parseOnHandEntries(names, qtys, units []string) []onHandEntry {
+	var out []onHandEntry
+	index := map[string]int{}
+	for i, raw := range names {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		e := onHandEntry{Name: name, Quantity: 1, Unit: "each"}
+		if i < len(qtys) {
+			if q, err := strconv.ParseFloat(strings.TrimSpace(qtys[i]), 64); err == nil && q > 0 && q <= 1e6 {
+				e.Quantity = pricing.Round2(q)
+			}
+		}
+		if i < len(units) {
+			if u := strings.TrimSpace(units[i]); u != "" {
+				e.Unit = u
+			}
+		}
+		key := strings.ToLower(name)
+		if at, ok := index[key]; ok {
+			out[at] = e
+			continue
+		}
+		if len(out) >= maxOnHandItems {
+			break
+		}
+		index[key] = len(out)
+		out = append(out, e)
+	}
+	return out
+}
+
+func onHandLabels(entries []onHandEntry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.label())
+	}
+	return out
+}
+
+// saveOnHandToPantry makes the pantry say what the dialog said: an ingredient
+// already tracked has its quantity and unit set to the dialog's values (set,
+// not added to - the household is stating what is on hand now), and a new one
+// is created and linked to the catalog. Best-effort: a failed save is logged
+// and never blocks the generation.
+func (s *Server) saveOnHandToPantry(r *http.Request, householdID int64, entries []onHandEntry) {
+	ctx := r.Context()
+	for _, e := range entries {
+		term := pricing.Normalize(e.Name)
+		existing, err := s.store.GetPantryItemByTerm(ctx, householdID, term)
+		if err != nil {
+			log.Printf("on-hand pantry save: lookup %q: %v", e.Name, err)
+			continue
+		}
+		if existing != nil {
+			if existing.QuantityOnHand == e.Quantity && existing.Unit == e.Unit {
+				continue
+			}
+			if err := s.store.UpdatePantryItem(ctx, db.UpdatePantryItemParams{ID: existing.ID, QuantityOnHand: e.Quantity, Unit: e.Unit}); err != nil {
+				log.Printf("on-hand pantry save: update %q: %v", e.Name, err)
+			}
+			continue
+		}
+		pi, err := s.store.CreatePantryItem(ctx, db.CreatePantryItemParams{
+			HouseholdID:    householdID,
+			Name:           e.Name,
+			NormalizedTerm: term,
+			QuantityOnHand: e.Quantity,
+			Unit:           e.Unit,
+		})
+		if err != nil {
+			log.Printf("on-hand pantry save: create %q: %v", e.Name, err)
+			continue
+		}
+		linkPantryItem(r, s.store, householdID, pi)
+	}
 }
 
 func (s *Server) handlePlanGeneratePage(w http.ResponseWriter, r *http.Request) {
