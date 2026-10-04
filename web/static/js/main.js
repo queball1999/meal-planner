@@ -556,6 +556,10 @@ function goeatCSRF() {
         el.addEventListener('change', function () { if (list.style.position) place(); });
         el.addEventListener('search', function () { if (list.style.position) place(); });
     }
+    // For a Choices instance a page builds itself (it needs options other than
+    // the defaults, or fills its list after load).
+    window.goeat = window.goeat || {};
+    window.goeat.floatChoicesDropdown = floatChoicesDropdown;
 })();
 
 // ── Auto-filter ───────────────────────────────────────────────────────────

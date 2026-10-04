@@ -77,8 +77,11 @@ func (s *Server) handleRecipeOptions(w http.ResponseWriter, r *http.Request) {
 // stocked item carries its quantity ("Rice (2 kg)") and the plan knows how
 // much there is to use up.
 type pantryOption struct {
-	Label   string `json:"label"`
-	Stocked bool   `json:"stocked"` // on the Pantry page with a quantity, not just a known item
+	Label    string  `json:"label"`
+	Stocked  bool    `json:"stocked"` // on the Pantry page with a quantity, not just a known item
+	Name     string  `json:"name"`
+	Quantity float64 `json:"quantity,omitempty"` // what the pantry says is on hand; 0 for a known-but-unstocked item
+	Unit     string  `json:"unit,omitempty"`
 }
 
 // handlePantryOptions lists what the household is known to keep: pantry
@@ -120,7 +123,10 @@ func (s *Server) handlePantryOptions(w http.ResponseWriter, r *http.Request) {
 		if pi.Unit != "" {
 			qty += " " + pi.Unit
 		}
-		out = append(out, pantryOption{Label: pi.Name + " (" + qty + ")", Stocked: true})
+		out = append(out, pantryOption{
+			Label: pi.Name + " (" + qty + ")", Stocked: true,
+			Name: pi.Name, Quantity: pi.QuantityOnHand, Unit: pi.Unit,
+		})
 		if pi.ItemID != nil {
 			stockedIDs[*pi.ItemID] = true
 		}
@@ -130,7 +136,7 @@ func (s *Server) handlePantryOptions(w http.ResponseWriter, r *http.Request) {
 		if stockedIDs[it.ID] || stockedNames[strings.ToLower(it.Name)] {
 			continue
 		}
-		out = append(out, pantryOption{Label: it.Name})
+		out = append(out, pantryOption{Label: it.Name, Name: it.Name, Unit: it.StockUnit})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "items": out})
 }

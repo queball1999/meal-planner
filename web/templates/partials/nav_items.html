@@ -50,7 +50,8 @@
     {{icon "history"}} <span>Finance</span>
 </a>
 {{- if .IsAdmin}}
-<a href="/settings" class="{{$link}}{{if eq $page "settings"}} {{$active}}{{end}}"{{if eq $page "settings"}} aria-current="page"{{end}}>
+{{- $settings := or (eq $page "settings") (eq $page "settings_ai")}}
+<a href="/settings" class="{{$link}}{{if $settings}} {{$active}}{{end}}"{{if $settings}} aria-current="page"{{end}}>
     {{icon "cog"}} <span>Settings</span>
 </a>
 {{- end}}

@@ -73,6 +73,7 @@ All options are set via environment variables (or `.env`). See [`.env.example`](
 | `LISTEN_ADDR` | `:8080` | Host:port to bind. |
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | Canonical URL (used in redirects). |
 | `RECIPE_IMAGE_DIR` | `./data/recipe-images` | Where downloaded recipe images are stored. |
+| `TOOLS_DIR` | `./data/tools` | Where video recipe import looks for yt-dlp, ffmpeg and whisper.cpp before `PATH`. |
 | `WEEK_START_DAY` | `sunday` | `sunday` or `monday`. |
 | `PROVIDER` | *(unset)* | `anthropic` \| `openai` \| `openai_compatible`. Enables AI meal generation. |
 | `ANTHROPIC_API_KEY` | *(unset)* | Required when `PROVIDER=anthropic`. |
@@ -131,6 +132,32 @@ sandboxed preview to pick its selector), *Auto* (structured data plus built-in p
 common retail markup), and *Auto + AI* (the page is condensed and the model names the
 selectors - every proposal is re-run against the live page before it is offered, and a store
 in this mode falls back to letting the model read the page when its selectors stop working).
+
+### Importing recipes from cooking videos
+
+Import Recipe also takes TikTok, Instagram Reel and YouTube Shorts links: Go Eat reads the
+caption and the creator's comments, transcribes what's said, and the AI writes it up as a
+recipe. The tools for this are not shipped with Go Eat. An admin downloads them once from
+**Settings → AI Setup** (each download is checked against a published SHA-256), or from the
+**Download now** banner on Import Recipe.
+
+| Install | yt-dlp + FFmpeg | Speech-to-text |
+|---|---|---|
+| Desktop app | Downloaded from AI Setup into the app's data folder | whisper.cpp, downloaded from AI Setup |
+| Server binary (no Docker) | Downloaded from AI Setup into `TOOLS_DIR` | whisper.cpp, downloaded from AI Setup (Linux glibc, Windows), or a whisper.cpp server via `WHISPER_URL` |
+| Docker | Downloaded from AI Setup into `/data/tools` | The `whisper` container in `docker-compose.yml` |
+
+In Docker, the `whisper` container (`ghcr.io/queball1999/goeat-whisper`, built from
+`whisper/`) waits until a speech model has been downloaded in AI Setup, then starts. Models
+live on the `whisper-models` volume, which both containers mount at `/models`. Any install can
+use a whisper.cpp server elsewhere on your network instead: set **whisper.cpp server URL** in
+AI Setup.
+
+**Sharing from your phone (server installs only).** On a server reached over HTTPS, Go Eat can
+be installed from Chrome on Android (*Install app*), and then appears in TikTok's, Instagram's
+and YouTube's Share sheet - the shared link opens Import Recipe, ready to import. It isn't
+available in the desktop app (a phone can't reach it) or over plain http; Import Recipe shows
+it as unavailable there. iOS doesn't let web apps receive shares.
 
 ## Architecture
 

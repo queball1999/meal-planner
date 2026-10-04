@@ -17,10 +17,10 @@
      the picker, not before it.
 
      Two steps: step 1 is "anything you want to eat" (recipe picker + free
-     text), step 2 is "anything already in the fridge or pantry": a Choices.js
-     picker over /plan/pantry-options (on_hand_items) plus free text
-     (on_hand_text), merged by handlers_plan.go's parseOnHand. Only step 2
-     submits.
+     text), step 2 is "anything already in the fridge or pantry": rows of
+     ingredient + quantity + unit (on_hand_name / on_hand_qty / on_hand_unit),
+     added by searching the pantry/catalog (Choices.js) or typing a new one. handlers_plan.go
+     saves them to the pantry and tells the plan. Only step 2 submits.
 
      The modal's own form always posts to /plan/generate. */}}
 {{define "partials/must_include_modal.html"}}
@@ -83,20 +83,26 @@
     </p>
 
     <div class="field">
-      <label class="field-label" for="must-include-pantry">Pick from items you already know</label>
-      <select class="field-input" id="must-include-pantry" name="on_hand_items" multiple></select>
-      <p class="field-hint">
-        Items with an amount are what your <a href="/pantry">Pantry</a> page
-        says is in stock.
-      </p>
+      <label class="field-label" for="onhand-name">Add an ingredient</label>
+      <div class="onhand-add">
+        <select class="field-input onhand-add__name" id="onhand-name"></select>
+        <input class="field-input onhand-add__qty" id="onhand-qty" type="number" inputmode="decimal"
+               min="0.01" step="any" value="1" aria-label="Quantity">
+        {{template "unitSelect" dict "name" "" "id" "onhand-unit" "current" "each" "class" "onhand-add__unit"}}
+        <button type="button" class="btn btn-primary onhand-add__btn" id="onhand-add">{{icon "plus"}} Add</button>
+      </div>
+      <p class="field-hint">Search your pantry and items, or type a new one and press Enter. Anything you add is saved to your <a href="/pantry">Pantry</a> too.</p>
     </div>
 
     <div class="field">
-      <label class="field-label" for="must-include-on-hand">Anything else? Type it in</label>
-      <textarea class="field-input" id="must-include-on-hand" name="on_hand_text" rows="3"
-                placeholder="e.g. half a rotisserie chicken, leftover chili"></textarea>
-      <p class="field-hint">One per line or comma-separated.</p>
+      <span class="field-label">Using up <span class="text-muted" id="onhand-count"></span></span>
+      <ul class="onhand-list" id="onhand-list" aria-live="polite"></ul>
+      <p class="field-hint" id="onhand-empty">Nothing added yet.</p>
     </div>
+    <template id="onhand-unit-tpl">{{template "unitSelect" dict "name" "on_hand_unit" "current" "each" "class" "onhand-row__unit"}}</template>
+    <template id="onhand-icon-minus">{{icon "minus"}}</template>
+    <template id="onhand-icon-plus">{{icon "plus"}}</template>
+    <template id="onhand-icon-close">{{icon "close"}}</template>
 
     <div class="modal-dialog__footer modal-dialog__footer--sticky">
       <span class="field-hint modal-dialog__step">Step 2 of 2</span>
@@ -130,7 +136,6 @@
     var title = document.getElementById('must-include-modal-title');
     var step1 = document.getElementById('must-include-step-1');
     var step2 = document.getElementById('must-include-step-2');
-    var onHand = document.getElementById('must-include-on-hand');
     var stepTitles = ['Anything you want to eat this week?', 'Anything already in the fridge or pantry?'];
     var step = 1;
 
@@ -144,33 +149,185 @@
         (n === 1 ? step1 : step2).focus();
     }
 
-    // Step 2's "items you already know" picker. Built on first open, not
-    // here: choices.min.js loads with defer (layout.html), so it doesn't
-    // exist yet while this inline script runs. Not data-choices either -
-    // main.js's init would enhance it once at page load, and this one needs
-    // its options replaced on every open. If choices.js failed to load it
-    // stays a plain multi-select, which still posts the same on_hand_items.
-    var pantrySel = document.getElementById('must-include-pantry');
-    var pantryChoices = null;
+    // Step 2: rows of ingredient + quantity + unit. The row inputs are the
+    // form fields (on_hand_name / on_hand_qty / on_hand_unit post in DOM
+    // order, which keeps the three lists aligned).
+    var STEPS = { g: 50, ml: 50 };
+    var addName = document.getElementById('onhand-name');
+    var addQty = document.getElementById('onhand-qty');
+    var addUnit = document.getElementById('onhand-unit');
+    var listEl = document.getElementById('onhand-list');
+    var emptyEl = document.getElementById('onhand-empty');
+    var countEl = document.getElementById('onhand-count');
+    var nameChoices = null; // built on first open: choices.min.js loads deferred
+    var unitTpl = document.getElementById('onhand-unit-tpl');
+    var known = {};   // lowercased name -> {name, quantity, unit, stocked}
+    var rows = {};    // lowercased name -> <li>
+
+    function fmt(n) { return String(Math.round(n * 100) / 100); }
+    function icon(id) { return document.getElementById('onhand-icon-' + id).innerHTML; }
+
+    function setUnit(sel, unit) {
+        if (!unit) return;
+        var has = Array.prototype.some.call(sel.options, function (o) { return o.value === unit; });
+        if (!has) sel.insertBefore(new Option(unit, unit), sel.firstChild);
+        sel.value = unit;
+    }
+
+    function refreshState() {
+        var n = Object.keys(rows).length;
+        emptyEl.hidden = n > 0;
+        countEl.textContent = n ? '(' + n + ')' : '';
+    }
+
+    function removeRow(key) {
+        if (rows[key]) rows[key].remove();
+        delete rows[key];
+        refreshState();
+    }
+
+    function addRow(name, qty, unit) {
+        name = name.trim();
+        if (!name) return;
+        var key = name.toLowerCase();
+        qty = qty > 0 ? qty : 1;
+        unit = unit || 'each';
+        if (rows[key]) { // already listed: update it rather than duplicate
+            rows[key].querySelector('input[type=number]').value = fmt(qty);
+            setUnit(rows[key].querySelector('select'), unit);
+            return;
+        }
+        var li = document.createElement('li');
+        li.className = 'onhand-row';
+
+        var nameEl = document.createElement('span');
+        nameEl.className = 'onhand-row__name';
+        nameEl.textContent = name;
+        var hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'on_hand_name';
+        hidden.value = name;
+
+        var stepper = document.createElement('span');
+        stepper.className = 'qty-stepper';
+        var dec = document.createElement('button');
+        dec.type = 'button';
+        dec.className = 'qty-stepper__btn';
+        dec.setAttribute('aria-label', 'Decrease ' + name);
+        dec.innerHTML = icon('minus');
+        var input = document.createElement('input');
+        input.type = 'number';
+        input.name = 'on_hand_qty';
+        input.className = 'qty-stepper__input';
+        input.min = '0.01';
+        input.step = 'any';
+        input.setAttribute('inputmode', 'decimal');
+        input.setAttribute('aria-label', 'Quantity of ' + name);
+        input.value = fmt(qty);
+        var inc = document.createElement('button');
+        inc.type = 'button';
+        inc.className = 'qty-stepper__btn';
+        inc.setAttribute('aria-label', 'Increase ' + name);
+        inc.innerHTML = icon('plus');
+        stepper.appendChild(dec);
+        stepper.appendChild(input);
+        stepper.appendChild(inc);
+
+        var sel = unitTpl.content.firstElementChild.cloneNode(true);
+        sel.classList.add('field-input--inline');
+        sel.setAttribute('aria-label', 'Unit for ' + name);
+        setUnit(sel, unit);
+
+        function bump(dir) {
+            var step = STEPS[sel.value] || 1;
+            var next = (parseFloat(input.value) || 0) + dir * step;
+            input.value = fmt(Math.max(0.01, next));
+        }
+        dec.addEventListener('click', function () { bump(-1); });
+        inc.addEventListener('click', function () { bump(1); });
+
+        var rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'qty-stepper__btn onhand-row__remove';
+        rm.setAttribute('aria-label', 'Remove ' + name);
+        rm.innerHTML = icon('close');
+        rm.addEventListener('click', function () { removeRow(key); });
+
+        li.appendChild(nameEl);
+        li.appendChild(hidden);
+        li.appendChild(stepper);
+        li.appendChild(sel);
+        li.appendChild(rm);
+        listEl.appendChild(li);
+        rows[key] = li;
+        if (window.goeat && window.goeat.markModalDirty) window.goeat.markModalDirty(modal);
+        refreshState();
+    }
+
+    // The picked or typed-in ingredient: add it to the list, then clear the
+    // field for the next one.
+    function addFromInputs() {
+        var name = (addName.value || '').trim();
+        if (!name) {
+            if (nameChoices) nameChoices.showDropdown(); else addName.focus();
+            return false;
+        }
+        addRow(name, parseFloat(addQty.value), addUnit.value);
+        clearAddRow();
+        return true;
+    }
+
+    function clearAddRow() {
+        if (nameChoices) {
+            nameChoices.removeActiveItems();
+            nameChoices.clearInput();
+        } else {
+            addName.value = '';
+        }
+        addQty.value = '1';
+        setUnit(addUnit, 'each');
+    }
+
+    // Picking an ingredient that's already in the pantry fills in how much of
+    // it there is.
+    addName.addEventListener('change', function () {
+        var k = known[(addName.value || '').trim().toLowerCase()];
+        if (k && k.stocked) {
+            addQty.value = fmt(k.quantity);
+            setUnit(addUnit, k.unit);
+        }
+    });
+    document.getElementById('onhand-add').addEventListener('click', addFromInputs);
+    addQty.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); addFromInputs(); }
+    });
+
+    // Plain substring matching, every hit scored alike: Fuse breaks score ties
+    // by list order and the list comes back stocked-first, so "egg" puts Eggs
+    // above Eggplant and fuzzy noise stays out. addChoices lets a name that
+    // isn't in the list be typed in and selected with Enter.
+    function buildNameChoices() {
+        if (nameChoices || !window.Choices) return;
+        nameChoices = new window.Choices(addName, {
+            searchEnabled: true,
+            shouldSort: false,
+            searchResultLimit: 50,
+            fuseOptions: { includeScore: true, threshold: 0, ignoreLocation: true, ignoreFieldNorm: true },
+            itemSelectText: '',
+            placeholder: true,
+            placeholderValue: 'Search or type an ingredient…',
+            searchPlaceholderValue: 'Search or type a new one…',
+            noChoicesText: 'Type a name and press Enter to add it',
+            noResultsText: 'Not found - press Enter to add it',
+            addChoices: true,
+            addItems: true,
+            addItemText: function (value) { return 'Press Enter to add "' + value + '"'; },
+            allowHTML: false,
+        });
+        if (window.goeat && window.goeat.floatChoicesDropdown) window.goeat.floatChoicesDropdown(addName, nameChoices);
+    }
 
     function loadPantry() {
-        if (!pantryChoices && window.Choices) {
-            pantryChoices = new window.Choices(pantrySel, {
-                removeItemButton: true,
-                shouldSort: false,
-                searchResultLimit: 50,
-                // Plain substring matching, every hit scored alike. Fuse
-                // breaks score ties by list order, and the list comes back
-                // stocked-first - so "egg" puts Eggs (6) above Eggplant, and
-                // fuzzy noise like "English muffins" stays out.
-                fuseOptions: { includeScore: true, threshold: 0, ignoreLocation: true, ignoreFieldNorm: true },
-                itemSelectText: '',
-                placeholderValue: 'Search your pantry…',
-                noChoicesText: 'No more pantry items - type anything else below.',
-                noResultsText: 'Not in your pantry - type it in the box below.',
-                allowHTML: false,
-            });
-        }
         fetch('/plan/pantry-options', { headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.json(); })
             .then(function (d) { fillPantry((d && d.items) || []); })
@@ -178,22 +335,26 @@
     }
 
     function fillPantry(items) {
-        var stocked = [], known = [];
+        known = {};
+        var stocked = [], other = [];
         items.forEach(function (it) {
-            (it.stocked ? stocked : known).push({ value: it.label, label: it.label });
+            var name = it.name || it.label;
+            known[name.toLowerCase()] = { name: name, quantity: it.quantity || 0, unit: it.unit || '', stocked: !!it.stocked };
+            (it.stocked ? stocked : other).push({ value: name, label: it.label });
         });
-        if (pantryChoices) {
-            pantryChoices.removeActiveItems();
-            var groups = [];
+        if (nameChoices) {
+            var groups = [{ id: 0, label: '', choices: [{ value: '', label: 'Search or type an ingredient…', placeholder: true }] }];
             if (stocked.length) groups.push({ id: 1, label: 'In your pantry', choices: stocked });
-            if (known.length) groups.push({ id: 2, label: 'Other items you buy', choices: known });
-            pantryChoices.setChoices(groups, 'value', 'label', true);
+            if (other.length) groups.push({ id: 2, label: 'Other items you buy', choices: other });
+            nameChoices.clearStore();
+            nameChoices.setChoices(groups, 'value', 'label', true);
             return;
         }
-        pantrySel.innerHTML = '';
-        stocked.concat(known).forEach(function (c) {
-            pantrySel.appendChild(new Option(c.label, c.value));
-        });
+        // choices.js failed to load: a plain <select> still posts the pick.
+        addName.innerHTML = '';
+        addName.appendChild(new Option('Pick an ingredient…', ''));
+        stocked.concat(other).forEach(function (c) { addName.appendChild(new Option(c.label, c.value)); });
+        refreshState();
     }
 
     document.getElementById('must-include-next').addEventListener('click', function () { showStep(2); });
@@ -208,7 +369,11 @@
             e.preventDefault();
             e.stopPropagation();
             showStep(2);
+            return;
         }
+        // Generate was clicked with an ingredient still typed in the add row:
+        // count it rather than silently dropping it.
+        if ((addName.value || '').trim()) addFromInputs();
     });
 
     scopeChoices.forEach(function (r) {
@@ -343,7 +508,9 @@
         renderSelected();
         q.value = '';
         document.getElementById('must-include-text').value = '';
-        onHand.value = '';
+        Object.keys(rows).forEach(removeRow);
+        buildNameChoices();
+        clearAddRow();
         step = 1;
         step1.hidden = false;
         step2.hidden = true;

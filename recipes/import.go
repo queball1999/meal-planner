@@ -14,16 +14,26 @@ import (
 	"goeat/db"
 	"goeat/safefetch"
 	"goeat/scrape"
+	"goeat/video"
 )
 
 // Import fetches rawURL, parses a Recipe via scrape.ParseRecipe, optionally
 // downloads the image, persists everything to the DB, and returns the new
-// catalog recipe ID. Image download failures are non-fatal.
+// catalog recipe ID. Image download failures are non-fatal. A page the
+// household already imported - by the pasted URL or the one it redirects to -
+// returns a *DuplicateError instead of a second copy.
 func Import(ctx context.Context, store db.Store, householdID int64, rawURL, imageDir string) (int64, error) {
+	if err := checkDuplicate(ctx, store, householdID, rawURL); err != nil {
+		return 0, err
+	}
+
 	// 1. Fetch the page.
 	res, err := safefetch.Fetch(ctx, rawURL, nil)
 	if err != nil {
 		return 0, fmt.Errorf("recipes: fetch %q: %w", rawURL, err)
+	}
+	if err := checkDuplicate(ctx, store, householdID, res.FinalURL); err != nil {
+		return 0, err
 	}
 
 	// 2. Parse the recipe.
@@ -38,33 +48,42 @@ func Import(ctx context.Context, store db.Store, householdID int64, rawURL, imag
 		imagePath = downloadImage(ctx, recipe.ImageURL, imageDir)
 	}
 
-	// 4. Persist the recipe.
-	tags := dedupTags(recipe.Tags)
+	// 4. Persist the recipe, its ingredients and steps.
+	return save(ctx, store, householdID, recipe, res.FinalURL, imagePath)
+}
+
+// save writes an imported recipe - from a web page or a video - to the
+// catalog and returns its ID. Ingredients that already carry a parsed name
+// (a video import's model output) are stored as-is; raw lines from a web page
+// go through splitIngredient.
+func save(ctx context.Context, store db.Store, householdID int64, recipe *scrape.Recipe, sourceURL, imagePath string) (int64, error) {
 	cr, err := store.CreateCatalogRecipe(ctx, db.CreateCatalogRecipeParams{
-		HouseholdID: householdID,
-		Title:       recipe.Title,
-		SourceKind:  "imported",
-		SourceURL:   res.FinalURL,
-		SourceSite:  recipe.SourceSite,
-		ImagePath:   imagePath,
-		Servings:    recipe.Servings,
-		PrepMinutes: recipe.PrepMinutes,
-		CookMinutes: recipe.CookMinutes,
-		Tags:        tags,
+		HouseholdID:  householdID,
+		Title:        recipe.Title,
+		SourceKind:   "imported",
+		SourceURL:    sourceURL,
+		SourceSite:   recipe.SourceSite,
+		SourceAuthor: recipe.Author,
+		ImagePath:    imagePath,
+		Servings:     recipe.Servings,
+		PrepMinutes:  recipe.PrepMinutes,
+		CookMinutes:  recipe.CookMinutes,
+		Tags:         dedupTags(recipe.Tags),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("recipes: save: %w", err)
 	}
 
-	// 5. Persist ingredients.
 	for i, ing := range recipe.Ingredients {
-		name, qty, unit := splitIngredient(ing.Raw)
+		name, qty, unit := ing.Name, ing.Quantity, ing.Unit
+		if name == "" {
+			name, qty, unit = splitIngredient(ing.Raw)
+		}
 		if err := store.AddCatalogRecipeIngredient(ctx, cr.ID, name, qty, unit, i); err != nil {
 			return cr.ID, fmt.Errorf("recipes: ingredient %d: %w", i, err)
 		}
 	}
 
-	// 6. Persist steps.
 	for i, step := range recipe.Steps {
 		if err := store.AddCatalogRecipeStep(ctx, cr.ID, i, step); err != nil {
 			return cr.ID, fmt.Errorf("recipes: step %d: %w", i, err)
@@ -88,6 +107,9 @@ func Refresh(ctx context.Context, store db.Store, id int64, imageDir string) err
 	}
 	if cr.SourceURL == "" {
 		return fmt.Errorf("recipes: %q has no source URL to re-import from", cr.Title)
+	}
+	if video.IsVideoURL(cr.SourceURL) {
+		return fmt.Errorf("recipes: re-import isn't available for video recipes yet - import the link again instead")
 	}
 
 	res, err := safefetch.Fetch(ctx, cr.SourceURL, nil)
@@ -299,6 +321,21 @@ func dedupTags(tags []string) []string {
 	return out
 }
 
+// knownUnits are the words splitIngredient (and a video import's model
+// output) treat as a unit when they follow the quantity.
+var knownUnits = map[string]bool{
+	"cup": true, "cups": true, "tbsp": true, "tsp": true,
+	"tablespoon": true, "tablespoons": true, "teaspoon": true, "teaspoons": true,
+	"oz": true, "ounce": true, "ounces": true,
+	"lb": true, "lbs": true, "pound": true, "pounds": true,
+	"g": true, "gram": true, "grams": true,
+	"kg": true, "ml": true, "l": true, "liter": true, "liters": true,
+	"clove": true, "cloves": true, "bunch": true, "pinch": true,
+	"can": true, "cans": true, "slice": true, "slices": true,
+	"piece": true, "pieces": true, "whole": true, "large": true,
+	"medium": true, "small": true,
+}
+
 // splitIngredient does a best-effort parse of a raw ingredient string into
 // (name, quantity, unit). It is intentionally simple: first token(s) that
 // are numeric become quantity, next word that looks like a unit becomes unit,
@@ -311,19 +348,6 @@ func splitIngredient(raw string) (name, quantity, unit string) {
 	parts := strings.Fields(raw)
 	if len(parts) == 1 {
 		return raw, "", ""
-	}
-
-	units := map[string]bool{
-		"cup": true, "cups": true, "tbsp": true, "tsp": true,
-		"tablespoon": true, "tablespoons": true, "teaspoon": true, "teaspoons": true,
-		"oz": true, "ounce": true, "ounces": true,
-		"lb": true, "lbs": true, "pound": true, "pounds": true,
-		"g": true, "gram": true, "grams": true,
-		"kg": true, "ml": true, "l": true, "liter": true, "liters": true,
-		"clove": true, "cloves": true, "bunch": true, "pinch": true,
-		"can": true, "cans": true, "slice": true, "slices": true,
-		"piece": true, "pieces": true, "whole": true, "large": true,
-		"medium": true, "small": true,
 	}
 
 	i := 0
@@ -341,7 +365,7 @@ func splitIngredient(raw string) (name, quantity, unit string) {
 	quantity = strings.Join(qparts, " ")
 
 	// Next token: unit?
-	if i < len(parts) && units[strings.ToLower(strings.Trim(parts[i], ".,"))] {
+	if i < len(parts) && knownUnits[strings.ToLower(strings.Trim(parts[i], ".,"))] {
 		unit = parts[i]
 		i++
 	}

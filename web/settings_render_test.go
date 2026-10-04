@@ -49,26 +49,47 @@ func TestSettingsPageExecutes(t *testing.T) {
 		},
 	}
 
-	var buf strings.Builder
-	if err := tmpl.ExecuteTemplate(&buf, "layout.html", data); err != nil {
-		t.Fatalf("execute: %v", err)
+	// General and AI Setup are the same template; the page slug picks the
+	// cards. Each tab must show its own cards and none of the other's.
+	render := func(page string) string {
+		data.Page = page
+		var buf strings.Builder
+		if err := tmpl.ExecuteTemplate(&buf, "layout.html", data); err != nil {
+			t.Fatalf("execute %s: %v", page, err)
+		}
+		return buf.String()
+	}
+	check := func(page string, want, notWant []string) {
+		out := render(page)
+		for _, w := range want {
+			if !strings.Contains(out, w) {
+				t.Errorf("%s page missing %q", page, w)
+			}
+		}
+		for _, w := range notWant {
+			if strings.Contains(out, w) {
+				t.Errorf("%s page should not contain %q", page, w)
+			}
+		}
 	}
 
-	out := buf.String()
-	for _, want := range []string{
+	aiCards := []string{
 		`data-provider-panel="openai"`,
 		`data-provider-panel="anthropic"`, // every provider is rendered, not just the active one
 		`data-setting-key="OPENAI_MODEL"`,
 		`data-setting-key="LLM_TOP_K"`,
 		`value="gpt-4.1"`, // curated models reach the dropdown
+		`data-video-tools`,
+	}
+	generalCards := []string{
 		`data-tooltip="Join the two number groups."`,
 		`id="testKrogerBtn"`,
 		`data-modal-open="kroger-guide"`,
 		`id="kroger-guide"`,
 		`/static/img/guides/kroger-5.png`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("rendered settings page missing %q", want)
-		}
+		`id="themeSelect"`,
+		`/settings/danger/all`,
 	}
+	check("settings", generalCards, aiCards)
+	check("settings_ai", append(aiCards, `aria-current="page">`), generalCards)
 }

@@ -2,32 +2,144 @@
 {{define "content"}}
 <div class="page-header">
     <h1 class="page-title">{{icon "fork"}} Import Recipe</h1>
-    <p class="page-subtitle">Paste a recipe URL to import it automatically, or enter one by hand.</p>
+    <p class="page-subtitle">Paste a recipe or cooking-video URL to import it automatically, or enter one by hand.</p>
 </div>
+
+{{/* ── Video import capability banner ─────────────────────────────────
+     Shown when a video link couldn't be fully imported here. Admins get a
+     "Download now" button (video-tools.js); everyone else is told who can. */}}
+{{$v := .Data.Video}}
+{{if not $v.HasLLM}}
+<div class="banner banner-info" role="status">
+    <span>{{icon "information"}}</span>
+    <span><strong>Video links need an AI provider.</strong> Recipe websites still import fine.
+        {{if .IsAdmin}}<a href="/settings/ai">Set one up in Settings → AI Setup</a>.{{else}}Ask an admin to set one up.{{end}}</span>
+</div>
+{{else if ne $v.Capability "full"}}
+<div class="banner banner-warning" role="status" data-video-banner{{if $v.Running}} data-video-running{{end}}
+     style="flex-wrap:wrap;align-items:center">
+    <span>{{icon "alert"}}</span>
+    <span style="flex:1 1 20rem">
+        {{if eq $v.Capability "none"}}
+        <strong>Video links can't be imported yet.</strong> The tools that read TikTok, Instagram and
+        YouTube posts haven't been downloaded to this server. Recipe websites still import fine.
+        {{else if $v.ServerURL}}
+        <strong>Video import is limited.</strong> The speech-to-text server at <code>{{$v.ServerURL}}</code>
+        isn't answering, so only a video's caption and comments are read.
+        {{if $v.NeedsModel}}It starts once a speech model is downloaded.{{else}}Check that the whisper container is running.{{end}}
+        {{else}}
+        <strong>Video import is limited.</strong> Speech-to-text isn't downloaded, so only a video's
+        caption and comments are read - and most creators say the recipe out loud.
+        {{end}}
+        {{if not .IsAdmin}}Ask an admin to download the tools in Settings → AI Setup.{{end}}
+        <span data-video-progress hidden style="display:block;margin-top:var(--sp-2)"></span>
+    </span>
+    {{if .IsAdmin}}
+    <span style="display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap">
+        {{if $v.CanInstall}}
+        <button type="button" class="btn btn-primary btn-sm" data-video-download>{{icon "download"}} Download now{{if $v.DownloadMB}} (~{{$v.DownloadMB}} MB){{end}}</button>
+        {{end}}
+        <a class="btn btn-ghost btn-sm" href="/settings/ai#video-tools">{{icon "cog"}} Setup details</a>
+    </span>
+    {{end}}
+</div>
+{{if .IsAdmin}}<script src="/static/js/video-tools.js" defer></script>{{end}}
+{{end}}
+
+<details class="card form-section" style="margin-bottom:1.5rem" open>
+    <summary class="form-section__title" style="cursor:pointer;list-style:none">
+        {{icon "help"}} What can I import?
+    </summary>
+    <div class="guide" style="margin-top:1rem">
+        <div class="guide-step">
+            <div class="guide-step__head">{{icon "book"}}<span class="guide-step__title">Recipe websites</span></div>
+            <p class="guide-step__desc">
+                Most recipe sites and food blogs - anything that publishes standard recipe data
+                (Schema.org), which covers the big recipe sites and blogs using recipe plugins like
+                WP Recipe Maker or Tasty Recipes. Paste the page of one recipe, not a search or category page.
+                Pages behind a paywall or login can't be read.
+            </p>
+        </div>
+        <div class="guide-step">
+            <div class="guide-step__head">{{icon "video"}}<span class="guide-step__title">Cooking videos</span>
+                {{if and $v.HasLLM (eq $v.Capability "full")}}<span class="badge badge-success">Ready</span>
+                {{else if and $v.HasLLM (eq $v.Capability "caption")}}<span class="badge badge-warning">Captions only</span>
+                {{else}}<span class="badge badge-muted">Not set up</span>{{end}}
+            </div>
+            <ul class="guide-step__desc" style="padding-left:1.2rem">
+                <li><strong>TikTok</strong> - <code>tiktok.com/@user/video/…</code> and <code>vm.tiktok.com/…</code> share links</li>
+                <li><strong>Instagram</strong> - Reels and video posts (<code>instagram.com/reel/…</code>). Some posts need a login and can't be read.</li>
+                <li><strong>YouTube</strong> - Shorts and regular videos up to 15 minutes</li>
+            </ul>
+            <p class="guide-step__desc">
+                Go Eat reads the caption, the creator's own and pinned comments (YouTube and Instagram),
+                and listens to what's said, then the AI writes it up as a recipe. Amounts the video never
+                states are estimated and the recipe is tagged <span class="badge badge-muted">estimated-amounts</span> -
+                check them before you cook. Text that only appears on screen isn't read yet, and if the
+                creator says the recipe is "at the link in bio", import that page instead.
+            </p>
+        </div>
+        <div class="guide-step">
+            <div class="guide-step__head">{{icon "pencil"}}<span class="guide-step__title">Anything else</span></div>
+            <p class="guide-step__desc">Cookbooks, family recipes, private posts: use <em>Enter manually</em> below.</p>
+        </div>
+        {{/* Server-only: shown disabled, never hidden (phase 16 commit 12). */}}
+        {{$s := .Data.Share}}
+        <div class="guide-step" data-share-target="{{$s.Mode}}"{{if ne $s.Mode "ready"}} aria-disabled="true" style="opacity:.6"{{end}}>
+            <div class="guide-step__head">{{icon "share"}}<span class="guide-step__title">Share from your phone</span>
+                {{if eq $s.Mode "ready"}}<span class="badge badge-success">Ready</span>
+                {{else}}<span class="badge badge-muted">Not available in this deployment</span>{{end}}
+            </div>
+            {{if eq $s.Mode "desktop"}}
+            <p class="guide-step__desc">
+                The desktop app only runs on this computer, so your phone can't reach it. To share
+                TikTok, Instagram and YouTube posts straight to Go Eat from your phone, run Go Eat as a
+                server - we recommend the <a href="{{$s.DockerURL}}" target="_blank" rel="noopener noreferrer">Docker image from GitHub</a>.
+            </p>
+            {{else if eq $s.Mode "needs_https"}}
+            <p class="guide-step__desc">
+                Phones only install web apps from an <strong>https://</strong> address, and this server is
+                being reached over plain http. Put it behind HTTPS (a reverse proxy like Caddy, or the
+                <a href="{{$s.DockerURL}}" target="_blank" rel="noopener noreferrer">Docker setup from GitHub</a>)
+                and set <code>PUBLIC_BASE_URL</code> to the https address.
+            </p>
+            {{else}}
+            <p class="guide-step__desc">
+                On Android, open Go Eat in Chrome and choose <em>Install app</em> (or <em>Add to Home screen</em>)
+                from the browser menu. Then in TikTok, Instagram or YouTube tap <em>Share</em> → <em>Go Eat</em>
+                and the link lands here, ready to import. iPhones don't let web apps receive shares - copy
+                the link and paste it above instead.
+            </p>
+            {{end}}
+        </div>
+    </div>
+</details>
 
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">Import from URL</h2>
-    <form method="POST" action="/recipes/import" class="pref-form">
+    <form method="POST" action="/recipes/import" class="pref-form" data-import-form>
         {{.CSRFField}}
         <div class="field-row">
             <div class="field" style="flex:1">
                 <label class="field-label" for="import-url">Recipe URL</label>
                 <input class="field-input" id="import-url" name="url" type="url"
-                       placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required>
+                       placeholder="https://www.example.com/recipe/pasta" autocomplete="off" required
+                       {{with .Data.URL}}value="{{.}}"{{end}}>
             </div>
             <div class="field field--action" style="align-self:flex-end">
-                <button type="submit" class="btn btn-primary">{{icon "download"}} Import</button>
+                <button type="submit" class="btn btn-primary" data-import-submit>{{icon "download"}} Import</button>
             </div>
         </div>
-        <p class="field-hint">Works with most recipe sites that publish structured data (Schema.org).</p>
+        {{if .Data.URL}}<p class="field-hint"><strong>Shared link ready</strong> - press Import to bring it in.</p>
+        {{else}}<p class="field-hint">Recipe websites and cooking videos both work - see what's supported above.</p>{{end}}
     </form>
 </div>
 
-<details class="card form-section">
+<details class="card form-section" open>
     <summary class="form-section__title" style="cursor:pointer;list-style:none">
-        {{icon "edit"}} Enter manually <span style="font-weight:400;color:var(--color-text-muted)">(click to expand)</span>
+        {{icon "edit"}} Enter manually
     </summary>
-    <form method="POST" action="/recipes/import/manual" class="pref-form" style="margin-top:1rem">
+    <form method="POST" action="/recipes/import/manual" class="pref-form" style="margin-top:1rem" data-import-form>
         {{.CSRFField}}
 
         <div class="field-row" style="margin-bottom:0.75rem">
@@ -73,11 +185,41 @@
                       rows="8" placeholder="Boil pasta until al dente.&#10;Toss with butter and lemon." required></textarea>
         </div>
 
-        <button type="submit" class="btn btn-primary">{{icon "plus"}} Save recipe</button>
+        <button type="submit" class="btn btn-primary" data-import-submit>{{icon "plus"}} Save recipe</button>
     </form>
 </details>
 
 <div style="margin-top:1.5rem">
     <a href="/recipes" class="btn btn-ghost">{{icon "arrow-left"}} Back to recipes</a>
 </div>
+<script nonce="{{cspNonce}}">
+/* A website import runs inside the POST - several seconds on a slow site -
+ * so a second click would import the recipe twice. Lock the button and say
+ * what is happening; the ring comes from .btn.is-loading. */
+(function () {
+    var VIDEO_HOST = /^https?:\/\/([a-z0-9-]+\.)*(tiktok\.com|instagram\.com|youtube\.com|youtu\.be)\//i;
+    document.querySelectorAll('[data-import-form]').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            var btn = form.querySelector('[data-import-submit]');
+            if (!btn) return;
+            var url = form.querySelector('input[name="url"]');
+            var label = 'Saving…';
+            if (url) label = VIDEO_HOST.test(url.value.trim()) ? 'Starting video import…' : 'Importing…';
+            btn.disabled = true;
+            btn.classList.add('is-loading');
+            btn.dataset.label = btn.dataset.label || btn.lastChild.textContent;
+            btn.lastChild.textContent = ' ' + label;
+        });
+    });
+    /* Back from a failed import: the page may come from the back/forward
+     * cache with the button still locked. */
+    window.addEventListener('pageshow', function () {
+        document.querySelectorAll('[data-import-submit].is-loading').forEach(function (btn) {
+            btn.disabled = false;
+            btn.classList.remove('is-loading');
+            if (btn.dataset.label) btn.lastChild.textContent = btn.dataset.label;
+        });
+    });
+})();
+</script>
 {{end}}

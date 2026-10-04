@@ -21,7 +21,7 @@ const (
 
 // JobEvent is one SSE event emitted during plan generation.
 type JobEvent struct {
-	Type    string // "status" | "llm_start" | "llm_delta" | "done" | "error"
+	Type    string // "status" | "llm_start" | "llm_delta" | "done" | "error" | "canceled"
 	Message string
 	PlanID  int64 // set on "done" events
 }
@@ -33,9 +33,11 @@ type Job struct {
 	PlanID      int64  // set on success
 	Error       string // set on failure
 
-	mu     sync.Mutex
-	events []JobEvent
-	done   chan struct{}
+	mu       sync.Mutex
+	events   []JobEvent
+	done     chan struct{}
+	cancel   context.CancelFunc
+	canceled bool
 }
 
 func newJob(householdID int64) *Job {
@@ -44,6 +46,44 @@ func newJob(householdID int64) *Job {
 		Status:      JobPending,
 		done:        make(chan struct{}),
 	}
+}
+
+// SetCancel registers the function that aborts this job's work. If Cancel was
+// already called (the user clicked before the job got this far) it fires
+// straight away, so an early click is never lost.
+func (j *Job) SetCancel(fn context.CancelFunc) {
+	j.mu.Lock()
+	j.cancel = fn
+	already := j.canceled
+	j.mu.Unlock()
+	if already {
+		fn()
+	}
+}
+
+// Cancel asks the job to stop. Reports whether the job was still running -
+// false once it has finished, when there is nothing left to abort.
+func (j *Job) Cancel() bool {
+	select {
+	case <-j.done:
+		return false
+	default:
+	}
+	j.mu.Lock()
+	j.canceled = true
+	fn := j.cancel
+	j.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
+	return true
+}
+
+// Canceled reports whether Cancel was called.
+func (j *Job) Canceled() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.canceled
 }
 
 // Done returns a channel closed once the job's function has returned (success,

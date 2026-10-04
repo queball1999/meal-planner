@@ -43,3 +43,6 @@ docker-compose*.yml
 **/*.exe
 **/*.db
 **/*.db-*
+
+# The whisper sidecar image has its own build context (whisper/Dockerfile).
+whisper/

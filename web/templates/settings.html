@@ -5,11 +5,16 @@
 
 <div class="page-header">
     <h1 class="page-title">{{icon "cog"}} Settings</h1>
-    <p class="page-subtitle">Every .env-configurable option, editable here. Changes save immediately; most need a restart to take effect - <code>make docker-restart</code> (or <code>make docker-rebuild</code> after a code change) - except AI Provider settings below, which apply on the next request.</p>
+    {{if eq .Page "settings_ai"}}
+    <p class="page-subtitle">The AI that writes your meal plans and reads recipes, and the tools that let it import cooking videos. Changes here apply on the next request - no restart needed.</p>
+    {{else}}
+    <p class="page-subtitle">Every .env-configurable option, editable here. Changes save immediately; most need a restart to take effect - <code>make docker-restart</code> (or <code>make docker-rebuild</code> after a code change). AI settings are on the <a href="/settings/ai">AI Setup</a> tab.</p>
+    {{end}}
 </div>
 
 {{template "settingsTabs" .}}
 
+{{if ne .Page "settings_ai"}}
 {{/* ── Appearance ───────────────────────────────────────────
      A personal display preference, not a household one - saved to this
      browser's localStorage, applied instantly, no restart and no server
@@ -31,6 +36,9 @@
     </div>
 </div>
 
+{{end}}
+
+{{if eq .Page "settings_ai"}}
 {{/* ── AI provider configuration ─────────────────────────── */}}
 <div class="card form-section" style="margin-bottom:1.5rem">
     <div class="ai-head">
@@ -215,6 +223,73 @@
     {{end}}
 </div>
 
+{{/* ── Video recipe import tools (phase 16) ────────────────────────────
+     Rendered by /static/js/video-tools.js from GET /settings/video-tools. */}}
+<div class="card form-section" id="video-tools" data-video-tools style="margin-bottom:1.5rem">
+    <div class="ai-head">
+        <h2 class="form-section__title" style="margin:0">{{icon "video"}} Video recipe import</h2>
+        <span class="badge badge-muted" data-vt-badge>Checking…</span>
+    </div>
+    <p class="field-hint" style="margin-top:var(--sp-2)">
+        Lets Import Recipe read TikTok, Instagram Reels and YouTube Shorts links. Go Eat doesn't ship
+        the tools this needs - download them here once (about 200 MB with the recommended speech model).
+        They're saved in <code>{{.Data.ToolsDir}}</code>, run only on this machine, and are only used
+        for video imports. Each download is checked against a published SHA-256 before it's used.
+    </p>
+
+    <div class="guide">
+        <div class="guide-step">
+            <div class="guide-step__head"><span class="guide-step__num">1</span><span class="guide-step__title">Connect an AI provider</span></div>
+            <p class="guide-step__desc">
+                {{if .Data.HasLLM}}<span class="badge badge-success">Done</span> The provider above writes up the recipe from what the video says.
+                {{else}}<span class="badge badge-warning">Needed</span> Set one up in the AI Provider card above - it writes up the recipe from what the video says.{{end}}
+            </p>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step__head"><span class="guide-step__num">2</span><span class="guide-step__title">Download the tools</span></div>
+            <p class="guide-step__desc">yt-dlp and FFmpeg are required. whisper.cpp and a speech model let Go Eat listen to the video - most creators say the recipe out loud rather than writing it in the caption.</p>
+            {{with .Data.WhisperURL}}
+            <details class="ai-sampling"{{if .Value}} open{{end}}>
+                <summary class="ai-sampling__summary">Speech-to-text on another server{{if .Value}} <span class="badge badge-accent">in use</span>{{end}}</summary>
+                <div class="field settings-field">
+                    <label class="field-label" for="set-{{.Key}}">
+                        {{.Label}}
+                        {{if eq .Source "admin"}}<span class="badge badge-accent" title="Overrides the .env value">edited</span>{{end}}
+                    </label>
+                    <input class="field-input" type="text" id="set-{{.Key}}" data-setting-key="{{.Key}}" value="{{.Value}}" placeholder="http://whisper:8081">
+                    <span class="field-hint">{{.Help}} With a server, whisper.cpp isn't downloaded here; speech models still are, into the folder the server reads.</span>
+                </div>
+            </details>
+            {{end}}
+            <div data-vt-rows></div>
+            <p style="margin-top:var(--sp-3)">
+                <button type="button" class="btn btn-primary" data-vt-install-missing hidden>{{icon "download"}} Download everything missing</button>
+            </p>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step__head"><span class="guide-step__num">3</span><span class="guide-step__title">Pick a speech model</span></div>
+            <p class="guide-step__desc">Bigger models hear more accurately but take longer. Base (English) handles a one-minute video in a few seconds on most computers.</p>
+            <div data-vt-models></div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step__head"><span class="guide-step__num">4</span><span class="guide-step__title">Verify</span></div>
+            <p class="guide-step__desc">Runs each tool, and transcribes a second of silence with the model, to prove they work on this machine. Downloads verify themselves automatically when they finish.</p>
+            <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
+                <button type="button" class="btn btn-ghost btn-sm" data-vt-verify>{{icon "shield-check"}} Verify tools</button>
+                <span class="field-hint" data-vt-checked></span>
+            </div>
+        </div>
+    </div>
+    <p class="field-hint" data-vt-msg aria-live="polite"></p>
+</div>
+<script src="/static/js/video-tools.js" defer></script>
+
+{{end}}
+
+{{if ne .Page "settings_ai"}}
 {{/* ── Editable settings, one card per category ────────────────────────── */}}
 {{range .Data.Categories}}
 <div class="card form-section settings-category" style="margin-bottom:1.5rem">
@@ -401,6 +476,8 @@
         </form>
     </div>
 </div>
+
+{{end}}
 
 <script nonce="{{cspNonce}}">
 (function () {

@@ -18,6 +18,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// Health check - used by reverse proxies; exempt from auth and CSRF.
 	mux.HandleFunc("GET /health", s.handleHealth)
 
+	// Installable web app (web/pwa.go): public, the browser fetches the
+	// manifest without cookies. 404 in the desktop app.
+	mux.HandleFunc("GET /manifest.webmanifest", s.handleManifest)
+	mux.HandleFunc("GET /sw.js", s.handleServiceWorker)
+
 	// Auth flows
 	mux.HandleFunc("GET /auth/login", s.handleLoginPage)
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
@@ -109,6 +114,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /plan/generate", edit(http.HandlerFunc(s.handlePlanGenerate)))
 	mux.Handle("GET /plan/generate", view(http.HandlerFunc(s.handlePlanGeneratePage)))
 	mux.Handle("GET /plan/generate/status", view(http.HandlerFunc(s.handlePlanGenerateStatus)))
+	mux.Handle("POST /plan/generate/cancel", edit(http.HandlerFunc(s.handlePlanGenerateCancel)))
 	mux.Handle("POST /plan/generate/resume", edit(http.HandlerFunc(s.handlePlanGenerateResume)))
 	mux.Handle("POST /plan/days/{date}/headcount", edit(http.HandlerFunc(s.handlePlanHeadcount)))
 	mux.Handle("GET /plan/days/{date}/status-impact", view(http.HandlerFunc(s.handleDayStatusImpact)))
@@ -144,6 +150,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /pantry/items/{id}/conversions", edit(http.HandlerFunc(s.handleItemConversionUpsert)))
 	mux.Handle("POST /pantry/items/{id}/conversions/{cid}/delete", edit(http.HandlerFunc(s.handleItemConversionDelete)))
 
+	mux.Handle("POST /pantry/{id}/update", edit(http.HandlerFunc(s.handlePantryUpdate)))
 	mux.Handle("POST /pantry/{id}/delete", edit(http.HandlerFunc(s.handlePantryDelete)))
 	mux.Handle("POST /pantry/{id}/stock", edit(http.HandlerFunc(s.handlePantryStock)))
 
@@ -159,6 +166,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /recipes/import", view(http.HandlerFunc(s.handleRecipeImportPage)))
 	mux.Handle("POST /recipes/import", edit(http.HandlerFunc(s.handleRecipeImport)))
 	mux.Handle("POST /recipes/import/manual", edit(http.HandlerFunc(s.handleRecipeImportManual)))
+	mux.Handle("GET /recipes/share", view(http.HandlerFunc(s.handleRecipeShare)))
+	mux.Handle("GET /recipes/import/video", view(http.HandlerFunc(s.handleVideoImportPage)))
+	mux.Handle("GET /recipes/import/video/status", view(http.HandlerFunc(s.handleVideoImportStatus)))
 	mux.Handle("GET /recipes", view(http.HandlerFunc(s.handleRecipesPage)))
 	mux.Handle("GET /recipes/{id}", view(http.HandlerFunc(s.handleRecipeDetail)))
 	mux.Handle("POST /recipes/{id}/edit", edit(http.HandlerFunc(s.handleRecipeEdit)))
@@ -188,6 +198,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/scrape/{storeID}/clearance/manual", admin(http.HandlerFunc(s.handleScrapeClearanceManual)))
 
 	mux.Handle("GET /settings", admin(http.HandlerFunc(s.handleSettingsPage)))
+	mux.Handle("GET /settings/ai", admin(http.HandlerFunc(s.handleSettingsAIPage)))
 	mux.Handle("POST /settings/danger/{target}", own(http.HandlerFunc(s.handleDangerWipe)))
 	mux.Handle("GET /about", admin(http.HandlerFunc(s.handleAbout)))
 	mux.Handle("GET /about/probe", admin(http.HandlerFunc(s.handleAboutProbe)))
@@ -201,6 +212,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /settings/ha/entities", admin(http.HandlerFunc(s.handleHAEntities)))
 	mux.Handle("POST /settings/ha/save", admin(http.HandlerFunc(s.handleHASave)))
 	mux.Handle("POST /settings/ai/models", admin(http.HandlerFunc(s.handleAIModels)))
+	mux.Handle("GET /settings/video-tools", admin(http.HandlerFunc(s.handleVideoToolsStatus)))
+	mux.Handle("POST /settings/video-tools/install", admin(http.HandlerFunc(s.handleVideoToolsInstall)))
+	mux.Handle("POST /settings/video-tools/verify", admin(http.HandlerFunc(s.handleVideoToolsVerify)))
+	mux.Handle("POST /settings/video-tools/model", admin(http.HandlerFunc(s.handleVideoToolsModel)))
+	mux.Handle("POST /settings/video-tools/remove", admin(http.HandlerFunc(s.handleVideoToolsRemove)))
 	mux.Handle("GET /admin/llm-debug", admin(http.HandlerFunc(s.handleLLMDebugLog)))
 	mux.Handle("GET /admin/llm-log", admin(http.HandlerFunc(s.handleLLMLogPage)))
 	mux.Handle("GET /admin/events", admin(http.HandlerFunc(s.handleAdminEventsPage)))

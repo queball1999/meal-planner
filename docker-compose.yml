@@ -7,10 +7,30 @@ services:
       DATABASE_URL: "file:/data/goeat.db"
       RECIPE_IMAGE_DIR: "/data/recipe-images"
       ITEM_IMAGE_DIR: "/data/item-images"
+      TOOLS_DIR: "/data/tools"
+      # Video recipe import: speech-to-text runs in the whisper container
+      # below. Speech models are downloaded from Settings → AI Setup into the
+      # shared whisper-models volume, mounted at the same path in both.
+      WHISPER_URL: "http://whisper:8081"
+      WHISPER_MODELS_DIR: "/models"
     ports:
       - "8081:8080"
     volumes:
       - goeat-data:/data
+      - whisper-models:/models
+
+  # Speech-to-text for video recipe import (whisper/Dockerfile). Internal
+  # only, no published port: its /load endpoint reads any path it can see.
+  # Starts once a speech model has been downloaded in Settings → AI Setup.
+  # Remove this block (and WHISPER_URL above) to import videos from their
+  # captions only.
+  whisper:
+    image: ghcr.io/queball1999/goeat-whisper:latest
+    restart: unless-stopped
+    environment:
+      WHISPER_THREADS: ${WHISPER_THREADS:-4}
+    volumes:
+      - whisper-models:/models:ro
 
   # Optional headless browsers for scraping (Settings -> Scraping). Comment
   # out either block if you don't need it.
@@ -49,3 +69,4 @@ services:
 
 volumes:
   goeat-data:
+  whisper-models:

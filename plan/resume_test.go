@@ -77,3 +77,19 @@ func TestGenerate_TruncatedReplyResumesWithSamePrompt(t *testing.T) {
 		t.Errorf("got %d meals, want 21", len(meals))
 	}
 }
+
+func TestJobCancelBeforeAndAfterSetCancel(t *testing.T) {
+	j := newJob(1)
+	fired := 0
+	j.Cancel() // clicked before the job registered its cancel func
+	j.SetCancel(func() { fired++ })
+	if fired != 1 || !j.Canceled() {
+		t.Fatalf("early cancel lost: fired=%d canceled=%v", fired, j.Canceled())
+	}
+
+	done := newJob(1)
+	close(done.done)
+	if done.Cancel() {
+		t.Error("Cancel on a finished job should report false")
+	}
+}

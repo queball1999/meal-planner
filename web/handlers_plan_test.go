@@ -328,3 +328,23 @@ func TestPantryOptions(t *testing.T) {
 		t.Error("another household's pantry leaked into the picker")
 	}
 }
+
+func TestParseOnHandEntries(t *testing.T) {
+	got := parseOnHandEntries(
+		[]string{"Rice", "  ", "eggs", "RICE"},
+		[]string{"2", "5", "", "3"},
+		[]string{"kg", "g", "", "lb"},
+	)
+	if len(got) != 2 {
+		t.Fatalf("got %+v, want 2 entries (blank dropped, repeat merged)", got)
+	}
+	if got[0] != (onHandEntry{Name: "RICE", Quantity: 3, Unit: "lb"}) {
+		t.Errorf("repeat should keep the last row, got %+v", got[0])
+	}
+	if got[1] != (onHandEntry{Name: "eggs", Quantity: 1, Unit: "each"}) {
+		t.Errorf("missing qty/unit should default to 1 each, got %+v", got[1])
+	}
+	if l := got[0].label(); l != "RICE (3 lb)" {
+		t.Errorf("label = %q", l)
+	}
+}

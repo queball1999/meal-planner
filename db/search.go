@@ -12,7 +12,7 @@ import (
 func (s *store) SearchCatalogRecipes(ctx context.Context, householdID int64, q string) ([]*CatalogRecipe, error) {
 	like := "%" + q + "%"
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, household_id, title, source_kind, source_url, source_site,
+		SELECT id, household_id, title, source_kind, source_url, source_site, source_author,
 		       image_path, servings, prep_minutes, cook_minutes, tags, created_at
 		FROM catalog_recipes
 		WHERE household_id = ?
@@ -95,7 +95,7 @@ func (s *store) SearchMealTitles(ctx context.Context, householdID int64, q strin
 
 func (s *store) FilterCatalogRecipes(ctx context.Context, householdID int64, f CatalogRecipeFilter) ([]*CatalogRecipe, error) {
 	query := `
-		SELECT id, household_id, title, source_kind, source_url, source_site,
+		SELECT id, household_id, title, source_kind, source_url, source_site, source_author,
 		       image_path, servings, prep_minutes, cook_minutes, tags, created_at
 		FROM catalog_recipes
 		WHERE household_id = ?`

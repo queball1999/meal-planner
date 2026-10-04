@@ -36,10 +36,10 @@ func (s *store) CreateCatalogRecipe(ctx context.Context, p CreateCatalogRecipePa
 	tags, _ := json.Marshal(p.Tags)
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO catalog_recipes
-			(household_id, title, source_kind, source_url, source_site,
+			(household_id, title, source_kind, source_url, source_site, source_author,
 			 image_path, servings, prep_minutes, cook_minutes, tags)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.HouseholdID, p.Title, p.SourceKind, p.SourceURL, p.SourceSite,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.HouseholdID, p.Title, p.SourceKind, p.SourceURL, p.SourceSite, p.SourceAuthor,
 		p.ImagePath, p.Servings, p.PrepMinutes, p.CookMinutes, string(tags),
 	)
 	if err != nil {
@@ -51,7 +51,7 @@ func (s *store) CreateCatalogRecipe(ctx context.Context, p CreateCatalogRecipePa
 
 func (s *store) GetCatalogRecipe(ctx context.Context, id int64) (*CatalogRecipe, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, title, source_kind, source_url, source_site,
+		SELECT id, household_id, title, source_kind, source_url, source_site, source_author,
 		       image_path, servings, prep_minutes, cook_minutes, tags, created_at
 		FROM catalog_recipes WHERE id = ?`, id)
 	return scanCatalogRecipe(row)
@@ -59,7 +59,7 @@ func (s *store) GetCatalogRecipe(ctx context.Context, id int64) (*CatalogRecipe,
 
 func (s *store) ListCatalogRecipes(ctx context.Context, householdID int64) ([]*CatalogRecipe, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, household_id, title, source_kind, source_url, source_site,
+		SELECT id, household_id, title, source_kind, source_url, source_site, source_author,
 		       image_path, servings, prep_minutes, cook_minutes, tags, created_at
 		FROM catalog_recipes
 		WHERE household_id = ?
@@ -200,7 +200,7 @@ func scanCatalogRecipe(row *sql.Row) (*CatalogRecipe, error) {
 	var r CatalogRecipe
 	var tagsJSON, createdAt string
 	err := row.Scan(
-		&r.ID, &r.HouseholdID, &r.Title, &r.SourceKind, &r.SourceURL, &r.SourceSite,
+		&r.ID, &r.HouseholdID, &r.Title, &r.SourceKind, &r.SourceURL, &r.SourceSite, &r.SourceAuthor,
 		&r.ImagePath, &r.Servings, &r.PrepMinutes, &r.CookMinutes, &tagsJSON, &createdAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -218,7 +218,7 @@ func scanCatalogRecipeRow(rows *sql.Rows) (*CatalogRecipe, error) {
 	var r CatalogRecipe
 	var tagsJSON, createdAt string
 	err := rows.Scan(
-		&r.ID, &r.HouseholdID, &r.Title, &r.SourceKind, &r.SourceURL, &r.SourceSite,
+		&r.ID, &r.HouseholdID, &r.Title, &r.SourceKind, &r.SourceURL, &r.SourceSite, &r.SourceAuthor,
 		&r.ImagePath, &r.Servings, &r.PrepMinutes, &r.CookMinutes, &tagsJSON, &createdAt,
 	)
 	if err != nil {
@@ -244,7 +244,7 @@ func normalizeTerm(name string) string {
 // would make the recipes page useless.
 func (s *store) GetCatalogRecipeByTitle(ctx context.Context, householdID int64, title string) (*CatalogRecipe, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, title, source_kind, source_url, source_site,
+		SELECT id, household_id, title, source_kind, source_url, source_site, source_author,
 		       image_path, servings, prep_minutes, cook_minutes, tags, created_at
 		FROM catalog_recipes
 		WHERE household_id = ? AND title = ? COLLATE NOCASE

@@ -48,7 +48,7 @@ func TestHistoryPageExecutes(t *testing.T) {
 	for _, want := range []string{
 		`data-history-detail="1"`,
 		`data-history-detail="2"`,
-		`Retry generating this plan`, // CanRegenerate row gets a retry button, not the disabled alert icon
+		`Retry generating this plan`,           // CanRegenerate row gets a retry button, not the disabled alert icon
 		`data-modal-open="must-include-modal"`, // retry opens the same picker/confirm modal, not a bare form POST
 		`data-week="2026-01-12"`,
 		`id="history-detail-modal"`,

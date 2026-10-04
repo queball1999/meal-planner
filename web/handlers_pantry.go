@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -101,6 +102,60 @@ func (s *Server) handlePantryAdd(w http.ResponseWriter, r *http.Request) {
 		s.setNotify(w, NotifySuccess, fmt.Sprintf("%q added to pantry.", rawName))
 	}
 	http.Redirect(w, r, "/pantry", http.StatusSeeOther)
+}
+
+// handlePantryUpdate sets one pantry row's quantity and/or unit - the inline
+// -/+ buttons and unit dropdown on the Pantry page. Fields left out keep their
+// current value. Replies with JSON so the page can update in place; zero is
+// allowed (an emptied row stays as a known item).
+func (s *Server) handlePantryUpdate(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if !s.owns(w, r, db.ResPantryItem, id) {
+		return
+	}
+	ctx := r.Context()
+
+	var cur *db.PantryItem
+	if all, lerr := s.store.ListPantryItems(ctx, hh.ID); lerr == nil {
+		for _, pi := range all {
+			if pi.ID == id {
+				cur = pi
+				break
+			}
+		}
+	}
+	if cur == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "item not found"})
+		return
+	}
+
+	qty, unit := cur.QuantityOnHand, cur.Unit
+	if raw := strings.TrimSpace(r.FormValue("quantity")); raw != "" {
+		v, perr := strconv.ParseFloat(raw, 64)
+		if perr != nil || v < 0 || v > 1e6 || math.IsNaN(v) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Quantity must be a number, zero or more."})
+			return
+		}
+		qty = pricing.Round2(v)
+	}
+	if u := strings.TrimSpace(r.FormValue("unit")); u != "" {
+		unit = u
+	}
+
+	if err := s.store.UpdatePantryItem(ctx, db.UpdatePantryItemParams{ID: id, QuantityOnHand: qty, Unit: unit}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't save that change"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "quantity": qty, "unit": unit})
 }
 
 func (s *Server) handlePantryDelete(w http.ResponseWriter, r *http.Request) {

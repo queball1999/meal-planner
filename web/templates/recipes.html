@@ -62,6 +62,7 @@
                 <td data-label="Source">
                     {{if eq .SourceKind "imported"}}
                         {{if .SourceSite}}<span title="{{.SourceURL}}">{{.SourceSite}}</span>{{else}}Web import{{end}}
+                        {{if .SourceAuthor}}<span class="text-muted" style="display:block;font-size:0.8rem">by {{.SourceAuthor}}</span>{{end}}
                     {{else if eq .SourceKind "manual"}}
                         Hand-entered
                     {{else}}

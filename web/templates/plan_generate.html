@@ -30,6 +30,13 @@
     <div class="skeleton-card__icon icon-spin" aria-hidden="true" id="gen-icon">{{icon "autorenew"}}</div>
     <h2 class="skeleton-card__title" id="gen-title">Working…</h2>
     <p class="skeleton-card__body" id="gen-status">Connecting to generation service…</p>
+    <p id="gen-cancel-wrap" style="margin-top:var(--sp-4)">
+        <button type="button" class="btn btn-ghost" id="gen-cancel"
+                data-confirm="Stop generating this plan? Nothing will be saved." data-confirm-title="Cancel generation">{{icon "close"}} Cancel generation</button>
+    </p>
+    <p id="gen-back-wrap" hidden style="margin-top:var(--sp-4)">
+        <a href="/" class="btn btn-secondary">Back to dashboard</a>
+    </p>
     <p id="gen-resume-wrap" hidden style="margin-top:var(--sp-4)">
         <button type="button" class="btn btn-primary" data-modal-open="gen-resume-modal">{{icon "autorenew"}} Try again</button>
     </p>
@@ -156,6 +163,40 @@
     // every subsequent 'error' dispatch instead of re-rendering from it.
     var settled = false;
 
+    /* ── Cancel ─────────────────────────────────────────────────────────
+     * Posts to the server, which aborts the LLM call and drops the half-built
+     * plan; the stream then reports "canceled" and the screen settles. The
+     * confirm dialog comes from modal.js via data-confirm. */
+    var cancelWrap = document.getElementById('gen-cancel-wrap');
+    var cancelBtn  = document.getElementById('gen-cancel');
+    var backWrap   = document.getElementById('gen-back-wrap');
+    function hideCancel() { if (cancelWrap) cancelWrap.hidden = true; }
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', function () {
+            if (cancelBtn.disabled) return;
+            cancelBtn.disabled = true;
+            status.textContent = 'Canceling…';
+            var tok = document.getElementById('csrf-token');
+            fetch('/plan/generate/cancel', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': tok ? tok.value : '' },
+            }).catch(function () { cancelBtn.disabled = false; });
+        });
+    }
+    es.addEventListener('canceled', function () {
+        if (settled) return;
+        settled = true;
+        es.close();
+        stopDebugPoll();
+        if (liveWrap) liveWrap.hidden = true;
+        hideCancel();
+        icon.classList.remove('icon-spin');
+        icon.innerHTML     = document.getElementById('gen-icon-close').innerHTML;
+        title.textContent  = 'Generation canceled';
+        status.textContent = 'Nothing was saved. Your existing plan, if any, is unchanged.';
+        if (backWrap) backWrap.hidden = false;
+    });
+
     /* ── "Try again" after a token-limit cut-off ──────────────────────
      * The server sends "resumable" (data: the limit the cut-off reply had)
      * just before "error" when the reply ran out of output tokens. */
@@ -189,6 +230,7 @@
         settled = true;
         es.close();
         stopDebugPoll();
+        hideCancel();
         if (liveWrap) liveWrap.hidden = true;
         refreshDebugLog();
         finishSteps();
@@ -210,6 +252,7 @@
         settled = true;
         es.close();
         stopDebugPoll();
+        hideCancel();
         if (liveWrap) liveWrap.hidden = true;
         refreshDebugLog();
         markStepError();
