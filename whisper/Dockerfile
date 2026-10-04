@@ -19,9 +19,13 @@
 ARG UBUNTU=ubuntu:24.04
 
 FROM ${UBUNTU} AS build
+# gcc 14, not Ubuntu 24.04's default gcc 13: GGML_CPU_ALL_VARIANTS builds Arm
+# variants with +sme (-march=armv9.2-a+...+sme), which gcc 13 rejects with
+# "invalid feature modifier 'sme'" - that failed the arm64 CI job.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential cmake git ca-certificates \
+        build-essential gcc-14 g++-14 cmake git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+ENV CC=gcc-14 CXX=g++-14
 
 # Same whisper.cpp release the desktop/server installer downloads
 # (video/install.go), so every install transcribes the same way.
