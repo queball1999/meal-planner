@@ -473,9 +473,120 @@
     border-radius: var(--radius);
     font-size: var(--text-sm);
 }
-.shopping-pricing-note__stop {
+.shopping-pricing-note__stop,
+.shopping-pricing-note__progress {
     margin-left: auto;
     flex-shrink: 0;
+}
+.shopping-pricing-note__progress + .shopping-pricing-note__stop { margin-left: 0; }
+
+/* The "Pricing progress" dialog on the shopping list: what the background
+ * pricing run is doing right now, each item's state, and an activity log. */
+.pricing-progress__status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    font-weight: var(--weight-medium);
+}
+.pricing-progress__meta {
+    margin-left: auto;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-normal);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.pricing-progress__bar {
+    display: block;
+    width: 100%;
+    height: 8px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: var(--border);
+    accent-color: var(--accent);
+    overflow: hidden;
+    appearance: none;
+}
+.pricing-progress__bar::-webkit-progress-bar { background: var(--border); }
+.pricing-progress__bar::-webkit-progress-value { background: var(--accent); transition: width var(--dur-slow) var(--ease); }
+.pricing-progress__bar::-moz-progress-bar { background: var(--accent); }
+/* No value yet (the run is still getting ready): the whole track pulses. */
+.pricing-progress__bar:indeterminate { background: var(--accent-border); }
+@media (prefers-reduced-motion: no-preference) {
+    .pricing-progress__bar:indeterminate { animation: pulse-opacity 1.4s infinite ease-in-out; }
+}
+.pricing-progress__stats {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    font-size: var(--text-sm);
+}
+.pricing-progress__count {
+    margin-right: var(--sp-2);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.pricing-progress__cols {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: var(--sp-4);
+    margin-top: var(--sp-3);
+}
+.pricing-progress__cols > section { min-width: 0; }
+.pricing-progress__heading {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semi);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.modal-dialog__body .pricing-progress__lines,
+.pricing-progress__events {
+    max-height: 22rem;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+    font-size: var(--text-sm);
+}
+.pricing-progress__line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto 4.5rem;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--radius-sm);
+}
+.pricing-progress__line--looking { background: var(--accent-bg); color: var(--accent-text); }
+.pricing-progress__line--waiting .pricing-progress__name { color: var(--text-muted); }
+.pricing-progress__name,
+.pricing-progress__store {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pricing-progress__store { max-width: 8rem; font-size: var(--text-xs); color: var(--text-muted); }
+.pricing-progress__price { text-align: right; font-variant-numeric: tabular-nums; }
+.pricing-progress__event {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--sp-2);
+    padding: var(--sp-1) 0;
+    overflow-wrap: anywhere;
+}
+.pricing-progress__event--warn { color: var(--warning); }
+.pricing-progress__time {
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+    .pricing-progress__cols { grid-template-columns: 1fr; }
+    .modal-dialog__body .pricing-progress__lines,
+    .pricing-progress__events { max-height: 14rem; }
 }
 /* Skeleton rows painted into a <tbody> while a debounced filter navigation is
  * in flight (initAutoFilter in main.js). The row keeps the table's normal
@@ -1663,6 +1774,7 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     margin-bottom: var(--sp-4);
 }
 .plan-actions__buttons {
+    margin-left: auto; /* hard right even with no budget meter beside it */
     display: flex;
     flex-wrap: wrap;
     gap: var(--sp-2);
@@ -1835,6 +1947,42 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     .shopping-item { break-inside: avoid; border-bottom: 1px solid #ccc; }
     .shopping-item--checked { opacity: .5; text-decoration: line-through; }
     a[href]::after { content: ""; } /* no URL expansion */
+}
+
+/* ── Print: meal plan ─────────────────────────────────────────────────────
+ * The board is a sideways-scrolling strip on screen; on paper it is the whole
+ * week across one landscape page, cards only - no controls. A named page, so
+ * the shopping list (same stylesheet) still prints portrait. */
+@page plan-week { size: landscape; margin: 10mm; }
+@media print {
+    .cal-toolbar__nav > a,
+    .plan-banner,
+    .plan-col__controls,
+    .meal-card__actions,
+    .meal-card__fill { display: none !important; }
+
+    .page-header { margin-bottom: 8px; }
+    .plan-board {
+        page: plan-week;
+        grid-auto-flow: row;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+        overflow: visible;
+        padding: 0;
+    }
+    .plan-col { gap: 4px; }
+    .plan-col--off { opacity: 1; }
+    .plan-col__head { position: static; background: none; color: #000; }
+    .meal-card {
+        background: #fff;
+        color: #000;
+        border-color: #999;
+        padding: 6px;
+        min-height: 0;
+        break-inside: avoid;
+        font-size: 11px;
+    }
+    .meal-card__title, .meal-card__slot, .meal-card__meta, .meal-card__empty { color: #000; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2897,8 +3045,10 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 /* ── Shopping list toolbar: usable button sizes on a phone ─────────────── */
 @media (max-width: 600px) {
     .list-toolbar .btn { flex: 1 1 calc(50% - .5rem); }
-    .list-toolbar #ai-cost-btn { flex-basis: 100%; margin-left: 0 !important; }
 }
+/* The "..." menu of the shopping list and plan toolbars sits hard right. */
+.list-toolbar { align-items: center; }
+.list-toolbar__more { margin-left: auto; }
 
 /* ── Preferences: one even gap between every card on the page ───────────── */
 .pref-members { margin-bottom: var(--sp-4); }

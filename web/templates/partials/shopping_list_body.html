@@ -18,22 +18,40 @@
     <a class="btn btn-primary btn-sm" href="/list/shop"
        title="Shopping mode" aria-label="Open shopping mode">{{icon "cart"}} Shop</a>
     {{end}}
-    <button type="button" class="btn btn-ghost btn-sm" data-print
-            title="Print" aria-label="Print shopping list">{{icon "printer"}} Print</button>
-    <a class="btn btn-ghost btn-sm" href="/list/export?format=csv"
-       title="Export CSV" aria-label="Export shopping list as CSV">{{icon "download"}} Export</a>
-    {{if not $root.Data.ReadOnly}}
-    <button type="button" class="btn btn-ghost btn-sm" id="ha-sync-btn"
-            title="Sync to Home Assistant{{if .HALastSync}} &middot; last synced {{.HALastSync}}{{end}}"
-            aria-label="Sync to Home Assistant">{{icon "sync"}} Sync</button>
-    {{if $root.Data.HasLLM}}
-    <button type="button" class="btn btn-outline btn-sm" id="ai-cost-btn" style="margin-left:auto"
-            title="Ask the AI to price every item that has no cost yet"
-            aria-label="Run AI cost analysis on unpriced items">{{icon "chef-hat"}} AI cost analysis</button>
+    {{if $root.Data.ReadOnly}}
+    <span class="badge badge-muted">{{icon "archive"}} Read only</span>
     {{end}}
-    {{else}}
-    <span class="badge badge-muted" style="margin-left:auto">{{icon "archive"}} Read only</span>
-    {{end}}
+    {{/* Everything but Shop lives in one menu, the same .popover the meal
+         cards use. The ids are what the script below binds to. */}}
+    <button type="button" class="btn-icon list-toolbar__more"
+            data-popover="list-menu" data-popover-placement="bottom-end"
+            data-popover-dismiss="tap" aria-expanded="false" aria-controls="list-menu"
+            title="Shopping list actions" aria-label="Shopping list actions">
+        {{icon "dots-horizontal"}}
+    </button>
+    <div class="popover" id="list-menu" data-popover-panel hidden>
+        <div class="popover__list">
+            <button type="button" class="popover__item" data-print>{{icon "printer"}} Print</button>
+            <a class="popover__item" href="/list/export?format=csv">{{icon "download"}} Export CSV</a>
+            {{if not $root.Data.ReadOnly}}
+            <button type="button" class="popover__item" id="ha-sync-btn"
+                    title="Sync to Home Assistant{{if .HALastSync}} &middot; last synced {{.HALastSync}}{{end}}">
+                {{icon "sync"}} Sync to Home Assistant
+            </button>
+            {{end}}
+            <div class="popover__divider"></div>
+            {{if not $root.Data.ReadOnly}}
+            <button type="button" class="popover__item" id="reprice-btn"
+                    title="Price the whole list again from scratch, the way a new plan is priced">
+                {{icon "autorenew"}} Reprice
+            </button>
+            {{end}}
+            <button type="button" class="popover__item" data-pricing-progress
+                    title="See what the last pricing run did, or how the current one is going">
+                {{icon "history"}} Pricing progress
+            </button>
+        </div>
+    </div>
 </div>
 
 {{template "haSetupDialog" $root}}
@@ -74,6 +92,34 @@
     </div>
 {{template "partials/modal_close.html" $root}}
 
+{{template "partials/modal_open.html" dict "ID" "pricing-progress" "Title" "Pricing progress" "Large" true}}
+    <div class="pricing-progress">
+        <p class="pricing-progress__status">
+            <span class="icon-spin" id="pp-spinner" aria-hidden="true" hidden>{{icon "autorenew"}}</span>
+            <span id="pp-status" role="status" aria-live="polite">Loading...</span>
+            <span class="pricing-progress__meta" id="pp-meta"></span>
+        </p>
+        <div id="pp-detail" hidden>
+            <progress class="pricing-progress__bar" id="pp-bar" max="1" value="0" aria-label="Items priced"></progress>
+            <p class="pricing-progress__stats" id="pp-stats"></p>
+            <div class="pricing-progress__cols">
+                <section>
+                    <h3 class="pricing-progress__heading">Items</h3>
+                    <ul class="pricing-progress__lines" id="pp-lines" role="list"></ul>
+                </section>
+                <section>
+                    <h3 class="pricing-progress__heading">Activity</h3>
+                    <ol class="pricing-progress__events" id="pp-events" role="list"></ol>
+                </section>
+            </div>
+        </div>
+    </div>
+    <div class="modal-dialog__footer">
+        <button type="button" class="btn btn-outline" id="pp-stop" hidden>{{icon "stop"}} Stop pricing</button>
+        <button type="button" class="btn btn-ghost" data-modal-close>Close</button>
+    </div>
+{{template "partials/modal_close.html" $root}}
+
 <!-- shopping-list-live is the piece the shopping list tab polls and swaps in
      place while pricing runs in the background after generation - see
      pollPricing below. Scoped to just the summary/groups (not the toolbar or
@@ -82,6 +128,7 @@
 {{if .Pricing}}
 <p class="shopping-pricing-note no-print">
     <span class="icon-spin" aria-hidden="true">{{icon "autorenew"}}</span> Still pricing this list - items below fill in as prices come back.
+    <button type="button" class="btn btn-ghost btn-sm shopping-pricing-note__progress" data-pricing-progress>{{icon "history"}} View progress</button>
     <button type="button" class="btn btn-ghost btn-sm shopping-pricing-note__stop" id="pricing-stop-btn">{{icon "stop"}} Stop pricing</button>
 </p>
 {{end}}
@@ -126,7 +173,7 @@
                     </span>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
-                        {{range .Meals}}<span class="badge {{.ColorClass}} badge--hoverable" data-meal-id="{{.MealID}}">{{.Title}}</span>{{end}}
+                        {{range .Meals}}<span class="badge {{.ColorClass}} badge--hoverable" data-meal-id="{{.MealID}}">{{.Title}}{{if gt .Count 1}} x {{.Count}}{{end}}</span>{{end}}
                     </span>
                     {{end}}
                 </span>
@@ -213,7 +260,7 @@
                     </span>
                     {{if .Meals}}
                     <span class="shopping-item__meals">
-                        {{range .Meals}}<span class="badge {{.ColorClass}} badge--hoverable" data-meal-id="{{.MealID}}">{{.Title}}</span>{{end}}
+                        {{range .Meals}}<span class="badge {{.ColorClass}} badge--hoverable" data-meal-id="{{.MealID}}">{{.Title}}{{if gt .Count 1}} x {{.Count}}{{end}}</span>{{end}}
                     </span>
                     {{end}}
                 </span>
@@ -362,17 +409,20 @@
     // tick (up to 2s away) to confirm it - see pricingStopped/hidePricingNote
     // above and their use in pollPricing below, which keeps refreshing rows
     // in the background until the list is fully resolved.
-    var stopBtn = document.getElementById('pricing-stop-btn');
-    if (stopBtn) {
-        stopBtn.addEventListener('click', function () {
-            pricingStopped = true;
-            hidePricingNote();
-            fetch('/plan/list/stop-pricing' + window.location.search, {
-                method: 'POST',
-                headers: { 'X-CSRF-Token': csrfToken },
-            }).catch(function () {});
-        });
+    function stopPricing() {
+        pricingStopped = true;
+        hidePricingNote();
+        fetch('/plan/list/stop-pricing' + window.location.search, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken },
+        }).catch(function () {});
     }
+    // Delegated: the banner sits inside #shopping-list-live, which every
+    // poll tick replaces, so a listener on the button itself would be gone
+    // after the first swap.
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#pricing-stop-btn')) stopPricing();
+    });
 
     // ── Item matching (the tag chip) ─────────────────────────────────────
     // Yellow means the line is linked only to an auto-created placeholder, so
@@ -668,25 +718,26 @@
     }
     if (syncBtn) syncBtn.addEventListener('click', runSync);
 
-    var aiCostBtn = document.getElementById('ai-cost-btn');
-    if (aiCostBtn) {
-        aiCostBtn.addEventListener('click', function () {
-            aiCostBtn.disabled = true;
-            var original = aiCostBtn.innerHTML;
-            aiCostBtn.textContent = 'Pricing…';
-            fetch('/list/ai-cost', { method: 'POST', headers: jsonHeaders })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    if (!d.ok) { toast(d.error || 'AI cost analysis failed', 'error'); return; }
-                    if (!d.updated) { toast('Nothing to price - every item already has a cost', 'info'); return; }
-                    toast('Priced ' + d.updated + ' item' + (d.updated === 1 ? '' : 's') + ' with AI', 'success');
-                    location.reload();
-                })
-                .catch(function () { toast('AI cost analysis failed', 'error'); })
-                .finally(function () {
-                    aiCostBtn.disabled = false;
-                    aiCostBtn.innerHTML = original;
-                });
+    // Full reprice (handlePlanListReprice): the run is in the background, so
+    // a reload lands on the "still pricing" state and pollPricing takes over.
+    // It is also what prices a line that has no cost yet - the AI estimate is
+    // the last step of the same chain - so there is no separate button for that.
+    var repriceBtn = document.getElementById('reprice-btn');
+    if (repriceBtn) {
+        repriceBtn.addEventListener('click', function () {
+            window.goeat.confirm('Every price on this list is looked up again, and anything no store has a price for is estimated by the AI. This can take a few minutes. Items marked "already have" stay marked; checked-off items are unchecked.', {
+                title: 'Reprice shopping list', confirmLabel: 'Reprice',
+            }).then(function (ok) {
+                if (!ok) return;
+                repriceBtn.disabled = true;
+                fetch('/plan/list/reprice' + window.location.search, { method: 'POST', headers: jsonHeaders })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.ok) { toast(d.error || 'Reprice failed', 'error'); repriceBtn.disabled = false; return; }
+                        location.reload();
+                    })
+                    .catch(function () { toast('Reprice failed', 'error'); repriceBtn.disabled = false; });
+            });
         });
     }
 
@@ -869,6 +920,132 @@
                     window.goeat.closeModal('price-edit');
                 })
                 .catch(function () { statusEl.textContent = 'Request failed'; });
+        });
+    }
+
+    // ── Pricing progress dialog ─────────────────────────────────────────
+    // Polls handlePlanListPricingProgress while open: every second during a
+    // run, slower once it has ended (a later run - the assistant swapping a
+    // meal, say - still shows up without reopening). Rows are built with
+    // textContent, never innerHTML: item names are whatever a recipe said.
+    var ppOverlay = document.getElementById('pricing-progress');
+    if (ppOverlay) {
+        var ppTimer = null, ppWasActive = false, ppLinesKey = '', ppEventsKey = '';
+        var ppStatus = document.getElementById('pp-status');
+        var ppMeta = document.getElementById('pp-meta');
+        var ppSpinner = document.getElementById('pp-spinner');
+        var ppDetail = document.getElementById('pp-detail');
+        var ppBar = document.getElementById('pp-bar');
+        var ppStats = document.getElementById('pp-stats');
+        var ppLines = document.getElementById('pp-lines');
+        var ppEvents = document.getElementById('pp-events');
+        var ppStop = document.getElementById('pp-stop');
+
+        var PP_PENDING = { waiting: 'Waiting', looking: 'Checking stores', queued: 'Queued for AI' };
+        var PP_HOW_BADGE = { store: 'badge-success', ai: 'badge-info', guess: 'badge-warning' };
+
+        var ppNode = function (tag, cls, text) {
+            var el = document.createElement(tag);
+            if (cls) el.className = cls;
+            if (text != null) el.textContent = text;
+            return el;
+        };
+        var ppElapsed = function (ms) {
+            var s = Math.floor(ms / 1000), m = Math.floor(s / 60);
+            return m ? m + 'm ' + (s % 60) + 's' : s + 's';
+        };
+
+        var ppRender = function (d) {
+            if (!d.known) {
+                ppStatus.textContent = 'Nothing has priced this list since the server last started.';
+                ppMeta.textContent = '';
+                ppSpinner.hidden = true;
+                ppDetail.hidden = true;
+                ppStop.hidden = true;
+                return;
+            }
+            var p = d.progress, c = p.counts;
+            ppStatus.textContent = p.status;
+            ppMeta.textContent = p.kind + ' - ' + ppElapsed(p.elapsed_ms) + (p.pass > 1 ? ' - pass ' + p.pass : '');
+            ppSpinner.hidden = !p.active;
+            ppDetail.hidden = false;
+            ppStop.hidden = !d.can_stop;
+
+            // No lines yet means the run is still getting ready: an
+            // indeterminate bar while it is, a full one if it ended that way
+            // (a quantity update that had nothing new to price).
+            if (p.total > 0) { ppBar.max = p.total; ppBar.value = p.done; }
+            else if (p.active) { ppBar.removeAttribute('value'); }
+            else { ppBar.max = 1; ppBar.value = 1; }
+
+            ppStats.replaceChildren(ppNode('span', 'pricing-progress__count', p.done + ' of ' + p.total + ' items'));
+            [['store price', c.store, 'badge-success'], ['AI estimate', c.ai, 'badge-info'],
+             ['recipe estimate', c.guess, 'badge-warning'], ['no price', c.unpriced, 'badge-danger']]
+                .forEach(function (s) {
+                    if (s[1]) ppStats.appendChild(ppNode('span', 'badge ' + s[2], s[1] + ' ' + s[0]));
+                });
+
+            // Rebuilt only when they change, so a one-second poll does not
+            // wipe a text selection or a scroll position for nothing.
+            var linesKey = JSON.stringify(p.lines);
+            if (linesKey !== ppLinesKey) {
+                ppLinesKey = linesKey;
+                ppLines.replaceChildren.apply(ppLines, p.lines.map(function (ln) {
+                    var li = ppNode('li', 'pricing-progress__line pricing-progress__line--' + ln.status);
+                    li.appendChild(ppNode('span', 'pricing-progress__name', ln.name));
+                    li.appendChild(ppNode('span', 'pricing-progress__store', ln.store || ''));
+                    var badge = ln.status === 'priced' ? (PP_HOW_BADGE[ln.how] || 'badge-success')
+                              : ln.status === 'unpriced' ? 'badge-danger'
+                              : ln.status === 'waiting' ? 'badge-muted' : 'badge-info';
+                    li.appendChild(ppNode('span', 'badge ' + badge, ln.source || PP_PENDING[ln.status] || ln.status));
+                    li.appendChild(ppNode('span', 'pricing-progress__price',
+                        ln.status === 'priced' ? '$' + (ln.price_cents / 100).toFixed(2) : ''));
+                    return li;
+                }));
+            }
+            var eventsKey = p.events.length + '|' + (p.events.length ? p.events[p.events.length - 1].at : '');
+            if (eventsKey !== ppEventsKey) {
+                ppEventsKey = eventsKey;
+                // Newest first: the latest thing that happened is the one worth reading.
+                ppEvents.replaceChildren.apply(ppEvents, p.events.slice().reverse().map(function (ev) {
+                    var li = ppNode('li', 'pricing-progress__event' + (ev.level === 'warn' ? ' pricing-progress__event--warn' : ''));
+                    li.appendChild(ppNode('time', 'pricing-progress__time', new Date(ev.at).toLocaleTimeString()));
+                    li.appendChild(ppNode('span', '', ev.message));
+                    return li;
+                }));
+            }
+        };
+
+        var ppPoll = function () {
+            ppTimer = null;
+            if (!ppOverlay.classList.contains('active')) return; // closed: stop polling
+            fetch('/plan/list/pricing-progress' + window.location.search, { headers: { Accept: 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { ppStatus.textContent = d.error || 'Could not load pricing progress'; return false; }
+                    ppRender(d);
+                    var active = !!(d.known && d.progress.active);
+                    // The run just ended while being watched: pull in the
+                    // rows it wrote, since a stop ends pollPricing's own loop.
+                    if (ppWasActive && !active) refreshLive().catch(function () {});
+                    ppWasActive = active;
+                    return active;
+                })
+                .catch(function () { return false; })
+                .then(function (active) {
+                    if (!ppTimer) ppTimer = setTimeout(ppPoll, active ? 1000 : 5000);
+                });
+        };
+
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('[data-pricing-progress]')) return;
+            window.goeat.openModal('pricing-progress');
+            clearTimeout(ppTimer);
+            ppPoll();
+        });
+        ppStop.addEventListener('click', function () {
+            ppStop.hidden = true;
+            stopPricing();
         });
     }
 

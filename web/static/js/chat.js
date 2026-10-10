@@ -40,7 +40,7 @@
     // the browser for that would be silly.
     const MUTATING = new Set([
         'move_meal', 'swap_meals', 'edit_meal', 'delete_meal', 'fill_slot',
-        'create_meal', 'use_leftovers', 'cook_more',
+        'create_meal', 'use_leftovers', 'cook_more', 'merge_items',
         'set_day_status', 'set_day_headcount',
         'add_list_item', 'remove_list_item', 'mark_already_have', 'set_item_price',
         'set_pantry_qty',
@@ -335,6 +335,8 @@
         window.goeat.confirm(
             'The assistant will check this plan for empty slots and leftovers that do not add up, ' +
             'then fix what it finds: filling the gaps and replacing leftovers that have nothing to reheat. ' +
+            'It also combines shopping items that are the same thing under different names ' +
+            '("pepper" and "black pepper"), renaming them in this plan and in your saved recipes. ' +
             'Days that have already passed are left alone.',
             { title: 'Correct meal plan', confirmLabel: 'Correct it' }
         ).then(function (ok) {

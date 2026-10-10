@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"goeat/agent"
+	"goeat/catalog"
 	"goeat/db"
 	"goeat/middleware"
 	"goeat/plan"
@@ -27,6 +29,10 @@ const chatCookMoreStep = "cook_more"
 // the leftovers of the dinner before. The assistant's own tool of that name
 // does the same thing, so chat.js already knows it as a change.
 const chatLeftoversStep = "use_leftovers"
+
+// chatMergeItemsStep labels shopping items combined into one
+// (consolidatePlanItems). Also a change as far as chat.js is concerned.
+const chatMergeItemsStep = "merge_items"
 
 // handleChatReview is the plan page's "Correct meal plan": check the plan for
 // contradictions, fix them, and say what was done - in the chat panel, as an
@@ -105,9 +111,13 @@ func (s *Server) handleChatReview(w http.ResponseWriter, r *http.Request) {
 	sess.OnStep = func(e agent.AuditEntry) { send("step", e) }
 
 	if len(issues) == 0 {
-		s.finishChatTurn(ctx, hh, sess, agent.Reply{
-			Text: fmt.Sprintf("I checked the plan's %d meals from today on: no empty slots, and every leftover has a meal cooked before it that makes enough. Nothing to correct.", mealCount),
-		}, nil, send)
+		text := fmt.Sprintf("I checked the plan's %d meals from today on: no empty slots, and every leftover has a meal cooked before it that makes enough.", mealCount)
+		if merged := s.consolidatePlanItems(ctx, hh, p, sess, today); merged != "" {
+			text += " " + merged
+		} else {
+			text += " Nothing to correct."
+		}
+		s.finishChatTurn(ctx, hh, sess, agent.Reply{Text: text, Audit: sess.Audit}, nil, send)
 		return
 	}
 	sess.Note("plan_check", fmt.Sprintf("Found %d %s: %s.",
@@ -191,7 +201,64 @@ func (s *Server) handleChatReview(w http.ResponseWriter, r *http.Request) {
 	if left, _, rerr := review(); rerr == nil && len(left) > 0 {
 		reply.Text = strings.TrimSpace(reply.Text) + fmt.Sprintf(" Still not right: %s.", joinIssues(left))
 	}
+	// Last, so the meals the fixes above put on the plan are looked at too.
+	if merged := s.consolidatePlanItems(ctx, hh, p, sess, today); merged != "" {
+		reply.Text = strings.TrimSpace(reply.Text) + " " + merged
+		reply.Audit = sess.Audit
+	}
 	s.finishChatTurn(ctx, hh, sess, reply, nil, send)
+}
+
+// consolidatePlanItems is the shopping-list half of "Correct meal plan": items
+// on the plan that are one thing to buy under several names become one item,
+// renamed in the plan's meals and the saved recipes
+// (catalog.ConsolidatePlanItems). Each set is noted as a step, and the return
+// is the sentence for the reply, "" when nothing was combined. It needs a
+// model to say which names match, so without one it does nothing; a failure
+// is logged and likewise changes nothing - the plan's own fixes still stand.
+func (s *Server) consolidatePlanItems(ctx context.Context, hh *db.Household, p *db.Plan, sess *agent.Session, today string) string {
+	gen := s.llmGen()
+	if gen == nil {
+		return ""
+	}
+	sets, err := catalog.ConsolidatePlanItems(ctx, s.store, gen, hh.ID, p.ID, today)
+	if err != nil {
+		log.Printf("chat review: consolidate items for plan %d: %v", p.ID, err)
+		return ""
+	}
+	merged := 0
+	var kept []string
+	for _, c := range sets {
+		if len(c.Merged) > 0 {
+			merged += len(c.Merged)
+			kept = append(kept, c.Kept.Name)
+			sess.Note(chatMergeItemsStep, fmt.Sprintf("%s %s now %q, on the shopping list, in this plan's meals and in your saved recipes.",
+				quotedList(c.Merged), pluralize(len(c.Merged), "is", "are"), c.Kept.Name))
+		}
+		if len(c.Skipped) > 0 {
+			sess.Note("item_check", fmt.Sprintf("%s %s like %q too, but %s a catalog item of its own rather than a placeholder, so I left it.",
+				quotedList(c.Skipped), pluralize(len(c.Skipped), "looks", "look"), c.Kept.Name, pluralize(len(c.Skipped), "it is", "each is")))
+		}
+	}
+	if merged == 0 {
+		return ""
+	}
+	// The list has to be rebuilt for the merged lines to become one.
+	sess.PlanChanged = true
+	return fmt.Sprintf("I also combined %d shopping %s that %s the same thing under another name, now %s.",
+		merged, pluralize(merged, "item", "items"), pluralize(merged, "was", "were"), quotedList(kept))
+}
+
+// quotedList is `"a", "b" and "c"`.
+func quotedList(names []string) string {
+	q := make([]string, len(names))
+	for i, n := range names {
+		q[i] = strconv.Quote(n)
+	}
+	if len(q) < 2 {
+		return strings.Join(q, "")
+	}
+	return strings.Join(q[:len(q)-1], ", ") + " and " + q[len(q)-1]
 }
 
 func joinIssues(issues []plan.Issue) string {

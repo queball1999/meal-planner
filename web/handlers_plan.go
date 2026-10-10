@@ -183,6 +183,7 @@ func buildPricer(store db.Store, chain *pricing.Chain) plan.Pricer {
 	return func(ctx context.Context, planID int64, hh *db.Household) error {
 		// Link every ingredient to a catalog item first so CostPlan can
 		// aggregate by item and use per-store package definitions.
+		pricing.ProgressFrom(ctx).Note("Matching ingredients to catalog items")
 		if err := catalog.LinkPlanIngredients(ctx, store, hh.ID, planID); err != nil {
 			return err
 		}
@@ -1693,21 +1694,33 @@ func (s *Server) repriceInBackground(planID int64, hh *db.Household, quantityOnl
 	s.repricingPlans[planID] = true
 	s.repriceMu.Unlock()
 
+	// Detached from the request: the response is long gone by the time this
+	// finishes.
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+
+	// Lets the shopping list's "stop pricing" button abort this run early -
+	// see plan.StopPricing. Registered before the goroutine starts so a page
+	// loaded straight after this call already sees the run (isRepricing) and
+	// not an earlier stop.
+	plan.RegisterPricingCancel(planID, cancel)
+
+	// What the shopping list's "Pricing progress" dialog reads.
+	kind := "Reprice"
+	if quantityOnly {
+		kind = "Quantity update"
+	}
+	prog := pricing.StartProgress(planID, kind)
+	ctx = pricing.WithProgress(ctx, prog)
+
 	go func() {
 		defer func() {
 			s.repriceMu.Lock()
 			delete(s.repricingPlans, planID)
 			s.repriceMu.Unlock()
 		}()
-
-		// Detached from the request: the response is long gone by now.
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 		defer cancel()
-
-		// Lets the shopping list's "stop pricing" button abort this run early -
-		// see plan.StopPricing.
-		plan.RegisterPricingCancel(planID, cancel)
 		defer plan.ClearPricingCancel(planID)
+		defer func() { prog.Finish(ctx.Err()) }()
 
 		if pricer != nil {
 			if err := pricer(ctx, planID, hh); err != nil {
@@ -1720,6 +1733,89 @@ func (s *Server) repriceInBackground(planID int64, hh *db.Household, quantityOnl
 			log.Printf("reprice: shopping list fallback for plan %d: %v", planID, err)
 		}
 	}()
+}
+
+// isRepricing reports whether a repriceInBackground run is in flight for
+// planID. The shopping list view uses it to show "still pricing" from the
+// moment a reprice is requested, before the run has seeded any pending rows.
+func (s *Server) isRepricing(planID int64) bool {
+	s.repriceMu.Lock()
+	defer s.repriceMu.Unlock()
+	return s.repricingPlans[planID]
+}
+
+// handlePlanListReprice prices the plan's whole shopping list again from
+// scratch, the same full pass a freshly generated plan gets (buildPricer:
+// every line back through the whole resolution chain), in the background.
+// The page reloads into the "still pricing" state and fills in as it goes.
+// Budget repair is not part of it - a reprice never changes the meals.
+//
+//	POST /plan/list/reprice
+func (s *Server) handlePlanListReprice(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	ctx := r.Context()
+	p, readOnly := s.resolvePlanForRequest(ctx, hh, r)
+	if p == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "no plan"})
+		return
+	}
+	if readOnly {
+		writeJSON(w, http.StatusForbidden, map[string]any{"ok": false, "error": "this list is read only"})
+		return
+	}
+	if s.priceChain() == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "no price sources configured"})
+		return
+	}
+	// A run that is already filling this list in (generation's own pricing,
+	// or an earlier reprice) must not get a second one racing it.
+	if !plan.IsPricingStopped(p.ID) {
+		lines, _ := s.store.ListShoppingListItems(ctx, p.ID)
+		for _, ln := range lines {
+			if ln.Pending {
+				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "this list is already being priced"})
+				return
+			}
+		}
+	}
+	s.repriceInBackground(p.ID, hh, false)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handlePlanListPricingProgress reports how the plan's background pricing run
+// is going - phase, per-item state, and an activity log - for the shopping
+// list's "Pricing progress" dialog, which polls it while open. The run is
+// tracked in memory (pricing.Progress), so known is false when nothing has
+// priced this plan since the server started.
+//
+//	GET /plan/list/pricing-progress
+func (s *Server) handlePlanListPricingProgress(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	p, readOnly := s.resolvePlanForRequest(r.Context(), hh, r)
+	if p == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "no plan"})
+		return
+	}
+	prog := pricing.GetProgress(p.ID)
+	if prog == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "known": false})
+		return
+	}
+	snap := prog.Snapshot()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":       true,
+		"known":    true,
+		"can_stop": snap.Active && !snap.Stopped && !readOnly,
+		"progress": snap,
+	})
 }
 
 // handlePlanGenerateStatus streams SSE events for the active generation job.

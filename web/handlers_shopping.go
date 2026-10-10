@@ -75,11 +75,15 @@ type shoppingLineItem struct {
 // mealTag is one pill on a shopping-list line naming a meal it belongs to.
 // ColorClass is a stable hash of the title, so the same meal always gets the
 // same color everywhere it appears on the list. MealID is the id of the meal
-// the pill refers to, used by hovercard.js to show a preview on hover.
+// the pill refers to, used by hovercard.js to show a preview on hover. Count
+// is how many meals on the plan share this title (the same dish made on
+// several days) - they collapse into one pill reading "Title x N", and
+// MealID is then the first of them.
 type mealTag struct {
 	Title      string
 	ColorClass string
 	MealID     int64
+	Count      int
 }
 
 // mealColorClass picks a pill color from the meal title deterministically, so
@@ -193,7 +197,9 @@ func (s *Server) buildShoppingListView(ctx context.Context, hh *db.Household, p 
 	// its rows back in the loading-skeleton state) just because that request
 	// beat the background goroutine to the next render.
 	stopped := plan.IsPricingStopped(p.ID)
-	stillPricing := false
+	// A reprice counts as pricing from the moment it is requested, before it
+	// has seeded its pending rows.
+	stillPricing := !stopped && s.isRepricing(p.ID)
 	for _, item := range rawItems {
 		if stopped {
 			item.Pending = false
@@ -408,7 +414,8 @@ func pantryNote(item *db.ShoppingListItem) string {
 // mealTagsFor resolves a shopping-list line's meal_ingredient_refs (a JSON
 // []int64 of meal_ingredient ids, not meal ids) to the distinct meals they
 // came from, in first-seen order. Each tag carries the meal's own id (not the
-// ingredient ref) so hovercard.js fetches the right recipe.
+// ingredient ref) so hovercard.js fetches the right recipe. Meals that share
+// a title collapse into one tag with a Count.
 func mealTagsFor(refsJSON string, mealTitleByIngredient map[int64]db.MealRef) []mealTag {
 	if refsJSON == "" || len(mealTitleByIngredient) == 0 {
 		return nil
@@ -418,6 +425,7 @@ func mealTagsFor(refsJSON string, mealTitleByIngredient map[int64]db.MealRef) []
 		return nil
 	}
 	seen := make(map[int64]bool, len(refs))
+	byTitle := make(map[string]int, len(refs)) // normalized title -> index in tags
 	var tags []mealTag
 	for _, id := range refs {
 		ref, ok := mealTitleByIngredient[id]
@@ -425,7 +433,13 @@ func mealTagsFor(refsJSON string, mealTitleByIngredient map[int64]db.MealRef) []
 			continue
 		}
 		seen[ref.MealID] = true
-		tags = append(tags, mealTag{Title: ref.Title, ColorClass: mealColorClass(ref.Title), MealID: ref.MealID})
+		key := strings.ToLower(strings.TrimSpace(ref.Title))
+		if i, dup := byTitle[key]; dup {
+			tags[i].Count++
+			continue
+		}
+		byTitle[key] = len(tags)
+		tags = append(tags, mealTag{Title: ref.Title, ColorClass: mealColorClass(ref.Title), MealID: ref.MealID, Count: 1})
 	}
 	return tags
 }
@@ -1002,86 +1016,4 @@ func (s *Server) handleShoppingItemPriceSet(w http.ResponseWriter, r *http.Reque
 		resp["line"] = buildLineItem(updated, mealTitles, itemsByID, s.priceVerdicts(ctx, []*db.ShoppingListItem{updated}), prefs.UnitSystem)
 	}
 	writeJSON(w, http.StatusOK, resp)
-}
-
-// handleShoppingAICostAnalysis prices every zero-cost line on the current plan
-// via the AI estimate provider directly (not the full resolution chain - the
-// button is specifically "ask the AI", not "try every provider again"), then
-// recomputes the plan total and confidence summary from all lines.
-func (s *Server) handleShoppingAICostAnalysis(w http.ResponseWriter, r *http.Request) {
-	hh := middleware.HouseholdFromCtx(r)
-	if hh == nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
-		return
-	}
-	if s.llmGen() == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "no AI provider configured"})
-		return
-	}
-	ctx := r.Context()
-	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
-	if p == nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "no plan"})
-		return
-	}
-	lines, _ := s.store.ListShoppingListItems(ctx, p.ID)
-	ai := pricing.NewAIEstimateProvider(s.llmGen(), hh.ZIPCode)
-
-	updated := 0
-	for _, ln := range lines {
-		if ln.LineTotalCents > 0 {
-			continue
-		}
-		term := ""
-		if ln.ItemID != nil {
-			if it, _ := s.store.GetItem(ctx, *ln.ItemID); it != nil {
-				term = it.NormalizedTerm
-			}
-		}
-		if term == "" {
-			term = pricing.Normalize(ln.DisplayName)
-		}
-		if term == "" {
-			continue
-		}
-
-		res, err := ai.Lookup(ctx, term, 0, hh.ZIPCode)
-		if err != nil || res == nil {
-			continue
-		}
-		needed := ln.BuyQuantity
-		if needed <= 0 {
-			needed = res.PackSize
-		}
-		packs := pricing.PacksNeeded(needed, res.PackSize)
-
-		if err := s.store.UpdateShoppingListItemPrice(ctx, db.UpdateShoppingListItemPriceParams{
-			ID:             ln.ID,
-			StoreID:        ln.StoreID,
-			ItemID:         ln.ItemID,
-			BuyQuantity:    float64(packs) * res.PackSize,
-			PackSize:       res.PackSize,
-			PurchaseUnit:   res.PurchaseUnit,
-			UnitPriceCents: res.PriceCents,
-			LineTotalCents: res.PriceCents * int64(packs),
-			PriceSource:    res.Source,
-			Confidence:     res.Confidence,
-		}); err == nil {
-			updated++
-		}
-	}
-
-	// Recompute the plan total and confidence summary from every line, not
-	// just the ones this pass touched.
-	lines, _ = s.store.ListShoppingListItems(ctx, p.ID)
-	var total int64
-	counts := map[string]int{}
-	for _, ln := range lines {
-		total += ln.LineTotalCents
-		counts[ln.Confidence]++
-	}
-	summary := pricing.BuildConfidenceSummary(counts, len(lines))
-	_ = s.store.UpdatePlanTotal(ctx, p.ID, total, summary)
-
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": updated})
 }

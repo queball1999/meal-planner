@@ -3,6 +3,8 @@ package plan
 import (
 	"context"
 	"sync"
+
+	"goeat/pricing"
 )
 
 // pricingCancels tracks the cancel func for whichever background pricing run
@@ -61,6 +63,7 @@ func StopPricing(planID int64) bool {
 	stoppedPlans[planID] = true
 	pricingCancelsMu.Unlock()
 	if ok {
+		pricing.GetProgress(planID).MarkStopped()
 		cancel()
 	}
 	return ok

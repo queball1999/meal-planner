@@ -291,6 +291,8 @@ type Store interface {
 	ListItemAliases(ctx context.Context, householdID, itemID int64) ([]*ItemAlias, error)
 	DeleteItemAlias(ctx context.Context, householdID, id int64) error
 	MergeItems(ctx context.Context, householdID, from, to int64) error
+	RenameIngredientsForItem(ctx context.Context, itemID int64, name, normalizedTerm, fromDate string) error
+	RenameCatalogRecipeIngredient(ctx context.Context, id int64, name string) error
 	SetShoppingListItemItem(ctx context.Context, id int64, itemID *int64) error
 
 	AppendChatMessage(ctx context.Context, householdID int64, role, content, auditJSON string) (int64, error)

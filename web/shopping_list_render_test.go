@@ -44,6 +44,28 @@ func TestMealTagsFor_DedupesAndPreservesOrder(t *testing.T) {
 	}
 }
 
+// The same dish planned on several days is several meals with one title -
+// they collapse into a single counted pill instead of repeating.
+func TestMealTagsFor_CollapsesRepeatedTitles(t *testing.T) {
+	refs := map[int64]db.MealRef{
+		1: {MealID: 100, Title: "Scrambled Eggs & Toast"},
+		2: {MealID: 200, Title: "Easy Beef Lasagna"},
+		3: {MealID: 300, Title: "Scrambled Eggs & Toast"},
+		4: {MealID: 400, Title: "scrambled eggs & toast "},
+		5: {MealID: 100, Title: "Scrambled Eggs & Toast"},
+	}
+	tags := mealTagsFor(`[1,2,3,4,5]`, refs)
+	if len(tags) != 2 {
+		t.Fatalf("got %d tags, want 2: %+v", len(tags), tags)
+	}
+	if tags[0].Title != "Scrambled Eggs & Toast" || tags[0].MealID != 100 || tags[0].Count != 3 {
+		t.Fatalf("tags[0] = %+v, want Scrambled Eggs & Toast/100 x 3", tags[0])
+	}
+	if tags[1].Count != 1 {
+		t.Fatalf("tags[1].Count = %d, want 1", tags[1].Count)
+	}
+}
+
 func TestMealTagsFor_EmptyInputs(t *testing.T) {
 	if tags := mealTagsFor("", map[int64]db.MealRef{1: {MealID: 100, Title: "Chili"}}); tags != nil {
 		t.Fatalf("expected nil for empty refs JSON, got %+v", tags)
@@ -82,8 +104,8 @@ func TestShoppingListBody_RendersMealPills(t *testing.T) {
 								BadgeClass:  "badge-estimate",
 								BadgeText:   "Estimated",
 								Meals: []mealTag{
-									{Title: "Chili", ColorClass: "badge-hue-3", MealID: 42},
-									{Title: "Taco Bowls", ColorClass: "badge-hue-6", MealID: 43},
+									{Title: "Chili", ColorClass: "badge-hue-3", MealID: 42, Count: 3},
+									{Title: "Taco Bowls", ColorClass: "badge-hue-6", MealID: 43, Count: 1},
 								},
 							},
 						},
@@ -97,7 +119,8 @@ func TestShoppingListBody_RendersMealPills(t *testing.T) {
 		`badge-hue-3`,
 		`Chili`,
 		`badge-hue-6`,
-		`Taco Bowls`,
+		`Taco Bowls</span>`,
+		`Chili x 3</span>`,
 		// Each pill is a hovercard.js trigger for the real meal (not the
 		// ingredient row it came from) - see mealTagsFor.
 		`data-meal-id="42"`,

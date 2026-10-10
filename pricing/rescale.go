@@ -82,6 +82,8 @@ func RescaleShoppingList(
 		}
 	}
 
+	ProgressFrom(ctx).Note(fmt.Sprintf("%d line(s) kept their price and were rescaled; %d need a fresh price", len(rescaled), len(toSeed)))
+
 	if len(toSeed) > 0 {
 		seeded, serr := seedItems(ctx, store, planID, toSeed, toSeedDed)
 		if serr != nil {

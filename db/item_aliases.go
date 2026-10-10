@@ -197,3 +197,30 @@ func (s *store) MergeItems(ctx context.Context, householdID, from, to int64) err
 	}
 	return tx.Commit()
 }
+
+// RenameIngredientsForItem gives every meal ingredient linked to an item the
+// one name, on plans ending on or after fromDate (YYYY-MM-DD). After a merge
+// the rows that came from the merged-away item still carry its name ("pepper"
+// under an item now called "Black pepper"); this is what makes the meals read
+// the way the shopping list does. Plans that are already over are left as
+// they were cooked.
+func (s *store) RenameIngredientsForItem(ctx context.Context, itemID int64, name, normalizedTerm, fromDate string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE meal_ingredients SET name = ?, normalized_term = ?
+		WHERE item_id = ?
+		  AND meal_id IN (
+		        SELECT m.id FROM meals m JOIN plans p ON p.id = m.plan_id
+		        WHERE p.week_end >= ?)`,
+		name, normalizedTerm, itemID, fromDate)
+	return err
+}
+
+// RenameCatalogRecipeIngredient renames one saved-recipe ingredient line,
+// leaving its quantity, unit and position alone. normalized_term follows the
+// name, as AddCatalogRecipeIngredient writes it.
+func (s *store) RenameCatalogRecipeIngredient(ctx context.Context, id int64, name string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE catalog_recipe_ingredients SET name = ?, normalized_term = ? WHERE id = ?`,
+		name, normalizeTerm(name), id)
+	return err
+}

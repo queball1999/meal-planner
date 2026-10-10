@@ -456,6 +456,11 @@ func priceInBackground(store db.Store, gen llm.Generator, planID int64, hh *db.H
 	RegisterPricingCancel(planID, cancel)
 	defer ClearPricingCancel(planID)
 
+	// What the shopping list's "Pricing progress" dialog reads.
+	prog := pricing.StartProgress(planID, "New plan")
+	ctx = pricing.WithProgress(ctx, prog)
+	defer func() { prog.Finish(ctx.Err()) }()
+
 	if err := pricer(ctx, planID, hh); err != nil {
 		log.Printf("plan: costing failed for plan %d: %v", planID, err)
 	}

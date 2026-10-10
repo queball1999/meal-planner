@@ -84,7 +84,16 @@ window.goeat = window.goeat || {};
         const gap = 8;
         const p = build();
 
+        // Fixed before measuring, not after: .popover carries no `position`
+        // of its own, so a static display:block popup stretches to its
+        // max-width and reads far wider than the shrink-to-fit box it becomes
+        // once fixed - right-aligning against that width left the popup well
+        // to the left of its button. top/left are zeroed so a previous
+        // placement near the right edge can't squeeze this measurement.
         p.hidden = false;
+        p.style.position = 'fixed';
+        p.style.top = '0';
+        p.style.left = '0';
         p.style.visibility = 'hidden';
         p.style.display = 'block';
         const pw = p.offsetWidth;
@@ -99,7 +108,6 @@ window.goeat = window.goeat || {};
         if (top + ph > vh - gap) top = r.top - ph - gap; // flip above if no room below
         top = Math.max(gap, top);
 
-        p.style.position = 'fixed';
         p.style.top = Math.round(top) + 'px';
         p.style.left = Math.round(left) + 'px';
         p.style.visibility = '';

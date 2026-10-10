@@ -11,6 +11,7 @@ import (
 
 	"goeat/db"
 	"goeat/llm"
+	"goeat/pricing"
 )
 
 // Repair attempts to bring a plan's total under budget by replacing the
@@ -75,9 +76,15 @@ func Repair(
 		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd, nil, nil, nil, nil, nil)
 		userPmt := buildRepairPrompt(hh, profile, targets, meals, plan.BudgetCents, plan.TotalCents)
 
-		j.EmitStatus(fmt.Sprintf(
+		status := fmt.Sprintf(
 			"$%.2f over budget - asking the AI for %d cheaper meal(s) (round %d of %d)…",
-			float64(plan.TotalCents-plan.BudgetCents)/100, len(targets), iter+1, maxIters))
+			float64(plan.TotalCents-plan.BudgetCents)/100, len(targets), iter+1, maxIters)
+		j.EmitStatus(status)
+		// Background pricing has no job to report to (j is nil there), only
+		// the shopping list's "Pricing progress" dialog.
+		prog := pricing.ProgressFrom(ctx)
+		prog.SetPhase(pricing.PhaseRepair)
+		prog.Note(status)
 
 		// Reasoning stays on here - swapping a meal is a judgement call, not a
 		// lookup - so the budget has to cover the thinking as well as the JSON.
@@ -121,6 +128,7 @@ func Repair(
 
 		if pricer != nil {
 			j.EmitStatus(fmt.Sprintf("Re-pricing after round %d swaps…", iter+1))
+			prog.Note(fmt.Sprintf("Re-pricing after round %d swaps", iter+1))
 			if err := pricer(ctx, planID, hh); err != nil {
 				fmt.Printf("repair iter %d: pricer: %v\n", iter+1, err)
 			}

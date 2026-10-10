@@ -295,13 +295,36 @@ func ResolvePricing(
 ) (*CostResult, error) {
 	region := household.ZIPCode
 
+	// Reported to the shopping list's "Pricing progress" dialog; nil (and
+	// every call below a no-op) when the caller attached no run to ctx.
+	prog := ProgressFrom(ctx)
+	names := make([]string, len(seeded))
+	for i, seed := range seeded {
+		names[i] = seed.AggItem.DisplayName
+	}
+	prog.beginPass(names, len(stores))
+	storeNames := make(map[int64]string, len(stores))
+	for _, gs := range stores {
+		storeNames[gs.ID] = gs.Name
+	}
+	storeName := func(id *int64) string {
+		if id == nil {
+			return ""
+		}
+		return storeNames[*id]
+	}
+
 	lines := make([]lineState, len(seeded))
 	lineStores := make([][]*db.GroceryStore, len(seeded))
+	// how[i] is where line i's price came from (HowStore/HowAI/HowGuess), ""
+	// while it has none.
+	how := make([]string, len(seeded))
 	var missIdx []int
 
 	for i, seed := range seeded {
 		item := seed.AggItem
 		ls := lineState{packAmount: 1}
+		prog.lineLooking(i)
 		// Stores arrive primary-first (ListStores orders by share_pct), and
 		// an item the household only buys at one store is looked up there
 		// alone.
@@ -352,8 +375,12 @@ func ResolvePricing(
 			}
 		}
 
-		if !ls.priced && len(stores) > 0 {
+		if ls.priced {
+			how[i] = HowStore
+			prog.linePriced(i, HowStore, ls.priceSource, storeName(ls.resolvedStoreID), ls.priceCents)
+		} else if len(stores) > 0 {
 			missIdx = append(missIdx, i)
+			prog.lineQueued(i)
 		}
 		lines[i] = ls
 	}
@@ -367,6 +394,7 @@ func ResolvePricing(
 		for j, i := range missIdx {
 			terms[j] = seeded[i].AggItem.NormalizedTerm
 		}
+		prog.SetPhase(PhaseAI)
 		estimates := ai.LookupBatch(ctx, terms, region)
 		for j, i := range missIdx {
 			sid := lineStores[i][0].ID
@@ -382,6 +410,8 @@ func ResolvePricing(
 			ls.confidence = r.Confidence
 			ls.resolvedStoreID = &sid
 			ls.priced = true
+			how[i] = HowAI
+			prog.linePriced(i, HowAI, r.Source, storeName(&sid), r.PriceCents)
 			if chain.persistFn != nil {
 				if werr := chain.persistFn(ctx, r, sid, Normalize(terms[j])); werr != nil {
 					log.Printf("pricing: persist write-back error: %v", werr)
@@ -394,6 +424,7 @@ func ResolvePricing(
 	// a canceled ctx (stop pricing) must still let whatever was already
 	// resolved above land in the database instead of stranding it mid-write.
 	writeCtx := context.WithoutCancel(ctx)
+	prog.SetPhase(PhaseSaving)
 
 	var totalCents int64
 	confidenceCounts := map[string]int{}
@@ -417,6 +448,7 @@ func ResolvePricing(
 			ls.priceSource = "estimate"
 			ls.confidence = ConfidenceEstimate
 			ls.priced = true
+			how[i] = HowGuess
 		}
 
 		var buyQuantity, packSize float64
@@ -443,6 +475,7 @@ func ResolvePricing(
 				// guess where there is one, and let the estimate badge show.
 				ls.priceSource = "estimate"
 				ls.confidence = ConfidenceEstimate
+				how[i] = HowGuess
 				if item.EstPriceCents > 0 {
 					lineTotal = item.EstPriceCents
 				} else {
@@ -489,6 +522,7 @@ func ResolvePricing(
 		}); uerr != nil {
 			log.Printf("costing: price shopping list item %q: %v", item.DisplayName, uerr)
 		}
+		prog.lineFinal(i, how[i], ls.priceSource, storeName(ls.resolvedStoreID), lineTotal)
 	}
 
 	summary := BuildConfidenceSummary(confidenceCounts, len(seeded))

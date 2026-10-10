@@ -121,16 +121,24 @@ func (a *AIEstimateProvider) LookupBatch(ctx context.Context, terms []string, re
 		r = a.region
 	}
 
+	prog := ProgressFrom(ctx)
+	batches := (len(terms) + aiEstimateBatchSize - 1) / aiEstimateBatchSize
+
 	for start := 0; start < len(terms); start += aiEstimateBatchSize {
 		end := start + aiEstimateBatchSize
 		if end > len(terms) {
 			end = len(terms)
 		}
 		chunk := terms[start:end]
+		batch := start/aiEstimateBatchSize + 1
+		prog.Note(fmt.Sprintf("AI estimate: batch %d of %d (%d items)", batch, batches, len(chunk)))
 
 		chunkResults, err := a.requestBatchWithRetry(ctx, chunk, r)
 		if err != nil {
 			log.Printf("pricing: ai estimate batch of %d items failed after %d attempts: %v", len(chunk), aiEstimateMaxAttempts, err)
+			if ctx.Err() == nil { // a stop already explained itself
+				prog.Warn(fmt.Sprintf("AI estimate: batch %d of %d failed - those items fall back to the recipe's own estimate", batch, batches))
+			}
 			continue // fail soft - this chunk's terms stay unresolved
 		}
 		copy(results[start:end], chunkResults)
