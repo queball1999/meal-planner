@@ -83,6 +83,13 @@ Rules:
   or create_meal if there is none. Do not skip the day, and do not leave the
   old meal in place. If they say they already have what it needs ("with what
   we have", "ingredients on hand"), pass on_hand: true.
+- "Leftover <dish>" or "leftovers of <dish>" means reheating a dish cooked
+  earlier in the week: use_leftovers puts it in the slot and leaves the
+  original meal where it is. This holds however the request is worded -
+  "swap", "replace", "change" and "make" a slot with leftovers all mean
+  use_leftovers, never swap_meals or move_meal.
+- swap_meals and move_meal relocate meals. Use them only when the user wants
+  an existing meal on a different day or slot.
 - Moving a meal takes its leftovers with it. Read the result: if it says a
   leftover could not follow, deal with it or tell the user.
 - Only say you did something if a tool result says it happened. If a part of
@@ -104,6 +111,12 @@ type Runner struct {
 	// it. Off by default so a caller with its own safeguards - or a test - is
 	// not forced through the confirmation dance.
 	ConfirmMutations bool
+
+	// AfterChange, when set, is called after each tool that changed data, and
+	// what it returns is added to the transcript as a system note. A long run
+	// loses track of what is left - it redoes a slot it already filled - and
+	// the caller can check, where the model can only remember.
+	AfterChange func() string
 }
 
 // Run answers one user message, calling tools as needed.
@@ -242,6 +255,13 @@ func (r *Runner) step(ctx context.Context, s *Session, transcript string, spent 
 				b.WriteString("\n")
 			}
 		}
+		if t := r.Registry.Get(action.Tool); r.AfterChange != nil && t != nil && t.Mutates {
+			if note := r.AfterChange(); note != "" {
+				b.WriteString("SYSTEM: ")
+				b.WriteString(note)
+				b.WriteString("\n")
+			}
+		}
 	}
 
 	// Out of steps. Report the work rather than pretending nothing happened.
@@ -284,6 +304,17 @@ func parseAction(raw string) (action, error) {
 		return action{}, fmt.Errorf("reply was not valid JSON: %v", err)
 	}
 	if a.Say == "" && a.Tool == "" {
+		// {"create_meal": {...}} - the tool's name as the key. Local models
+		// slip into this shape mid-run, and it is unambiguous: one key, whose
+		// value is the arguments. An unknown name still fails in the registry.
+		var keyed map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(s[start:end+1]), &keyed); err == nil && len(keyed) == 1 {
+			for name, args := range keyed {
+				if strings.HasPrefix(strings.TrimSpace(string(args)), "{") {
+					return action{Tool: name, Args: args}, nil
+				}
+			}
+		}
 		return action{}, fmt.Errorf(`reply had neither "tool" nor "say"`)
 	}
 	if a.Tool != "" && len(a.Args) == 0 {

@@ -134,6 +134,12 @@ func (s *store) ListMembershipsForHousehold(ctx context.Context, householdID int
 		          u.username COLLATE NOCASE`, householdID)
 }
 
+// ListAllMemberships returns every seat in every household, by household
+// name - the instance admin's view of who can reach what.
+func (s *store) ListAllMemberships(ctx context.Context) ([]*HouseholdMembership, error) {
+	return s.queryMemberships(ctx, `ORDER BY h.name COLLATE NOCASE, h.id`)
+}
+
 func (s *store) queryMemberships(ctx context.Context, where string, args ...any) ([]*HouseholdMembership, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT m.household_id, h.name, m.user_id, u.username, m.role, m.created_at

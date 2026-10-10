@@ -104,26 +104,9 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flusher, ok := w.(http.Flusher)
+	send, ok := openChatStream(w)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	// Nothing between here and the browser may buffer, or the whole point of
-	// streaming progress is lost.
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-
-	send := func(event string, payload any) {
-		blob, err := json.Marshal(payload)
-		if err != nil {
-			return
-		}
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, blob)
-		flusher.Flush()
 	}
 
 	ctx := r.Context()
@@ -186,24 +169,9 @@ func (s *Server) handleChatConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	approved := r.FormValue("approve") == "1"
 
-	flusher, ok := w.(http.Flusher)
+	send, ok := openChatStream(w)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-
-	send := func(event string, payload any) {
-		blob, err := json.Marshal(payload)
-		if err != nil {
-			return
-		}
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, blob)
-		flusher.Flush()
 	}
 
 	ctx := r.Context()
@@ -216,6 +184,39 @@ func (s *Server) handleChatConfirm(w http.ResponseWriter, r *http.Request) {
 	reply, err := runner.Resume(ctx, sess, pending, approved)
 
 	s.finishChatTurn(ctx, hh, sess, reply, err, send)
+}
+
+// openChatStream starts the event stream an assistant turn reports over and
+// returns the function that sends one event down it. False means the response
+// cannot stream, and the error has been written.
+func openChatStream(w http.ResponseWriter) (func(event string, payload any), bool) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return nil, false
+	}
+	// The server's 30s WriteTimeout is for ordinary requests. A turn runs one
+	// model call per step and a plan correction makes dozens, so it outlasts
+	// that - and the first write past the deadline fails, which cancels the
+	// request context and kills the run mid-change with "context canceled".
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	// Nothing between here and the browser may buffer, or the whole point of
+	// streaming progress is lost.
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	return func(event string, payload any) {
+		blob, err := json.Marshal(payload)
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, blob)
+		flusher.Flush()
+	}, true
 }
 
 // finishChatTurn is the tail every assistant turn shares: report a failure,
@@ -274,6 +275,9 @@ func (s *Server) settlePlanAfterChat(ctx context.Context, hh *db.Household, sess
 		return
 	}
 	p, err := s.store.GetLatestPlan(ctx, hh.ID)
+	if sess.PlanID != 0 {
+		p, err = s.store.GetPlanByID(ctx, sess.PlanID)
+	}
 	if err != nil || p == nil {
 		return
 	}

@@ -30,6 +30,11 @@ type Session struct {
 	Household   *db.Household
 	HouseholdID int64
 
+	// PlanID pins the run to one plan - the one the person is looking at.
+	// Zero means the household's latest, which is what a chat message with no
+	// page behind it can only mean.
+	PlanID int64
+
 	// Audit records what the assistant actually did, in order. The UI shows
 	// it so a user can see the work rather than trusting a summary.
 	Audit []AuditEntry
@@ -180,6 +185,12 @@ func (r *Registry) Call(ctx context.Context, s *Session, name string, args json.
 	}
 	s.record(entry)
 	return res, err
+}
+
+// Note records something done on the run's behalf outside a tool call, so it
+// shows in the same list of work as the calls do.
+func (s *Session) Note(label, summary string) {
+	s.record(AuditEntry{Tool: label, Summary: summary})
 }
 
 // record appends to the audit and notifies any watcher.

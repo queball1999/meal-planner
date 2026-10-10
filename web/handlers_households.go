@@ -57,6 +57,8 @@ type householdRow struct {
 }
 
 type householdsPageData struct {
+	// Tab is the sub-tab being shown: "people" or "roles".
+	Tab        string
 	Households []householdRow
 	// MultiTenant is ENABLE_MULTI_TENANT: off hides switching, creating
 	// and deleting households - the page is just this household's people.
@@ -66,9 +68,11 @@ type householdsPageData struct {
 	IsAdmin     bool
 	Members     []*db.HouseholdMembership
 	Users       []*db.User // admin only
-	Me          int64
-	Roles       []string
-	Timezones   []struct{ Label, Value string }
+	// UserSeats is every account's household seats, by user id (admin only).
+	UserSeats map[int64][]*db.HouseholdMembership
+	Me        int64
+	Roles     []string
+	Timezones []struct{ Label, Value string }
 }
 
 // handleHouseholdsPage lists the households the user can switch to, the
@@ -77,11 +81,31 @@ type householdsPageData struct {
 //
 //	GET /households
 func (s *Server) handleHouseholdsPage(w http.ResponseWriter, r *http.Request) {
+	s.renderHouseholds(w, r, "people")
+}
+
+// handleHouseholdRolesPage is the "Roles & access" sub-tab: what each role
+// may do, the active household's roles (owners), and every account's server
+// role and seats (instance admins). Anyone who manages neither has nothing to
+// do here and goes back to the people tab.
+//
+//	GET /households/roles
+func (s *Server) handleHouseholdRolesPage(w http.ResponseWriter, r *http.Request) {
+	owner := middleware.HouseholdFromCtx(r) != nil && middleware.CanOwn(r)
+	if !owner && !middleware.UserFromCtx(r).IsAdmin() {
+		http.Redirect(w, r, "/households", http.StatusSeeOther)
+		return
+	}
+	s.renderHouseholds(w, r, "roles")
+}
+
+func (s *Server) renderHouseholds(w http.ResponseWriter, r *http.Request, tab string) {
 	ctx := r.Context()
 	user := middleware.UserFromCtx(r)
 	active := middleware.HouseholdFromCtx(r)
 
 	data := householdsPageData{
+		Tab:         tab,
 		MultiTenant: s.cfg.MultiTenant,
 		Active:      active,
 		CanOwn:      middleware.CanOwn(r),
@@ -114,6 +138,16 @@ func (s *Server) handleHouseholdsPage(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		data.Users, _ = s.store.ListUsers(ctx)
+		if tab == "roles" {
+			seats, err := s.store.ListAllMemberships(ctx)
+			if err != nil {
+				log.Printf("households page: list memberships: %v", err)
+			}
+			data.UserSeats = map[int64][]*db.HouseholdMembership{}
+			for _, m := range seats {
+				data.UserSeats[m.UserID] = append(data.UserSeats[m.UserID], m)
+			}
+		}
 	}
 	if active != nil {
 		data.Members, _ = s.store.ListMembershipsForHousehold(ctx, active.ID)
@@ -368,14 +402,14 @@ func (s *Server) handleHouseholdMemberRole(w http.ResponseWriter, r *http.Reques
 	hh := middleware.HouseholdFromCtx(r)
 	if err := s.store.SetMembershipRole(r.Context(), hh.ID, target.UserID, role); err != nil {
 		s.setNotify(w, NotifyDanger, membershipErrMsg(err))
-		http.Redirect(w, r, "/households", http.StatusSeeOther)
+		http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 		return
 	}
 	aid := middleware.UserFromCtx(r).ID
 	s.logEvent(r, &aid, "role.assigned", "user", strconv.FormatInt(target.UserID, 10),
 		fmt.Sprintf(`{"household_id":%d,"role":%q,"previous":%q}`, hh.ID, role, target.Role))
 	s.setNotify(w, NotifySuccess, fmt.Sprintf("%s is now %s.", target.Username, role))
-	http.Redirect(w, r, "/households", http.StatusSeeOther)
+	http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 }
 
 // handleHouseholdMemberRemove takes a person out of the active household.
@@ -454,19 +488,19 @@ func (s *Server) handleUserRole(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromCtx(r)
 	if userID == actor.ID {
 		s.setNotify(w, NotifyDanger, "You can't change your own server role - ask another admin.")
-		http.Redirect(w, r, "/households", http.StatusSeeOther)
+		http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 		return
 	}
 	role := r.FormValue("role")
 	if err := s.store.SetUserRole(r.Context(), userID, role); err != nil {
 		s.setNotify(w, NotifyDanger, membershipErrMsg(err))
-		http.Redirect(w, r, "/households", http.StatusSeeOther)
+		http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 		return
 	}
 	aid := actor.ID
 	s.logEvent(r, &aid, "user.updated", "user", strconv.FormatInt(userID, 10), fmt.Sprintf(`{"instance_role":%q}`, role))
 	s.setNotify(w, NotifySuccess, "Server role updated.")
-	http.Redirect(w, r, "/households", http.StatusSeeOther)
+	http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 }
 
 // handleUserDelete deletes an account outright (sessions and memberships go
@@ -482,16 +516,16 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromCtx(r)
 	if userID == actor.ID {
 		s.setNotify(w, NotifyDanger, "You can't delete your own account here.")
-		http.Redirect(w, r, "/households", http.StatusSeeOther)
+		http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 		return
 	}
 	if err := s.store.DeleteUser(r.Context(), userID); err != nil {
 		s.setNotify(w, NotifyDanger, membershipErrMsg(err))
-		http.Redirect(w, r, "/households", http.StatusSeeOther)
+		http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 		return
 	}
 	aid := actor.ID
 	s.logEvent(r, &aid, "user.deleted", "user", strconv.FormatInt(userID, 10), "")
 	s.setNotify(w, NotifySuccess, "Account deleted.")
-	http.Redirect(w, r, "/households", http.StatusSeeOther)
+	http.Redirect(w, r, "/households/roles", http.StatusSeeOther)
 }

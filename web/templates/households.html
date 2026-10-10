@@ -2,14 +2,32 @@
 {{define "content"}}
 {{$d := .Data}}
 {{$csrf := .CSRFField}}
+{{$manage := or $d.IsAdmin (and $d.Active $d.CanOwn)}}
 <div class="page-header">
-    <h1 class="page-title">{{icon "account-group"}} {{if $d.MultiTenant}}Households{{else}}Household{{end}}</h1>
+    <div class="page-header__row">
+        <h1 class="page-title">{{icon "account-group"}} {{if $d.MultiTenant}}Households{{else}}Household{{end}}</h1>
+        {{if and $d.Active $d.CanOwn}}
+        <div class="page-header__actions">
+            <button type="button" class="btn btn-primary" data-modal-open="person-add">
+                {{icon "plus"}} Add person
+            </button>
+        </div>
+        {{end}}
+    </div>
     <p class="page-subtitle">
         {{if $d.Active}}You're in <strong>{{$d.Active.Name}}</strong>.{{else}}You're not in a household yet.{{end}}
         {{if $d.MultiTenant}}Each household has its own plans, pantry, recipes, stores and budget.{{end}}
     </p>
 </div>
 
+{{if $manage}}
+<nav class="subtabs" aria-label="Household sections">
+    <a href="/households"       class="subtab{{if eq $d.Tab "people"}} subtab--active{{end}}"{{if eq $d.Tab "people"}} aria-current="page"{{end}}>{{icon "account-group"}} People</a>
+    <a href="/households/roles" class="subtab{{if eq $d.Tab "roles"}} subtab--active{{end}}"{{if eq $d.Tab "roles"}} aria-current="page"{{end}}>{{icon "shield-check"}} Roles &amp; access</a>
+</nav>
+{{end}}
+
+{{if eq $d.Tab "people"}}
 {{/* Switch, new and delete household only exist with ENABLE_MULTI_TENANT on. */}}
 {{if not $d.MultiTenant}}
 {{if not $d.Active}}
@@ -53,28 +71,15 @@
 <div class="card form-section" style="margin-bottom:1.5rem">
     <h2 class="form-section__title">{{icon "account-group"}} People in {{$d.Active.Name}}</h2>
     <p class="field-hint" style="margin-bottom:.75rem">
-        <strong>Viewer</strong> can see everything but change nothing.
-        <strong>Editor</strong> plans, shops, and edits the pantry and recipes.
-        <strong>Owner</strong> also manages people, stores and preferences.
+        Change what each person can do under <a href="/households/roles">Roles &amp; access</a>.
     </p>
     <table class="data-table" aria-label="People in this household">
         <thead><tr><th>Username</th><th>Role</th><th></th></tr></thead>
         <tbody>
         {{range $d.Members}}
-        {{$m := .}}
         <tr>
             <td>{{.Username}}{{if eq .UserID $d.Me}} <span class="field-hint">(you)</span>{{end}}</td>
-            <td>
-                {{if eq .UserID $d.Me}}{{.Role}}{{else}}
-                <form method="POST" action="/households/members/{{.UserID}}/role" class="field-row">
-                    {{$csrf}}
-                    <select class="field-input" name="role" aria-label="Role for {{.Username}}">
-                        {{range $d.Roles}}<option value="{{.}}"{{if eq . $m.Role}} selected{{end}}>{{.}}</option>{{end}}
-                    </select>
-                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
-                </form>
-                {{end}}
-            </td>
+            <td>{{.Role}}</td>
             <td>
                 {{if ne .UserID $d.Me}}
                 <form method="POST" action="/households/members/{{.UserID}}/remove"
@@ -89,31 +94,6 @@
         {{end}}
         </tbody>
     </table>
-
-    <h3 class="form-section__title" style="margin-top:1.25rem">Add a person</h3>
-    <form method="POST" action="/households/members" class="pref-form">
-        {{$csrf}}
-        <div class="field-row">
-            <div class="field" style="flex:1">
-                <label class="field-label" for="add-username">Username</label>
-                <input class="field-input" id="add-username" name="username" type="text"
-                       autocomplete="off" minlength="3" required>
-            </div>
-            <div class="field">
-                <label class="field-label" for="add-role">Role</label>
-                <select class="field-input" id="add-role" name="role">
-                    {{range $d.Roles}}<option value="{{.}}"{{if eq . "editor"}} selected{{end}}>{{.}}</option>{{end}}
-                </select>
-            </div>
-        </div>
-        <div class="field">
-            <label class="field-label" for="add-password">Password (only for a new account)</label>
-            <input class="field-input" id="add-password" name="password" type="password"
-                   autocomplete="new-password" minlength="8">
-            <p class="field-hint">Leave blank to add someone who already has an account.</p>
-        </div>
-        <div><button type="submit" class="btn btn-primary">{{icon "plus"}} Add person</button></div>
-    </form>
 
     <h3 class="form-section__title" style="margin-top:1.25rem">Rename</h3>
     <form method="POST" action="/households/rename" class="field-row">
@@ -158,45 +138,6 @@
 </div>
 {{end}}
 
-<div class="card form-section" style="margin-bottom:1.5rem">
-    <h2 class="form-section__title">{{icon "shield-check"}} Accounts on this server</h2>
-    <p class="field-hint" style="margin-bottom:.75rem">
-        <strong>Admins</strong> run the server (settings, AI keys, scraper, accounts) and can open every household.
-    </p>
-    <table class="data-table" aria-label="Accounts">
-        <thead><tr><th>Username</th><th>Server role</th><th></th></tr></thead>
-        <tbody>
-        {{range $d.Users}}
-        <tr>
-            <td>{{.Username}}{{if eq .ID $d.Me}} <span class="field-hint">(you)</span>{{end}}</td>
-            <td>
-                {{if eq .ID $d.Me}}{{.Role}}{{else}}
-                <form method="POST" action="/admin/users/{{.ID}}/role" class="field-row">
-                    {{$csrf}}
-                    <select class="field-input" name="role" aria-label="Server role for {{.Username}}">
-                        <option value="member"{{if eq .Role "member"}} selected{{end}}>member</option>
-                        <option value="admin"{{if eq .Role "admin"}} selected{{end}}>admin</option>
-                    </select>
-                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
-                </form>
-                {{end}}
-            </td>
-            <td>
-                {{if ne .ID $d.Me}}
-                <form method="POST" action="/admin/users/{{.ID}}/delete"
-                      data-confirm="Delete the account {{.Username}}? They lose access to every household."
-                      data-confirm-title="Delete account" data-confirm-label="Delete" data-confirm-danger>
-                    {{$csrf}}
-                    <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Delete</button>
-                </form>
-                {{end}}
-            </td>
-        </tr>
-        {{end}}
-        </tbody>
-    </table>
-</div>
-
 {{if and $d.Active $d.MultiTenant}}
 <div class="card form-section form-section--danger">
     <h2 class="form-section__title">{{icon "delete"}} Delete {{$d.Active.Name}}</h2>
@@ -214,5 +155,131 @@
     </form>
 </div>
 {{end}}
+{{end}}
+
+{{else}}{{/* ── Roles & access ──────────────────────────────────────────────── */}}
+
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "shield-check"}} What each role can do</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        Viewer, editor and owner are roles inside one household. Server admin is set per account.
+    </p>
+    <table class="data-table" aria-label="What each role can do">
+        <thead><tr><th>Can&hellip;</th><th>Viewer</th><th>Editor</th><th>Owner</th><th>Server admin</th></tr></thead>
+        <tbody>
+        <tr><td>See plans, shopping lists, pantry and recipes</td>
+            <td>{{icon "check"}}</td><td>{{icon "check"}}</td><td>{{icon "check"}}</td><td>{{icon "check"}}</td></tr>
+        <tr><td>Plan meals, shop, edit the pantry and recipes</td>
+            <td>&ndash;</td><td>{{icon "check"}}</td><td>{{icon "check"}}</td><td>{{icon "check"}}</td></tr>
+        <tr><td>Manage people, stores and preferences</td>
+            <td>&ndash;</td><td>&ndash;</td><td>{{icon "check"}}</td><td>{{icon "check"}}</td></tr>
+        <tr><td>Server settings, AI keys, scraper and accounts{{if $d.MultiTenant}}; open every household{{end}}</td>
+            <td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>{{icon "check"}}</td></tr>
+        </tbody>
+    </table>
+</div>
+
+{{if and $d.Active $d.CanOwn}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "account-group"}} Roles in {{$d.Active.Name}}</h2>
+    <table class="data-table" aria-label="Roles in this household">
+        <thead><tr><th>Username</th><th>Household role</th></tr></thead>
+        <tbody>
+        {{range $d.Members}}
+        {{$m := .}}
+        <tr>
+            <td>{{.Username}}{{if eq .UserID $d.Me}} <span class="field-hint">(you)</span>{{end}}</td>
+            <td>
+                {{if eq .UserID $d.Me}}{{.Role}}{{else}}
+                <form method="POST" action="/households/members/{{.UserID}}/role" class="field-row">
+                    {{$csrf}}
+                    <select class="field-input" name="role" aria-label="Role for {{.Username}}">
+                        {{range $d.Roles}}<option value="{{.}}"{{if eq . $m.Role}} selected{{end}}>{{.}}</option>{{end}}
+                    </select>
+                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </form>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}
+
+{{if $d.IsAdmin}}
+<div class="card form-section" style="margin-bottom:1.5rem">
+    <h2 class="form-section__title">{{icon "shield-check"}} Accounts on this server</h2>
+    <p class="field-hint" style="margin-bottom:.75rem">
+        Every account, its server role, and where it has a seat.
+    </p>
+    <table class="data-table" aria-label="Accounts">
+        <thead><tr><th>Username</th><th>Server role</th><th>{{if $d.MultiTenant}}Households{{else}}Household role{{end}}</th><th></th></tr></thead>
+        <tbody>
+        {{range $d.Users}}
+        <tr>
+            <td>{{.Username}}{{if eq .ID $d.Me}} <span class="field-hint">(you)</span>{{end}}</td>
+            <td>
+                {{if eq .ID $d.Me}}{{.Role}}{{else}}
+                <form method="POST" action="/admin/users/{{.ID}}/role" class="field-row">
+                    {{$csrf}}
+                    <select class="field-input" name="role" aria-label="Server role for {{.Username}}">
+                        <option value="member"{{if eq .Role "member"}} selected{{end}}>member</option>
+                        <option value="admin"{{if eq .Role "admin"}} selected{{end}}>admin</option>
+                    </select>
+                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </form>
+                {{end}}
+            </td>
+            <td>
+                {{range $i, $seat := index $d.UserSeats .ID}}{{if $i}}, {{end}}{{if $d.MultiTenant}}{{$seat.HouseholdName}} ({{$seat.Role}}){{else}}{{$seat.Role}}{{end}}{{else}}<span class="field-hint">No seat</span>{{end}}
+            </td>
+            <td>
+                {{if ne .ID $d.Me}}
+                <form method="POST" action="/admin/users/{{.ID}}/delete"
+                      data-confirm="Delete the account {{.Username}}? They lose access to every household."
+                      data-confirm-title="Delete account" data-confirm-label="Delete" data-confirm-danger>
+                    {{$csrf}}
+                    <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Delete</button>
+                </form>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}
+{{end}}
+
+{{if and $d.Active $d.CanOwn}}
+{{template "partials/modal_open.html" dict "ID" "person-add" "Title" "Add a person" "Form" true}}
+  <form method="POST" action="/households/members" class="pref-form">
+    {{$csrf}}
+    <div class="field-row">
+        <div class="field" style="flex:1">
+            <label class="field-label" for="add-username">Username</label>
+            <input class="field-input" id="add-username" name="username" type="text"
+                   autocomplete="off" minlength="3" required>
+        </div>
+        <div class="field">
+            <label class="field-label" for="add-role">Role</label>
+            <select class="field-input" id="add-role" name="role">
+                {{range $d.Roles}}<option value="{{.}}"{{if eq . "editor"}} selected{{end}}>{{.}}</option>{{end}}
+            </select>
+        </div>
+    </div>
+    <div class="field">
+        <label class="field-label" for="add-password">Password (only for a new account)</label>
+        <input class="field-input" id="add-password" name="password" type="password"
+               autocomplete="new-password" minlength="8">
+        <p class="field-hint">Leave blank to add someone who already has an account.</p>
+    </div>
+    <div class="modal-dialog__footer">
+      <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">{{icon "plus"}} Add person</button>
+    </div>
+  </form>
+{{template "partials/modal_close.html" .}}
 {{end}}
 {{end}}

@@ -367,6 +367,35 @@ func TestRunCallsToolThenAnswers(t *testing.T) {
 	}
 }
 
+// After a change the caller's note reaches the model (what is still to fix,
+// in a correction run); a read gets none.
+func TestRunAddsAfterChangeNote(t *testing.T) {
+	s, _ := newAgentTestStore(t)
+	r := NewRegistry()
+	RegisterAll(r)
+
+	gen := &scriptedGen{replies: []string{
+		`{"tool":"read_plan","args":{}}`,
+		`{"move_meal":{"title":"chicken quesadillas","day":"monday"}}`,
+		`{"say":"Done."}`,
+	}}
+	calls := 0
+	runner := &Runner{Gen: gen, Registry: r, AfterChange: func() string {
+		calls++
+		return "Still to fix: saturday dinner has no meal."
+	}}
+	if _, err := runner.Run(context.Background(), s, nil, "correct the plan"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("AfterChange ran %d times, want once - for the move, not the read", calls)
+	}
+	if len(gen.seen) < 3 || strings.Contains(gen.seen[1], "Still to fix") ||
+		!strings.Contains(gen.seen[2], "SYSTEM: Still to fix: saturday dinner has no meal.") {
+		t.Errorf("the note should follow the change only: %q", gen.seen)
+	}
+}
+
 // A tool error is the model's problem to fix, not a dead end for the user.
 func TestRunFeedsToolErrorsBackToTheModel(t *testing.T) {
 	s, _ := newAgentTestStore(t)
@@ -433,6 +462,8 @@ func TestParseAction(t *testing.T) {
 		{"prose around it", `Sure! {"say":"hi"} Let me know.`, "", "hi"},
 		// Models routinely omit "args" for a no-argument tool.
 		{"missing args", `{"tool":"read_plan"}`, "read_plan", ""},
+		// The tool's name as the key: what a local model drifts into mid-run.
+		{"tool as key", `{"create_meal": {"title": "Tacos", "day": "2026-10-17"}}`, "create_meal", ""},
 	}
 	for _, c := range cases {
 		got, err := parseAction(c.in)
@@ -610,5 +641,116 @@ func TestCreateMealOnHandMarksIngredientsOwned(t *testing.T) {
 	want := []string{"Rice", "ground beef", "taco shells"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("on-hand = %v, want %v", got, want)
+	}
+}
+
+// "Swap tuesday lunch with leftover weeknight chili" is a request for the
+// chili's leftovers in that slot, not for the two meals to trade places: the
+// chili stays on Monday and cooks enough to cover the extra plates.
+func TestUseLeftoversFillsSlotAndLeavesSourceInPlace(t *testing.T) {
+	s, planID := newAgentTestStore(t)
+	ctx := context.Background()
+	r := NewRegistry()
+	RegisterAll(r)
+
+	chili := mealAt(t, s, planID, "2026-01-05", "dinner")
+	if _, err := s.Store.CreateMeal(ctx, db.CreateMealParams{
+		PlanID: planID, Day: "2026-01-06", Slot: "lunch", Title: "Black Beans & Rice Bowl",
+		Effort: "quick", Servings: 2, CookedPortions: 2,
+	}); err != nil {
+		t.Fatalf("seed lunch: %v", err)
+	}
+
+	res := mustCall(t, r, s, "use_leftovers",
+		`{"source_title":"leftover weeknight chili","day":"tuesday","slot":"lunch"}`)
+
+	m := mealAt(t, s, planID, "2026-01-06", "lunch")
+	if m == nil || m.Title != "Leftover Weeknight Chili" || !m.IsLeftover {
+		t.Fatalf("tuesday lunch = %+v, want Leftover Weeknight Chili", m)
+	}
+	if m.LeftoverSourceMealID == nil || *m.LeftoverSourceMealID != chili.ID {
+		t.Errorf("leftover is not tied to the chili")
+	}
+	src := mealAt(t, s, planID, "2026-01-05", "dinner")
+	if src == nil || src.ID != chili.ID {
+		t.Fatalf("the chili should still be on monday dinner, got %+v", src)
+	}
+	if src.CookedPortions != 4 {
+		t.Errorf("chili cooks %d portions, want 4 to cover the leftovers", src.CookedPortions)
+	}
+	if !strings.Contains(res.Summary, "Black Beans & Rice Bowl") || !strings.Contains(res.Summary, "stays put") {
+		t.Errorf("summary should name what was replaced and that the chili stayed, got: %s", res.Summary)
+	}
+	if !s.PlanChanged {
+		t.Errorf("session should record the plan change")
+	}
+}
+
+// Leftovers of a meal that has not been cooked yet is an error that names what
+// could be reheated instead, so the model can correct itself or ask.
+func TestUseLeftoversRejectsALaterMeal(t *testing.T) {
+	s, planID := newAgentTestStore(t)
+	ctx := context.Background()
+	r := NewRegistry()
+	RegisterAll(r)
+
+	_, err := r.Call(ctx, s, "use_leftovers",
+		json.RawMessage(`{"source_title":"sheet pan salmon","day":"monday","slot":"lunch"}`))
+	if err == nil {
+		t.Fatal("leftovers of a later meal were accepted")
+	}
+	if !strings.Contains(err.Error(), "Chicken Quesadillas") {
+		t.Errorf("error = %q, want it to name what is available", err)
+	}
+	if mealAt(t, s, planID, "2026-01-05", "lunch") != nil {
+		t.Errorf("nothing should have been written")
+	}
+}
+
+// The swap result says where each meal landed, so the reply cannot get it
+// backwards.
+func TestSwapMealsSaysWhereEachLanded(t *testing.T) {
+	s, _ := newAgentTestStore(t)
+	r := NewRegistry()
+	RegisterAll(r)
+
+	res := mustCall(t, r, s, "swap_meals", `{"first":"chicken quesadillas","second":"sheet pan salmon"}`)
+	if !strings.Contains(res.Summary, `"Chicken Quesadillas" is now on tuesday dinner`) ||
+		!strings.Contains(res.Summary, `"Sheet Pan Salmon" is on sunday dinner`) {
+		t.Errorf("summary = %q", res.Summary)
+	}
+}
+
+// A run pinned to a plan works on that plan, not the household's newest, and
+// cannot be pinned to somebody else's.
+func TestSessionPlanIDPinsThePlan(t *testing.T) {
+	s, planID := newAgentTestStore(t)
+	ctx := context.Background()
+	r := NewRegistry()
+	RegisterAll(r)
+
+	next, err := s.Store.CreatePlan(ctx, db.CreatePlanParams{
+		HouseholdID: s.HouseholdID, WeekStart: "2026-01-11", WeekEnd: "2026-01-17", BudgetCents: 10000,
+	})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	s.PlanID = planID
+	if res := mustCall(t, r, s, "read_plan", `{}`); !strings.Contains(res.Summary, "2026-01-04") {
+		t.Errorf("read the wrong plan: %s", res.Summary)
+	}
+	s.PlanID = next.ID
+	if res := mustCall(t, r, s, "read_plan", `{}`); !strings.Contains(res.Summary, "2026-01-11") {
+		t.Errorf("read the wrong plan: %s", res.Summary)
+	}
+
+	other, err := s.Store.CreateHousehold(ctx, db.CreateHouseholdParams{Name: "O", HouseholdSize: 2, WeeklyBudgetCents: 10000, Timezone: "UTC"})
+	if err != nil {
+		t.Fatalf("household: %v", err)
+	}
+	s.HouseholdID = other.ID
+	if _, err := r.Call(ctx, s, "read_plan", json.RawMessage(`{}`)); err == nil {
+		t.Error("a plan from another household was readable")
 	}
 }

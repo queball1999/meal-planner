@@ -191,7 +191,6 @@
         if (settled) return;
         settled = true;
         es.close();
-        stopDebugPoll();
         if (liveWrap) liveWrap.hidden = true;
         hideCancel();
         icon.classList.remove('icon-spin');
@@ -233,7 +232,6 @@
     es.addEventListener('done', function (e) {
         settled = true;
         es.close();
-        stopDebugPoll();
         hideCancel();
         if (liveWrap) liveWrap.hidden = true;
         refreshDebugLog();
@@ -255,7 +253,6 @@
         if (typeof e.data !== 'string') return;
         settled = true;
         es.close();
-        stopDebugPoll();
         hideCancel();
         if (liveWrap) liveWrap.hidden = true;
         refreshDebugLog();
@@ -308,6 +305,13 @@
             liveThink.textContent = liveThinkBuffer;
             liveThink.scrollTop = liveThink.scrollHeight;
         }
+    });
+
+    /* The call is finished and in the log: swap the live entry for the
+     * logged one. Pushed by the server, so the log needs no polling. */
+    es.addEventListener('llm_end', function () {
+        if (liveWrap) liveWrap.hidden = true;
+        refreshDebugLog();
     });
 
     es.addEventListener('llm_delta', function (e) {
@@ -387,9 +391,9 @@
                     '</details>';
             }).join('');
 
-            /* Only touch the DOM when the log content actually changed. A
-             * blind innerHTML rewrite every 1.5s collapses open entries and
-             * fights the user's scroll; skipping the no-op write fixes that. */
+            /* Only touch the DOM when the log content actually changed, so
+             * a replayed event never collapses open entries or fights the
+             * user's scroll. */
             if (html === lastDebugHTML) return;
             lastDebugHTML = html;
 
@@ -404,10 +408,6 @@
         })
         .catch(function () { /* keep last-rendered log on transient fetch errors */ });
     }
-
-    var debugTimer = setInterval(refreshDebugLog, 1500);
-    function stopDebugPoll() { clearInterval(debugTimer); }
-    refreshDebugLog();
 })();
 </script>
 {{end}}

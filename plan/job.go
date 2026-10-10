@@ -22,7 +22,7 @@ const (
 
 // JobEvent is one SSE event emitted during plan generation.
 type JobEvent struct {
-	Type    string // "status" | "plan" | "llm_start" | "llm_reasoning" | "llm_delta" | "done" | "error" | "canceled"
+	Type    string // "status" | "plan" | "llm_start" | "llm_reasoning" | "llm_delta" | "llm_end" | "done" | "error" | "canceled"
 	Message string
 	PlanID  int64 // set on "done" events
 }
@@ -131,6 +131,16 @@ func (j *Job) EmitLLMStart() {
 	j.Emit(JobEvent{Type: "llm_start"})
 }
 
+// EmitLLMEnd is a nil-safe shorthand for Emit(JobEvent{Type: "llm_end"}) -
+// marks a model call as finished and logged, which is the generation page's
+// cue to reload its call log instead of polling for it.
+func (j *Job) EmitLLMEnd() {
+	if j == nil {
+		return
+	}
+	j.Emit(JobEvent{Type: "llm_end"})
+}
+
 // EmitDelta is a nil-safe shorthand for Emit(JobEvent{Type: "llm_delta", ...})
 // - appends one streamed chunk of an in-flight model call's reply to the
 // generation page's debug panel in real time, the same way slack-llm-proxy
@@ -217,6 +227,11 @@ func writeSSE(w http.ResponseWriter, e JobEvent) {
 	}
 	if e.PlanID != 0 {
 		fmt.Fprintf(w, "data: plan_id=%d\n", e.PlanID)
+	}
+	if e.Message == "" && e.PlanID == 0 {
+		// EventSource drops an event that has no data line at all, so a
+		// bare marker (llm_start, llm_end) still needs an empty one.
+		fmt.Fprint(w, "data:\n")
 	}
 	fmt.Fprintf(w, "\n")
 }

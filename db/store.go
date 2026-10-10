@@ -62,6 +62,7 @@ type Store interface {
 	GetMembership(ctx context.Context, householdID, userID int64) (*HouseholdMembership, error)
 	ListMembershipsForUser(ctx context.Context, userID int64) ([]*HouseholdMembership, error)
 	ListMembershipsForHousehold(ctx context.Context, householdID int64) ([]*HouseholdMembership, error)
+	ListAllMemberships(ctx context.Context) ([]*HouseholdMembership, error)
 
 	// HouseholdOwns is the tenancy check for any id taken from a request.
 	HouseholdOwns(ctx context.Context, householdID int64, kind ResourceKind, id int64) (bool, error)

@@ -66,6 +66,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// with no household yet lands here); managing people needs owner;
 	// creating/deleting households and accounts is the server admin's job.
 	mux.Handle("GET /households", requireAuth(http.HandlerFunc(s.handleHouseholdsPage)))
+	mux.Handle("GET /households/roles", requireAuth(http.HandlerFunc(s.handleHouseholdRolesPage)))
 	// Switching, creating and deleting households only exist with
 	// ENABLE_MULTI_TENANT on; off, they 404 (s.multiTenantOnly).
 	mux.Handle("POST /households/switch", s.multiTenantOnly(requireAuth(http.HandlerFunc(s.handleHouseholdSwitch))))
@@ -126,6 +127,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /chat/history", view(http.HandlerFunc(s.handleChatHistory)))
 	mux.Handle("POST /chat/send", edit(http.HandlerFunc(s.handleChatSend)))
 	mux.Handle("POST /chat/confirm", edit(http.HandlerFunc(s.handleChatConfirm)))
+	mux.Handle("POST /chat/review", edit(http.HandlerFunc(s.handleChatReview)))
 	mux.Handle("POST /chat/clear", edit(http.HandlerFunc(s.handleChatClear)))
 
 	mux.Handle("GET /plan/recipe-options", view(http.HandlerFunc(s.handleRecipeOptions)))

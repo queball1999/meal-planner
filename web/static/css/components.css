@@ -1246,9 +1246,10 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 }
 
 /* ── Spinning icon ─────────────────────────────────────────────────────── */
-/* Applied to an icon (or its wrapper) that represents in-progress work, so a
- * long-running screen looks like it is turning rather than frozen. */
-.icon-spin,
+/* Applied to the wrapper of an icon that represents in-progress work, so a
+ * long-running screen looks like it is turning rather than frozen. Only the
+ * svg turns: a block wrapper is as wide as its card, and rotating that sweeps
+ * its ends past the bottom of the page, flickering the page scrollbar. */
 .icon-spin svg {
     animation: icon-spin 1.1s linear infinite;
     transform-origin: 50% 50%;
@@ -1259,7 +1260,6 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .icon-spin,
     .icon-spin svg { animation-duration: 2.4s; }
 }
 
@@ -1661,6 +1661,11 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
     flex-wrap: wrap;
     gap: var(--sp-3);
     margin-bottom: var(--sp-4);
+}
+.plan-actions__buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
 }
 .plan-budget-meter {
     display: flex;

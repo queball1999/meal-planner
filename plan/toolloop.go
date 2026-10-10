@@ -153,6 +153,7 @@ func runGenerationLoop(ctx context.Context, gen llm.Generator, lp *genLoop, gc *
 			OnDelta:     j.EmitDelta,
 			OnReasoning: j.EmitReasoning,
 		})
+		j.EmitLLMEnd()
 		if errors.Is(err, llm.ErrTruncated) || (err == nil && resp.Truncated) {
 			return resp, errLoopTruncated
 		}

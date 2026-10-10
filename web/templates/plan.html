@@ -62,10 +62,20 @@
     </div>
     {{end}}
     {{if and .Data.HasLLM (not .Data.ReadOnly)}}
-    <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal"
-            data-week="{{.Data.WeekStart}}" data-mid-week="{{.Data.ViewedMidWeek}}">
-        {{icon "autorenew"}} Regenerate plan
-    </button>
+    <div class="plan-actions__buttons">
+        {{/* Wired in chat.js: the correction runs as a turn in the assistant
+             panel, so it is only offered where that panel exists. */}}
+        {{if and $.CanEdit (ne .Data.Status "generating")}}
+        <button type="button" class="btn btn-secondary btn-sm" data-correct-plan="{{.Data.PlanID}}"
+                title="Check this plan for empty slots and leftovers that don't add up, and fix them">
+            {{icon "check"}} Correct meal plan
+        </button>
+        {{end}}
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal"
+                data-week="{{.Data.WeekStart}}" data-mid-week="{{.Data.ViewedMidWeek}}">
+            {{icon "autorenew"}} Regenerate plan
+        </button>
+    </div>
     {{end}}
 </div>
 {{if not .Data.ReadOnly}}

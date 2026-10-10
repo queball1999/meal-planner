@@ -40,7 +40,7 @@
     // the browser for that would be silly.
     const MUTATING = new Set([
         'move_meal', 'swap_meals', 'edit_meal', 'delete_meal', 'fill_slot',
-        'create_meal',
+        'create_meal', 'use_leftovers', 'cook_more',
         'set_day_status', 'set_day_headcount',
         'add_list_item', 'remove_list_item', 'mark_already_have', 'set_item_price',
         'set_pantry_qty',
@@ -321,24 +321,48 @@
         if (busy) return;
         const msg = input.value.trim();
         if (!msg) return;
+        input.value = '';
+        runTurn('/chat/send', 'message=' + encodeURIComponent(msg), msg);
+    });
 
+    // "Correct meal plan" on the plan page. The server checks the plan and
+    // has the assistant fix what it finds, as a turn in this panel. Asked
+    // once here, because unlike a typed request its changes are not held for
+    // a yes one by one.
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-correct-plan]');
+        if (!btn || busy) return;
+        window.goeat.confirm(
+            'The assistant will check this plan for empty slots and leftovers that do not add up, ' +
+            'then fix what it finds: filling the gaps and replacing leftovers that have nothing to reheat. ' +
+            'Days that have already passed are left alone.',
+            { title: 'Correct meal plan', confirmLabel: 'Correct it' }
+        ).then(function (ok) {
+            if (!ok || busy) return;
+            open();
+            runTurn('/chat/review', 'plan_id=' + encodeURIComponent(btn.dataset.correctPlan), 'Correct the meal plan.');
+        });
+    });
+
+    // One turn: show what was asked, post it, and render the reply as it
+    // streams back.
+    function runTurn(url, body, shown) {
         const empty = log.querySelector('.chat-empty');
         if (empty) empty.remove();
 
-        addMessage('user', msg);
-        input.value = '';
+        addMessage('user', shown);
         setBusy(true);
 
         // fetch + manual SSE parse rather than EventSource: EventSource is
         // GET-only and cannot carry the CSRF header, and this request is a
         // POST that changes data.
-        fetch('/chat/send', {
+        fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-CSRF-Token': csrf(),
             },
-            body: 'message=' + encodeURIComponent(msg),
+            body: body,
         })
             .then(function (resp) {
                 if (!resp.ok || !resp.body) {
@@ -352,7 +376,7 @@
                 addStep({ tool: 'error', error: err.message || 'Something went wrong.' });
             })
             .finally(turnEnded);
-    });
+    }
 
     // Minimal SSE reader: events arrive as "event: X\ndata: {...}\n\n".
     function readStream(reader) {

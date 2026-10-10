@@ -170,6 +170,8 @@ func TestRBACAndTenancy(t *testing.T) {
 		{"editor locks own meal", "alice", "POST", fmt.Sprintf("/meals/%d/lock", aMeal), url.Values{"locked": {"1"}}, http.StatusSeeOther},
 		{"viewer can't write", "vera", "POST", fmt.Sprintf("/meals/%d/lock", aMeal), url.Values{"locked": {"1"}}, http.StatusForbidden},
 		{"editor can't manage stores", "alice", "POST", fmt.Sprintf("/stores/%d/delete", f.a.store.ID), url.Values{}, http.StatusForbidden},
+		{"viewer can't correct the plan", "vera", "POST", "/chat/review", url.Values{"plan_id": {fmt.Sprint(f.a.meal.PlanID)}}, http.StatusForbidden},
+		{"correct other household's plan", "alice", "POST", "/chat/review", url.Values{"plan_id": {fmt.Sprint(f.b.meal.PlanID)}}, http.StatusNotFound},
 		{"editor can't add people", "alice", "POST", "/households/members", url.Values{"username": {"mallory"}, "role": {"owner"}, "password": {"longenough123"}}, http.StatusForbidden},
 
 		// Instance-admin surfaces.
@@ -227,6 +229,22 @@ func TestOwnerManagesPeople(t *testing.T) {
 		if w := f.do(u, "GET", "/households", nil); w.Code != http.StatusOK {
 			t.Fatalf("GET /households as %s: %d\n%s", u, w.Code, w.Body.String())
 		}
+	}
+
+	// Roles & access: owners and admins get the tab, everyone else is sent back.
+	for u, want := range map[string]int{"olga": http.StatusOK, "root": http.StatusOK, "alice": http.StatusSeeOther, "vera": http.StatusSeeOther} {
+		if w := f.do(u, "GET", "/households/roles", nil); w.Code != want {
+			t.Errorf("GET /households/roles as %s: %d, want %d\n%s", u, w.Code, want, w.Body.String())
+		}
+	}
+	if body := f.do("olga", "GET", "/households/roles", nil).Body.String(); strings.Contains(body, "Accounts on this server") {
+		t.Error("an owner who is not an admin sees the server accounts table")
+	}
+	if body := f.do("root", "GET", "/households/roles", nil).Body.String(); !strings.Contains(body, "Accounts on this server") {
+		t.Error("admin's roles tab is missing the server accounts table")
+	}
+	if body := f.do("olga", "GET", "/households", nil).Body.String(); !strings.Contains(body, `data-modal-open="person-add"`) || !strings.Contains(body, `id="person-add"`) {
+		t.Error("owner's people tab is missing the Add person button or its modal")
 	}
 
 	w := f.do("olga", "POST", "/households/members", url.Values{"username": {"newbie"}, "role": {"viewer"}, "password": {"longenough123"}})

@@ -17,6 +17,18 @@ var slotNames = []string{"breakfast", "lunch", "dinner"}
 // currentPlan loads the household's active plan, with a message the model can
 // act on when there is none.
 func currentPlan(ctx context.Context, s *Session) (*db.Plan, error) {
+	if s.PlanID != 0 {
+		p, err := s.Store.GetPlanByID(ctx, s.PlanID)
+		if err != nil {
+			return nil, err
+		}
+		// The id is the caller's, but the household check stays here with
+		// every other one (Session).
+		if p == nil || p.HouseholdID != s.HouseholdID {
+			return nil, fmt.Errorf("that plan is not this household's")
+		}
+		return p, nil
+	}
 	p, err := s.Store.GetLatestPlan(ctx, s.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -119,6 +131,55 @@ func findMeal(ctx context.Context, s *Session, planID int64, id int64, title str
 		}
 		return nil, fmt.Errorf("%q matches several meals (%s) - say which one",
 			title, strings.Join(names, ", "))
+	}
+}
+
+// findLeftoverSource picks the meal to reheat out of the ones a slot could
+// eat leftovers of, by id or by title.
+//
+// The title is matched with any "leftover" word dropped, because that is how
+// the request arrives ("leftover seasoned chicken tacos") and no meal on the
+// plan is called that yet. Same rules as findMeal otherwise: exact beats a
+// substring, and an ambiguous name is an error rather than a guess.
+func findLeftoverSource(sources []*db.Meal, id int64, title string) (*db.Meal, error) {
+	if id > 0 {
+		for _, m := range sources {
+			if m.ID == id {
+				return m, nil
+			}
+		}
+		return nil, fmt.Errorf("meal %d cannot be leftovers", id)
+	}
+	var words []string
+	for _, w := range strings.Fields(strings.ToLower(title)) {
+		if w != "leftover" && w != "leftovers" && w != "of" {
+			words = append(words, w)
+		}
+	}
+	needle := strings.Join(words, " ")
+	if needle == "" {
+		return nil, fmt.Errorf("name the meal to reheat")
+	}
+	var exact, partial []*db.Meal
+	for _, m := range sources {
+		lt := strings.ToLower(m.Title)
+		if lt == needle {
+			exact = append(exact, m)
+		} else if strings.Contains(lt, needle) {
+			partial = append(partial, m)
+		}
+	}
+	hits := exact
+	if len(hits) == 0 {
+		hits = partial
+	}
+	switch len(hits) {
+	case 0:
+		return nil, fmt.Errorf("%q cannot be leftovers", title)
+	case 1:
+		return hits[0], nil
+	default:
+		return nil, fmt.Errorf("%q matches several meals - say which one", title)
 	}
 }
 
@@ -364,7 +425,7 @@ func RegisterPlanTools(r *Registry) {
 
 	r.Register(&Tool{
 		Name:        "swap_meals",
-		Description: "Swap two meals with each other. Each one's leftovers move with it.",
+		Description: "Exchange the places of two meals that are both already on the plan. Each one's leftovers move with it. Only for trading two existing meals: when the user wants a slot to become leftovers of another meal (\"swap saturday lunch with leftover tacos\"), that is use_leftovers, and the meal being reheated stays where it is.",
 		Params: map[string]Param{
 			"first":  {Type: "string", Description: "Title of the first meal."},
 			"second": {Type: "string", Description: "Title of the second meal."},
@@ -403,7 +464,104 @@ func RegisterPlanTools(r *Registry) {
 				return Result{}, err
 			}
 			s.planChanged(movedDays(res, m2.Day)...)
-			return Result{Summary: fmt.Sprintf("Swapped %q and %q.", m1.Title, m2.Title) + moveSummary(res)}, nil
+			// Where each one landed, spelled out: left to work it out from two
+			// titles, the model reports the places the wrong way round.
+			return Result{Summary: fmt.Sprintf("Swapped them: %q is now on %s %s and %q is on %s %s.",
+				m1.Title, weekdayOf(m2.Day), m2.Slot, m2.Title, weekdayOf(m1.Day), m1.Slot) + moveSummary(res)}, nil
+		},
+	})
+
+	r.Register(&Tool{
+		Name:        "use_leftovers",
+		Description: "Make a slot the leftovers of a meal cooked earlier in the week. Whatever is in the slot is replaced, the earlier meal stays where it is and cooks enough extra to cover it, and nothing new goes on the shopping list. Use this whenever the user asks for leftovers of a dish that is on the plan.",
+		Params: map[string]Param{
+			"source_meal_id": {Type: "integer", Description: "Id of the meal being reheated, from read_plan."},
+			"source_title":   {Type: "string", Description: `Title of the meal being reheated, if you do not have its id - "Seasoned Chicken Tacos", not "Leftover Seasoned Chicken Tacos".`},
+			"day":            {Type: "string", Description: "Day the leftovers are eaten: a weekday name or YYYY-MM-DD inside the plan week."},
+			"slot":           {Type: "string", Description: "Which meal of that day.", Enum: slotNames},
+		},
+		Required: []string{"day", "slot"},
+		Mutates:  true,
+		Run: func(ctx context.Context, s *Session, args json.RawMessage) (Result, error) {
+			var a struct {
+				SourceMealID int64  `json:"source_meal_id"`
+				SourceTitle  string `json:"source_title"`
+				Day          string `json:"day"`
+				Slot         string `json:"slot"`
+			}
+			if err := json.Unmarshal(args, &a); err != nil {
+				return Result{}, err
+			}
+			p, err := currentPlan(ctx, s)
+			if err != nil {
+				return Result{}, err
+			}
+			date, err := resolveDay(p, a.Day)
+			if err != nil {
+				return Result{}, err
+			}
+			slot := strings.ToLower(strings.TrimSpace(a.Slot))
+			if !validSlotName(slot) {
+				return Result{}, fmt.Errorf("%q is not a meal slot", a.Slot)
+			}
+
+			meals, err := s.Store.ListMealsByPlan(ctx, p.ID)
+			if err != nil {
+				return Result{}, err
+			}
+			for _, m := range meals {
+				if m.Day == date && m.Slot == slot && m.Locked {
+					return Result{}, fmt.Errorf("the meal in %s %s is locked - the user has to unlock it before it can be replaced", weekdayOf(date), slot)
+				}
+			}
+			// What can still be reheated then, nearest first. Named in every
+			// error below so the model can correct itself or offer the choice.
+			sources := plan.LeftoverSources(meals, date, slot)
+			var options []string
+			for _, m := range sources {
+				options = append(options, fmt.Sprintf("%q from %s %s", m.Title, weekdayOf(m.Day), m.Slot))
+			}
+			available := "nothing cooked in the three days before it is available"
+			if len(options) > 0 {
+				available = "available: " + strings.Join(options, ", ")
+			}
+
+			// The source is named the way the user said it, "leftover" and all.
+			src, err := findLeftoverSource(sources, a.SourceMealID, a.SourceTitle)
+			if err != nil {
+				return Result{}, fmt.Errorf("%v for %s %s - %s", err, weekdayOf(date), slot, available)
+			}
+
+			portions := float64(s.Household.HouseholdSize)
+			if day, _ := s.Store.GetPlanDay(ctx, p.ID, date); day != nil && day.Portions > 0 {
+				portions = day.Portions
+			}
+			res, err := plan.AddLeftoverMeal(ctx, s.Store, plan.LeftoverParams{
+				PlanID: p.ID, SourceMealID: src.ID, Date: date, Slot: slot, Portions: portions,
+			})
+			if err != nil {
+				return Result{}, err
+			}
+			// A day being filled is a day being eaten at home (handleMealFill).
+			_ = s.Store.SetPlanDayStatus(ctx, p.ID, date, db.DayCooking)
+			// No days named: the leftover is already sized to its day, and the
+			// source keeps the extra it was just told to cook.
+			s.planChanged()
+
+			summary := fmt.Sprintf("Put %q on %s %s for %d", res.Title, weekdayOf(date), slot, res.Servings)
+			for _, m := range meals {
+				if m.Day == date && m.Slot == slot {
+					summary += fmt.Sprintf(", replacing %q", m.Title)
+				}
+			}
+			if res.ExtraCooked > 0 {
+				summary += fmt.Sprintf(". %q on %s %s stays put and now cooks %d more to cover it.",
+					res.SourceTitle, weekdayOf(src.Day), src.Slot, res.ExtraCooked)
+			} else {
+				summary += fmt.Sprintf(". %q on %s %s stays put and already cooks enough to cover it.",
+					res.SourceTitle, weekdayOf(src.Day), src.Slot)
+			}
+			return Result{Summary: summary}, nil
 		},
 	})
 

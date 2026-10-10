@@ -89,6 +89,7 @@ func Repair(
 			OnDelta:     j.EmitDelta,
 			OnReasoning: j.EmitReasoning,
 		})
+		j.EmitLLMEnd()
 		if err != nil {
 			fmt.Printf("repair iter %d: generate: %v\n", iter+1, err)
 			break
