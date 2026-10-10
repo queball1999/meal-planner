@@ -45,6 +45,11 @@ type GeneratedMeal struct {
 	Ingredients    []GeneratedIngredient `json:"ingredients"`
 	Steps          []string              `json:"steps"`
 
+	// RecipeID names one of the household's saved recipes. The model sets it
+	// instead of writing the recipe out, and expandSavedRecipes fills the rest
+	// of the meal in from the catalog. 0 for a dish the model wrote itself.
+	RecipeID int64 `json:"recipe_id,omitempty"`
+
 	// Asked for so the meal can be saved to the recipe catalog as something
 	// worth cooking again, rather than a title and a step list with no times
 	// and no way to find it. Optional in the response - an older model that

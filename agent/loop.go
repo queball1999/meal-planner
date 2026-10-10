@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"goeat/llm"
 )
@@ -71,8 +72,21 @@ Rules:
   when the user actually asked for that change.
 - If a tool returns an error, read it - it usually says exactly what to fix -
   and either correct the call or explain the problem to the user.
-- Never invent ids, prices, or quantities. If you do not know something, use a
-  read tool or ask.
+- Never invent ids, prices, or what is already on the plan. If you do not
+  know something, use a read tool or ask. Writing a recipe for create_meal is
+  not inventing: sensible ingredients and amounts for the dish are expected.
+- Do every part of the request before you answer. A message that asks for two
+  changes needs both.
+- When the user says what they are eating for a meal ("Monday lunch is turkey
+  sandwiches", "tonight we're having tacos"), put that dish in that slot,
+  replacing what is there: search_recipes for it, then fill_slot with a match
+  or create_meal if there is none. Do not skip the day, and do not leave the
+  old meal in place. If they say they already have what it needs ("with what
+  we have", "ingredients on hand"), pass on_hand: true.
+- Moving a meal takes its leftovers with it. Read the result: if it says a
+  leftover could not follow, deal with it or tell the user.
+- Only say you did something if a tool result says it happened. If a part of
+  the request did not get done, say which part and why.
 - When you are done, say what you did in one or two plain sentences. The user
   can see the list of actions, so do not narrate every step.
 
@@ -171,7 +185,8 @@ func (r *Runner) step(ctx context.Context, s *Session, transcript string, spent 
 			// model left to think freely spends its whole budget before
 			// emitting any content - which arrives here as an empty response.
 			SuppressReasoning: true,
-			MaxTokens:         2048,
+			// Room for a create_meal call, which carries a whole recipe.
+			MaxTokens: 4096,
 		})
 		if err != nil {
 			reply.Audit = s.Audit
@@ -313,6 +328,19 @@ func householdContext(s *Session) string {
 	if s.Household == nil {
 		return ""
 	}
-	return fmt.Sprintf("\nHousehold: %s, %d people, weekly budget $%.0f.\n",
-		s.Household.Name, s.Household.HouseholdSize, float64(s.Household.WeeklyBudgetCents)/100)
+	// The date is what makes "tonight" and "tomorrow" a day rather than a
+	// guess, in the household's own timezone - near midnight the server's day
+	// and theirs differ.
+	now := s.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if tz := s.Household.Timezone; tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			now = now.In(loc)
+		}
+	}
+	return fmt.Sprintf("\nHousehold: %s, %d people, weekly budget $%.0f.\nToday is %s.\n",
+		s.Household.Name, s.Household.HouseholdSize, float64(s.Household.WeeklyBudgetCents)/100,
+		now.Format("Monday, 2006-01-02"))
 }

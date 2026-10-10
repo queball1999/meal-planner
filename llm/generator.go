@@ -42,6 +42,13 @@ type GenerateRequest struct {
 	// parser) leave it unset. Called from whatever goroutine is doing the
 	// generation; it must not block or it stalls the stream.
 	OnDelta func(chunk string)
+
+	// OnReasoning is OnDelta's sibling for the model's chain of thought: on a
+	// streamed call (OnDelta set) it receives each chunk of reasoning the
+	// backend reports separately from the answer. Reasoning is never part of
+	// GenerateResponse.Content, so this is the only place it surfaces. Same
+	// must-not-block rule as OnDelta.
+	OnReasoning func(chunk string)
 }
 
 // GenerateResponse is the output from Generator.Generate.

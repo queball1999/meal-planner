@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -121,6 +122,84 @@ func findMeal(ctx context.Context, s *Session, planID int64, id int64, title str
 	}
 }
 
+// moveSummary says what a move did beyond relocating the one meal: which
+// leftovers went with it, and which were left with nothing to reheat. The
+// second is addressed to the model as much as the user - it is the cue to fix
+// the plan or say so, rather than report a clean move.
+func moveSummary(res *plan.MoveResult) string {
+	var b strings.Builder
+	if len(res.Followed) > 0 {
+		var parts []string
+		for _, m := range res.Followed {
+			parts = append(parts, fmt.Sprintf("%q to %s %s", m.Title, weekdayOf(m.Day), m.Slot))
+		}
+		fmt.Fprintf(&b, " Its leftovers moved with it: %s.", strings.Join(parts, ", "))
+	}
+	if len(res.StrandedMeals) > 0 {
+		var parts []string
+		for _, m := range res.StrandedMeals {
+			parts = append(parts, fmt.Sprintf("%q on %s %s", m.Title, weekdayOf(m.Day), m.Slot))
+		}
+		fmt.Fprintf(&b, " Note: %s could not follow and is now eaten before the meal it is leftovers of is cooked - move it later or replace it.",
+			strings.Join(parts, ", "))
+	}
+	return b.String()
+}
+
+// markMealOnHand adds a meal's ingredients to the plan's on-hand list, which
+// is what the shopping list reads to mark a line "already have" and leave it
+// unpriced (pricing.ApplyOnHand) - and what makes that survive every rebuild
+// of the list, where ticking the lines themselves would not outlive the
+// reprice that puts this meal's lines there in the first place.
+//
+// On-hand is by food, not by amount: if another meal that week uses the same
+// ingredient, its share is covered too. Returns how many names were added.
+func markMealOnHand(ctx context.Context, s *Session, planID, mealID int64) (int, error) {
+	ings, err := s.Store.ListIngredientsByMeal(ctx, mealID)
+	if err != nil {
+		return 0, err
+	}
+	names, err := s.Store.GetPlanOnHand(ctx, planID)
+	if err != nil {
+		return 0, err
+	}
+	seen := make(map[string]bool, len(names))
+	for _, n := range names {
+		seen[strings.ToLower(strings.TrimSpace(n))] = true
+	}
+	added := 0
+	for _, ing := range ings {
+		key := strings.ToLower(strings.TrimSpace(ing.Name))
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		names = append(names, ing.Name)
+		added++
+	}
+	if added == 0 {
+		return 0, nil
+	}
+	return added, s.Store.SetPlanOnHand(ctx, planID, names)
+}
+
+// onHandNote is the sentence a fill reports its on_hand marking with.
+func onHandNote(ctx context.Context, s *Session, planID, mealID int64) string {
+	if _, err := markMealOnHand(ctx, s, planID, mealID); err != nil {
+		return " Note: could not mark its ingredients as already owned (" + err.Error() + ") - they are on the list to buy."
+	}
+	return " Its ingredients are on the shopping list marked as already owned, not priced."
+}
+
+// movedDays lists every day a move changed, for Session.planChanged.
+func movedDays(res *plan.MoveResult, to string) []string {
+	days := []string{res.FromDay, to}
+	for _, m := range res.Followed {
+		days = append(days, m.Day)
+	}
+	return days
+}
+
 // planMealView is one meal as the model sees it.
 type planMealView struct {
 	ID         int64  `json:"id"`
@@ -230,7 +309,7 @@ func RegisterPlanTools(r *Registry) {
 
 	r.Register(&Tool{
 		Name:        "move_meal",
-		Description: "Move a meal to a different day and/or slot. Anything already there is swapped into the vacated place, never deleted.",
+		Description: "Move a meal to a different day and/or slot. Anything already there is swapped into the vacated place, never deleted. Meals that eat its leftovers move the same number of days with it, so do not move those separately - the result lists where they went.",
 		Params: map[string]Param{
 			"meal_id": {Type: "integer", Description: "The meal's id."},
 			"title":   {Type: "string", Description: "The meal's title, if you do not have its id."},
@@ -268,21 +347,24 @@ func RegisterPlanTools(r *Registry) {
 				return Result{}, fmt.Errorf("%q is not a meal slot - use breakfast, lunch, or dinner", a.Slot)
 			}
 
-			displaced, err := s.Store.MoveMeal(ctx, m.ID, date, slot)
+			res, err := plan.MoveMeal(ctx, s.Store, plan.MoveParams{
+				MealID: m.ID, Date: date, Slot: slot, Leftovers: plan.MoveFollow,
+			})
 			if err != nil {
 				return Result{}, err
 			}
+			s.planChanged(movedDays(res, date)...)
 			summary := fmt.Sprintf("Moved %q to %s %s.", m.Title, weekdayOf(date), slot)
-			if displaced != "" {
-				summary += fmt.Sprintf(" %q took its old place on %s %s.", displaced, weekdayOf(m.Day), m.Slot)
+			if res.Displaced != "" {
+				summary += fmt.Sprintf(" %q took its old place on %s %s.", res.Displaced, weekdayOf(m.Day), m.Slot)
 			}
-			return Result{Summary: summary}, nil
+			return Result{Summary: summary + moveSummary(res)}, nil
 		},
 	})
 
 	r.Register(&Tool{
 		Name:        "swap_meals",
-		Description: "Swap two meals with each other.",
+		Description: "Swap two meals with each other. Each one's leftovers move with it.",
 		Params: map[string]Param{
 			"first":  {Type: "string", Description: "Title of the first meal."},
 			"second": {Type: "string", Description: "Title of the second meal."},
@@ -314,16 +396,20 @@ func RegisterPlanTools(r *Registry) {
 			}
 			// MoveMeal already swaps whatever occupies the destination, so
 			// moving one onto the other is the whole operation.
-			if _, err := s.Store.MoveMeal(ctx, m1.ID, m2.Day, m2.Slot); err != nil {
+			res, err := plan.MoveMeal(ctx, s.Store, plan.MoveParams{
+				MealID: m1.ID, Date: m2.Day, Slot: m2.Slot, Leftovers: plan.MoveFollow,
+			})
+			if err != nil {
 				return Result{}, err
 			}
-			return Result{Summary: fmt.Sprintf("Swapped %q and %q.", m1.Title, m2.Title)}, nil
+			s.planChanged(movedDays(res, m2.Day)...)
+			return Result{Summary: fmt.Sprintf("Swapped %q and %q.", m1.Title, m2.Title) + moveSummary(res)}, nil
 		},
 	})
 
 	r.Register(&Tool{
 		Name:        "edit_meal",
-		Description: "Rename a meal or change its effort or servings. To change what day it is on, use move_meal.",
+		Description: "Rename a meal or change its effort or servings. This keeps the meal's ingredients and steps, so it cannot turn one dish into another - for that use fill_slot or create_meal. To change what day it is on, use move_meal.",
 		Params: map[string]Param{
 			"meal_id":   {Type: "integer", Description: "The meal's id."},
 			"title":     {Type: "string", Description: "Current title, if you do not have the id."},
@@ -382,6 +468,7 @@ func RegisterPlanTools(r *Registry) {
 			if err := s.Store.UpdateMealTitle(ctx, m.ID, title, effort, servings, cooked); err != nil {
 				return Result{}, err
 			}
+			s.planChanged()
 			return Result{Summary: fmt.Sprintf("Updated %s on %q.", strings.Join(changed, " and "), m.Title)}, nil
 		},
 	})
@@ -413,15 +500,17 @@ func RegisterPlanTools(r *Registry) {
 			if err := s.Store.DeleteMeal(ctx, m.ID); err != nil {
 				return Result{}, err
 			}
+			s.planChanged(m.Day)
 			return Result{Summary: fmt.Sprintf("Removed %q from %s %s.", m.Title, weekdayOf(m.Day), m.Slot)}, nil
 		},
 	})
 
 	r.Register(&Tool{
 		Name:        "fill_slot",
-		Description: "Put one of the household's saved recipes into a slot, scaled to what that day is feeding. Use search_recipes first to find the recipe id.",
+		Description: "Put one of the household's saved recipes into a slot, scaled to what that day is feeding. Whatever meal is already in the slot is replaced. Use search_recipes first to find the recipe id; if nothing fits, use create_meal instead.",
 		Params: map[string]Param{
 			"recipe_id": {Type: "integer", Description: "A saved recipe's id, from search_recipes."},
+			"on_hand":   {Type: "boolean", Description: "true when the user says they already have what this dish needs. Its ingredients still go on the shopping list, marked as already owned and not priced."},
 			"day":       {Type: "string", Description: "Weekday name or YYYY-MM-DD inside the plan week."},
 			"slot":      {Type: "string", Description: "Which meal of the day.", Enum: slotNames},
 		},
@@ -432,6 +521,7 @@ func RegisterPlanTools(r *Registry) {
 				RecipeID int64  `json:"recipe_id"`
 				Day      string `json:"day"`
 				Slot     string `json:"slot"`
+				OnHand   bool   `json:"on_hand"`
 			}
 			if err := json.Unmarshal(args, &a); err != nil {
 				return Result{}, err
@@ -460,9 +550,138 @@ func RegisterPlanTools(r *Registry) {
 			if err != nil {
 				return Result{}, err
 			}
+			s.planChanged(date)
 			summary := fmt.Sprintf("Put %q on %s %s, scaled to %d servings.", res.Title, weekdayOf(date), slot, res.Servings)
 			if len(res.Unquantified) > 0 {
 				summary += fmt.Sprintf(" %s had no amount in the recipe.", strings.Join(res.Unquantified, ", "))
+			}
+			if a.OnHand {
+				summary += onHandNote(ctx, s, p.ID, res.MealID)
+			}
+			return Result{Summary: summary}, nil
+		},
+	})
+
+	r.Register(&Tool{
+		Name:        "create_meal",
+		Description: "Put a meal that is not in the saved recipes into a slot, writing the recipe yourself: a title, the ingredients with amounts, and the steps. Whatever meal is already in the slot is replaced, and the recipe is saved for next time. Use this whenever the user names a dish for a slot and search_recipes has nothing that fits - never leave the old meal in place or the slot empty because no recipe was saved.",
+		Params: map[string]Param{
+			"day":          {Type: "string", Description: "Weekday name or YYYY-MM-DD inside the plan week."},
+			"slot":         {Type: "string", Description: "Which meal of the day.", Enum: slotNames},
+			"title":        {Type: "string", Description: `The dish's plain name, e.g. "Turkey Sandwich".`},
+			"ingredients":  {Type: "array", Description: `Everything the dish needs, each as {"name": "sliced turkey", "quantity": 6, "unit": "oz"}. quantity is a number; unit is g, oz, lb, ml, cup, tbsp, tsp, or "each" for things counted whole.`},
+			"steps":        {Type: "array", Description: "How to make it, as short strings in order."},
+			"servings":     {Type: "integer", Description: "How many the ingredient amounts above feed. They are scaled from this to what the day needs. Defaults to the household size."},
+			"effort":       {Type: "string", Description: "How much work it is.", Enum: []string{"quick", "standard", "elaborate"}},
+			"prep_minutes": {Type: "integer", Description: "Hands-on time, if you know it."},
+			"cook_minutes": {Type: "integer", Description: "Cooking time, if you know it."},
+			"on_hand":      {Type: "boolean", Description: "true when the user says they already have what this dish needs. Its ingredients still go on the shopping list, marked as already owned and not priced."},
+		},
+		Required: []string{"day", "slot", "title", "ingredients"},
+		Mutates:  true,
+		Run: func(ctx context.Context, s *Session, args json.RawMessage) (Result, error) {
+			var a struct {
+				Day         string `json:"day"`
+				Slot        string `json:"slot"`
+				Title       string `json:"title"`
+				Ingredients []struct {
+					Name string `json:"name"`
+					// A number, or - from a model that quotes everything -
+					// text like "2" or "1/2".
+					Quantity json.RawMessage `json:"quantity"`
+					Unit     string          `json:"unit"`
+				} `json:"ingredients"`
+				Steps       []string `json:"steps"`
+				Servings    int      `json:"servings"`
+				Effort      string   `json:"effort"`
+				PrepMinutes int      `json:"prep_minutes"`
+				CookMinutes int      `json:"cook_minutes"`
+				OnHand      bool     `json:"on_hand"`
+			}
+			if err := json.Unmarshal(args, &a); err != nil {
+				return Result{}, fmt.Errorf("create_meal arguments are the wrong shape (%v) - ingredients is a list of {name, quantity, unit}, steps a list of strings", err)
+			}
+			p, err := currentPlan(ctx, s)
+			if err != nil {
+				return Result{}, err
+			}
+			date, err := resolveDay(p, a.Day)
+			if err != nil {
+				return Result{}, err
+			}
+			slot := strings.ToLower(strings.TrimSpace(a.Slot))
+			if !validSlotName(slot) {
+				return Result{}, fmt.Errorf("%q is not a meal slot", a.Slot)
+			}
+
+			gm := plan.GeneratedMeal{
+				Title: a.Title, Steps: a.Steps, Servings: a.Servings,
+				PrepMinutes: a.PrepMinutes, CookMinutes: a.CookMinutes,
+			}
+			if gm.Servings < 1 {
+				gm.Servings = s.Household.HouseholdSize
+			}
+			for _, ing := range a.Ingredients {
+				name := strings.TrimSpace(ing.Name)
+				if name == "" {
+					continue
+				}
+				var qty float64
+				if err := json.Unmarshal(ing.Quantity, &qty); err != nil {
+					var text string
+					_ = json.Unmarshal(ing.Quantity, &text)
+					qty, _ = plan.ParseQuantity(text)
+				}
+				// A countable thing with no unit ("2 tortillas") is the usual
+				// omission, and not worth a round trip to have it restated.
+				unit := strings.TrimSpace(ing.Unit)
+				if unit == "" {
+					unit = "each"
+				}
+				gm.Ingredients = append(gm.Ingredients, plan.GeneratedIngredient{Name: name, Quantity: qty, Unit: unit})
+			}
+
+			portions := float64(s.Household.HouseholdSize)
+			if day, _ := s.Store.GetPlanDay(ctx, p.ID, date); day != nil && day.Portions > 0 {
+				portions = day.Portions
+			}
+			res, err := plan.WriteMeal(ctx, s.Store, plan.WriteMealParams{
+				PlanID: p.ID, HouseholdID: s.HouseholdID,
+				Date: date, Slot: slot, Portions: portions, Meal: gm,
+			})
+			if errors.Is(err, plan.ErrMealLocked) {
+				return Result{}, fmt.Errorf("the meal in %s %s is locked - the user has to unlock it before it can be replaced", weekdayOf(date), slot)
+			}
+			if err != nil {
+				return Result{}, err
+			}
+			// The effort the model gave beats the one guessed from its times.
+			if e := strings.ToLower(strings.TrimSpace(a.Effort)); e == "quick" || e == "standard" || e == "elaborate" {
+				if m, _ := s.Store.GetMealByID(ctx, res.MealID); m != nil && m.Effort != e {
+					_ = s.Store.UpdateMealTitle(ctx, m.ID, m.Title, e, m.Servings, m.CookedPortions)
+				}
+			}
+			s.planChanged(date)
+
+			summary := fmt.Sprintf("Put %q on %s %s, %d servings", res.Title, weekdayOf(date), slot, res.Servings)
+			if res.Replaced != "" {
+				summary += fmt.Sprintf(", replacing %q", res.Replaced)
+			}
+			if res.Reused {
+				summary += ". The household already had a recipe by that name, so that one was used."
+			} else {
+				summary += ", and saved it to the household's recipes."
+			}
+			if len(res.Stranded) > 0 {
+				var parts []string
+				for _, m := range res.Stranded {
+					parts = append(parts, fmt.Sprintf("%q on %s %s", m.Title, weekdayOf(m.Day), m.Slot))
+				}
+				summary += fmt.Sprintf(" Note: %s was the replaced meal's leftovers and now has nothing to reheat - replace it or tell the user.",
+					strings.Join(parts, ", "))
+			}
+			if a.OnHand {
+				summary += onHandNote(ctx, s, p.ID, res.MealID)
 			}
 			return Result{Summary: summary}, nil
 		},
@@ -470,7 +689,7 @@ func RegisterPlanTools(r *Registry) {
 
 	r.Register(&Tool{
 		Name:        "set_day_status",
-		Description: "Mark a day as cooking, eating out, or skipped. A day that is not being cooked drops out of the shopping list.",
+		Description: "Mark a whole day - every meal on it - as cooking, eating out, or skipped. A day that is not being cooked drops out of the shopping list. If the user is cooking something different for one meal, that is not a skipped day: put the new dish in that slot with fill_slot or create_meal.",
 		Params: map[string]Param{
 			"day":    {Type: "string", Description: "Weekday name or YYYY-MM-DD inside the plan week."},
 			"status": {Type: "string", Description: "What is happening that day.", Enum: []string{db.DayCooking, db.DayEatingOut, db.DaySkipped}},
@@ -511,6 +730,7 @@ func RegisterPlanTools(r *Registry) {
 			if err := s.Store.SetPlanDayStatus(ctx, p.ID, date, status); err != nil {
 				return Result{}, err
 			}
+			s.planChanged()
 			summary := fmt.Sprintf("Marked %s as %s.", weekdayOf(date), strings.ReplaceAll(status, "_", " "))
 			if len(stranded) > 0 {
 				summary += fmt.Sprintf(" Note: %s was living off that day's leftovers and now has nothing.",
@@ -557,6 +777,7 @@ func RegisterPlanTools(r *Registry) {
 			if err != nil {
 				return Result{}, err
 			}
+			s.planChanged()
 			return Result{Summary: fmt.Sprintf("%s now serves %d - rescaled %d meals.",
 				weekdayOf(date), a.Headcount, scaled.MealsScaled)}, nil
 		},

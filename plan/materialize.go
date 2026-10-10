@@ -98,6 +98,9 @@ func MaterializeRecipe(ctx context.Context, store db.Store, p MaterializeParams)
 		Effort:         effortFor(recipe),
 		Servings:       servings,
 		CookedPortions: cooked,
+		// The link is what lets a later edit to the recipe reach this meal
+		// (SyncRecipeMeals).
+		CatalogRecipeID: &recipe.ID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create meal: %w", err)
@@ -111,42 +114,65 @@ func MaterializeRecipe(ctx context.Context, store db.Store, p MaterializeParams)
 		log.Printf("materialize: copy steps for recipe %d: %v", recipe.ID, err)
 	}
 
-	lines, err := store.ListCatalogRecipeIngredients(ctx, recipe.ID)
+	// The baseline a later headcount change rescales from is the meal at its
+	// whole servings: ScaleMealsForDay multiplies it by portions / servings. A
+	// day of 1.8 portions is a 2-serving meal, so the ingredients are written
+	// for 2, recorded as the baseline, and only then brought down to 1.8.
+	// Recording the 1.8 amounts as the 2-serving baseline would leave the meal
+	// 10% short for good, whoever ate on that day afterwards.
+	frac := 1.0
+	if baseServings >= 1 && p.Portions > 0 {
+		frac = p.Portions / float64(servings)
+	}
+	res.Ingredients, res.Unquantified, err = writeIngredients(ctx, store, p.HouseholdID, recipe.ID, meal.ID, factor/frac)
 	if err != nil {
-		return nil, fmt.Errorf("list recipe ingredients: %w", err)
+		return nil, err
+	}
+	if err := store.SetMealBaseline(ctx, meal.ID); err != nil {
+		log.Printf("materialize: set baseline for meal %d: %v", meal.ID, err)
+	}
+	if frac != 1 {
+		if err := store.ScaleMealFromBaseline(ctx, meal.ID, frac); err != nil {
+			return nil, fmt.Errorf("scale to day portions: %w", err)
+		}
+	}
+
+	return res, nil
+}
+
+// writeIngredients writes one meal_ingredient per recipe line, each scaled by
+// factor and linked to a catalog item. It reports how many it wrote and which
+// lines had no number in their amount (see MaterializeResult.Unquantified).
+func writeIngredients(ctx context.Context, store db.Store, householdID, recipeID, mealID int64, factor float64) (written int, unquantified []string, err error) {
+	lines, err := store.ListCatalogRecipeIngredients(ctx, recipeID)
+	if err != nil {
+		return 0, nil, fmt.Errorf("list recipe ingredients: %w", err)
 	}
 	for _, ln := range lines {
 		qty, ok := ParseQuantity(ln.Quantity)
 		if !ok {
-			res.Unquantified = append(res.Unquantified, ln.Name)
+			unquantified = append(unquantified, ln.Name)
 		}
 		qty = round3(qty * factor)
 
 		var itemID *int64
-		if it, ierr := catalog.EnsureItem(ctx, store, p.HouseholdID, ln.Name); ierr == nil && it != nil {
+		if it, ierr := catalog.EnsureItem(ctx, store, householdID, ln.Name); ierr == nil && it != nil {
 			itemID = &it.ID
 		}
 
 		if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
-			MealID:         meal.ID,
+			MealID:         mealID,
 			Name:           ln.Name,
 			Quantity:       qty,
 			Unit:           ln.Unit,
 			NormalizedTerm: pricing.Normalize(ln.Name),
 			ItemID:         itemID,
 		}); err != nil {
-			return nil, fmt.Errorf("create ingredient %q: %w", ln.Name, err)
+			return written, unquantified, fmt.Errorf("create ingredient %q: %w", ln.Name, err)
 		}
-		res.Ingredients++
+		written++
 	}
-
-	// Ingredients are written at their scaled amount, so that amount is also
-	// the baseline a later headcount change rescales from.
-	if err := store.SetMealBaseline(ctx, meal.ID); err != nil {
-		log.Printf("materialize: set baseline for meal %d: %v", meal.ID, err)
-	}
-
-	return res, nil
+	return written, unquantified, nil
 }
 
 // scaleFor works out the meal's servings and the factor to multiply every
@@ -186,7 +212,8 @@ func replaceSlot(ctx context.Context, store db.Store, planID int64, date, slot s
 	return nil
 }
 
-// copySteps writes the recipe's instructions onto the meal.
+// copySteps writes the recipe's instructions onto the meal, replacing any the
+// meal already had.
 func copySteps(ctx context.Context, store db.Store, recipeID, mealID int64, servings int) error {
 	steps, err := store.ListCatalogRecipeSteps(ctx, recipeID)
 	if err != nil {
@@ -200,11 +227,7 @@ func copySteps(ctx context.Context, store db.Store, recipeID, mealID int64, serv
 	if err != nil {
 		return err
 	}
-	return store.CreateMealRecipe(ctx, db.CreateMealRecipeParams{
-		MealID:    mealID,
-		StepsJSON: string(blob),
-		Servings:  servings,
-	})
+	return store.SetMealSteps(ctx, mealID, string(blob), servings)
 }
 
 // effortFor maps a recipe's total time onto the three effort buckets the plan

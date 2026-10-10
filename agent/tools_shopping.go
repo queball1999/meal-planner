@@ -393,7 +393,7 @@ func RegisterPantryTools(r *Registry) {
 
 	r.Register(&Tool{
 		Name:        "search_recipes",
-		Description: "Search the household's saved recipes by title or tag. Use this to find a recipe id for fill_slot.",
+		Description: "Search the household's saved recipes by title or tag. Use this to find a recipe id for fill_slot. Search by the main word (turkey, not \"a turkey sandwich for lunch\"). Finding nothing is not a dead end: write the dish with create_meal.",
 		Params: map[string]Param{
 			"query": {Type: "string", Description: "What to look for. Leave out to list everything."},
 		},

@@ -3495,6 +3495,16 @@ img[data-lightbox]:focus-visible { outline: 2px solid var(--accent); outline-off
 .gen-when__icon svg { width: 18px; height: 18px; }
 .gen-when__note { margin: var(--sp-1) 0 0; font-size: var(--text-sm); }
 
+/* "Stick to what I know" / "Try something new" on the dialog's first step. */
+.novelty-range { width: 100%; accent-color: var(--accent); }
+.novelty-scale {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
 /* The dialog's last step, and the same request shown again in Plan History. */
 .gen-review {
     display: grid;

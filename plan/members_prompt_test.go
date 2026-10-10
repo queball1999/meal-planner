@@ -13,7 +13,7 @@ func promptFor(t *testing.T, size int, members []*db.HouseholdMember) string {
 	hh := &db.Household{HouseholdSize: size, WeeklyBudgetCents: 15000}
 	profile := &PreferenceProfile{Members: members}
 	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
-	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil, nil, nil)
+	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil, nil, nil, nil, nil)
 	return user
 }
 
@@ -82,7 +82,7 @@ func TestPromptIncludesRequestedMeals(t *testing.T) {
 	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), []string{
 		"Grandma's Lasagna (an existing recipe the household picked - use it as specified rather than inventing a substitute)",
 		"something with salmon on Friday",
-	}, nil, nil)
+	}, nil, nil, nil, nil)
 
 	if !strings.Contains(user, "Grandma's Lasagna") {
 		t.Errorf("requested recipe missing from prompt:\n%s", user)
@@ -110,7 +110,7 @@ func TestPromptIncludesOnHandFood(t *testing.T) {
 	hh := &db.Household{HouseholdSize: 2, WeeklyBudgetCents: 15000}
 	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
 	_, user := BuildPrompt(hh, &PreferenceProfile{}, nil, start, start.AddDate(0, 0, 6), nil,
-		[]string{"half a rotisserie chicken", "spinach"}, nil)
+		[]string{"half a rotisserie chicken", "spinach"}, nil, nil, nil)
 
 	for _, want := range []string{"half a rotisserie chicken", "spinach", "already has in the fridge or pantry", "using these up"} {
 		if !strings.Contains(user, want) {
@@ -135,7 +135,7 @@ func TestPromptFlagsMidWeekDayRestriction(t *testing.T) {
 	profile := &PreferenceProfile{}
 	start := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
 	_, user := BuildPrompt(hh, profile, nil, start, start.AddDate(0, 0, 6), nil, nil,
-		[]string{"wednesday", "thursday", "friday", "saturday"})
+		[]string{"wednesday", "thursday", "friday", "saturday"}, nil, nil)
 
 	if !strings.Contains(user, "MID-WEEK") {
 		t.Errorf("prompt does not flag a restricted day range as mid-week:\n%s", user)
@@ -182,7 +182,7 @@ func TestTotalPortionsRounds(t *testing.T) {
 func TestSystemPromptAsksForRecipeMetadata(t *testing.T) {
 	sys, _ := BuildPrompt(&db.Household{HouseholdSize: 2}, &PreferenceProfile{}, nil,
 		time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC), nil, nil, nil)
+		time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC), nil, nil, nil, nil, nil)
 
 	for _, want := range []string{
 		`"prep_minutes"`,
@@ -190,6 +190,8 @@ func TestSystemPromptAsksForRecipeMetadata(t *testing.T) {
 		`"tags"`,
 		// Names loaded with adjectives match nothing in the grocery catalog.
 		"plain grocery name",
+		// One dish per week; only leftovers may bring a meal back.
+		"NEVER plan the same meal twice in the same week",
 	} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("system prompt missing %q", want)

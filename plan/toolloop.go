@@ -42,7 +42,8 @@ Rules:
   (proteins, specialty items, anything you are unsure of) is enough to keep
   the week's total realistic. Checking all of them is a waste of your own
   time budget.
-- Reuse a good match from search_recipes rather than inventing a near-dupe.
+- Reuse a good match from search_recipes, by its recipe_id, rather than
+  inventing a near-dupe.
 - If a tool returns found:false or an error, that is not a reason to stop -
   estimate that one yourself and move on.
 - You have a limited number of lookups. When you are close to using them up,
@@ -146,10 +147,11 @@ func runGenerationLoop(ctx context.Context, gen llm.Generator, lp *genLoop, gc *
 	for ; lp.step < genMaxSteps; lp.step++ {
 		j.EmitLLMStart()
 		resp, err := gen.Generate(ctx, llm.GenerateRequest{
-			System:    lp.system,
-			Prompt:    lp.prompt(),
-			MaxTokens: lp.maxTokens,
-			OnDelta:   j.EmitDelta,
+			System:      lp.system,
+			Prompt:      lp.prompt(),
+			MaxTokens:   lp.maxTokens,
+			OnDelta:     j.EmitDelta,
+			OnReasoning: j.EmitReasoning,
 		})
 		if errors.Is(err, llm.ErrTruncated) || (err == nil && resp.Truncated) {
 			return resp, errLoopTruncated

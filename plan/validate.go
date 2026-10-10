@@ -75,7 +75,8 @@ func Validate(gp GeneratedPlan, profile *PreferenceProfile, days []string) error
 		if len(m.Ingredients) == 0 {
 			return fmt.Errorf("meal %d (%s): no ingredients", i, m.Title)
 		}
-		if len(m.Steps) == 0 {
+		// A saved recipe is used as the household saved it, steps or no steps.
+		if len(m.Steps) == 0 && m.RecipeID == 0 {
 			return fmt.Errorf("meal %d (%s): no steps", i, m.Title)
 		}
 

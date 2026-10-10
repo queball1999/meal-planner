@@ -32,10 +32,25 @@
 </form>
 
 {{if .Data.Recipes}}
+{{/* Bulk actions. The row checkboxes live in the table but belong to this
+     form (form="recipe-bulk-form"): a row's own Delete is a form too, and
+     forms cannot nest. The bar shows once something is ticked. */}}
+<form method="POST" action="/recipes/bulk" id="recipe-bulk-form" class="bulk-bar" hidden
+      data-confirm="Delete the selected recipes?" data-confirm-title="Delete recipes" data-confirm-label="Delete" data-confirm-danger>
+    {{.CSRFField}}
+    <input type="hidden" name="action" value="delete">
+    <span class="bulk-bar__count" id="recipe-bulk-count" aria-live="polite"></span>
+    <button type="button" class="btn btn-ghost btn-sm" id="recipe-bulk-clear">Clear</button>
+    <button type="submit" class="btn btn-danger btn-sm">{{icon "delete"}} Delete selected</button>
+</form>
+
 <div class="card">
     <table class="data-table" aria-label="Recipe catalog">
         <thead>
             <tr>
+                <th class="data-table__check">
+                    <input type="checkbox" id="recipe-select-all" aria-label="Select every recipe on this page">
+                </th>
                 <th><span class="sr-only">Photo</span></th>
                 <th>Title</th>
                 <th>Source</th>
@@ -49,6 +64,10 @@
         <tbody id="recipe-rows">
             {{range .Data.Recipes}}
             <tr>
+                <td data-label="Select" class="data-table__check">
+                    <input type="checkbox" name="ids" value="{{.ID}}" form="recipe-bulk-form"
+                           data-recipe-select aria-label="Select {{.Title}}">
+                </td>
                 <td data-label="Photo">
                     <a href="/recipes/{{.ID}}" class="recipe-thumb" aria-label="View {{.Title}}">
                         {{if .ImagePath}}
@@ -82,12 +101,13 @@
                 </td>
                 <td data-label="Added">{{(local .CreatedAt).Format "Jan 2"}}</td>
                 <td data-label="" class="data-table__actions">
-                    <a href="/recipes/{{.ID}}" class="btn btn-ghost btn-sm" aria-label="View {{.Title}}">
-                        {{icon "eye"}}
-                    </a>
-                    <a href="/recipes/{{.ID}}#edit" class="btn btn-ghost btn-sm" aria-label="Edit {{.Title}}">
-                        {{icon "pencil"}}
-                    </a>
+                    <a href="/recipes/{{.ID}}" class="btn-icon" title="View" aria-label="View {{.Title}}">{{icon "eye"}}</a>
+                    <a href="/recipes/{{.ID}}#edit" class="btn-icon" title="Edit" aria-label="Edit {{.Title}}">{{icon "pencil"}}</a>
+                    <form method="POST" action="/recipes/{{.ID}}/delete"
+                          data-confirm="Delete &quot;{{.Title}}&quot;? This cannot be undone. Meals already on a plan keep their copy." data-confirm-title="Delete recipe" data-confirm-label="Delete" data-confirm-danger>
+                        {{$.CSRFField}}
+                        <button type="submit" class="btn-icon btn-icon--danger" title="Delete" aria-label="Delete {{.Title}}">{{icon "delete"}}</button>
+                    </form>
                 </td>
             </tr>
             {{end}}
@@ -95,6 +115,37 @@
     </table>
     {{template "pagination" .Data.Page}}
 </div>
+<script nonce="{{cspNonce}}">
+(function () {
+    var form = document.getElementById('recipe-bulk-form');
+    var all = document.getElementById('recipe-select-all');
+    var countEl = document.getElementById('recipe-bulk-count');
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('[data-recipe-select]'));
+    if (!form || !all) return;
+
+    function refresh() {
+        var n = boxes.filter(function (b) { return b.checked; }).length;
+        form.hidden = n === 0;
+        all.checked = n > 0 && n === boxes.length;
+        all.indeterminate = n > 0 && n < boxes.length;
+        var what = n === 1 ? '1 recipe' : n + ' recipes';
+        countEl.textContent = what + ' selected';
+        form.setAttribute('data-confirm', 'Delete ' + what +
+            '? This cannot be undone. Meals already on a plan keep their copy.');
+    }
+
+    function setAll(on) {
+        boxes.forEach(function (b) { b.checked = on; });
+        refresh();
+    }
+
+    all.addEventListener('change', function () { setAll(all.checked); });
+    boxes.forEach(function (b) { b.addEventListener('change', refresh); });
+    document.getElementById('recipe-bulk-clear').addEventListener('click', function () { setAll(false); });
+    // A back/forward navigation can restore ticked boxes.
+    refresh();
+})();
+</script>
 {{else if .Data.Filtered}}
 <div class="skeleton-card">
     <div class="skeleton-card__icon" aria-hidden="true">{{icon "search"}}</div>

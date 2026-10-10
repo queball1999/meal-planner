@@ -84,6 +84,10 @@
                 <span class="badge badge-accent">streaming…</span>
                 <span class="llm-debug-snippet">Model is replying live</span>
             </div>
+            <div class="llm-debug-row" id="genDebugLiveThinkRow" hidden>
+                <span class="llm-debug-label">Thinking</span>
+                <pre class="llm-debug-pre" id="genDebugLiveThink"></pre>
+            </div>
             <div class="llm-debug-row">
                 <span class="llm-debug-label">Response</span>
                 <pre class="llm-debug-pre" id="genDebugLiveText"></pre>
@@ -280,12 +284,30 @@
     var liveText = document.getElementById('genDebugLiveText');
     var liveBuffer = '';
 
+    var liveThinkRow = document.getElementById('genDebugLiveThinkRow');
+    var liveThink = document.getElementById('genDebugLiveThink');
+    var liveThinkBuffer = '';
+
     es.addEventListener('llm_start', function () {
         liveBuffer = '';
+        liveThinkBuffer = '';
         if (liveText) liveText.textContent = '';
+        if (liveThink) liveThink.textContent = '';
+        if (liveThinkRow) liveThinkRow.hidden = true;
         if (liveWrap) liveWrap.hidden = false;
         var debugDetails = document.getElementById('gen-debug');
         if (debugDetails) debugDetails.open = true;
+    });
+
+    /* The model's chain of thought, when the provider reports it apart from
+     * the answer. The row stays hidden for a call that never thinks. */
+    es.addEventListener('llm_reasoning', function (e) {
+        liveThinkBuffer += e.data;
+        if (liveThink) {
+            if (liveThinkRow) liveThinkRow.hidden = false;
+            liveThink.textContent = liveThinkBuffer;
+            liveThink.scrollTop = liveThink.scrollHeight;
+        }
     });
 
     es.addEventListener('llm_delta', function (e) {

@@ -26,7 +26,8 @@ type PriceChecker func(ctx context.Context, term string) (priceCents int64, unit
 type genToolCtx struct {
 	store       db.Store
 	householdID int64
-	checker     PriceChecker // nil when no pricing chain is configured
+	profile     *PreferenceProfile // nil in a caller with no preferences to hold recipes to
+	checker     PriceChecker       // nil when no pricing chain is configured
 }
 
 // genToolResult is one tool call's outcome: a short line for the transcript
@@ -41,7 +42,7 @@ type genToolResult struct {
 // agent.Registry.Describe() is: a short readable list costs a fraction of
 // the tokens a JSON Schema dump would and models follow it more reliably.
 const genToolDescriptions = `- read_pantry(): Read what the household already has on hand, so you can lean on it instead of buying more.
-- search_recipes(query?): Search the household's saved recipes by title or tag. Reuse a good match by giving that meal the same title, ingredients, and steps instead of inventing a near-duplicate.
+- search_recipes(query?): Search the household's saved recipes by title or tag; no query lists them. Each comes with an id. Reuse a good match by giving that meal its recipe_id instead of inventing a near-duplicate.
 - search_items(query): Search the household's grocery item catalog for a canonical name.
 - check_price(ingredient): Look up a real price for one ingredient, e.g. {"ingredient": "chicken breast"}. Returns price_cents, unit, and store when known, or found:false when nothing is on record - that is not an error, just try a plainer name or move on.
 `
@@ -109,18 +110,27 @@ func genSearchRecipes(ctx context.Context, gc *genToolCtx, args json.RawMessage)
 	// context window on a list the model will not read in full.
 	const max = 25
 	out := make([]map[string]any, 0, max)
-	for i, rc := range recipes {
-		if i >= max {
+	truncated := false
+	for _, rc := range recipes {
+		// Only recipes the plan could actually use: one with an allergen in
+		// it would be offered here and then sink the whole plan in Validate.
+		if gc.profile != nil {
+			if ok, aerr := recipeAllowed(ctx, gc.store, rc, gc.profile); aerr != nil || !ok {
+				continue
+			}
+		}
+		if len(out) >= max {
+			truncated = true
 			break
 		}
 		out = append(out, map[string]any{
-			"title": rc.Title, "servings": rc.Servings,
+			"id": rc.ID, "title": rc.Title, "servings": rc.Servings,
 			"minutes": rc.PrepMinutes + rc.CookMinutes, "tags": rc.Tags,
 		})
 	}
 	return genToolResult{
-		Summary: fmt.Sprintf("Found %d saved recipes.", len(out)),
-		Data:    map[string]any{"recipes": out, "truncated": len(recipes) > max},
+		Summary: fmt.Sprintf("Found %d saved recipes. To use one, give the meal its id as recipe_id.", len(out)),
+		Data:    map[string]any{"recipes": out, "truncated": truncated},
 	}, nil
 }
 

@@ -1,11 +1,14 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"goeat/db"
 	"goeat/middleware"
@@ -164,11 +167,78 @@ func (s *Server) handleMemberUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/preferences", http.StatusSeeOther)
 		return
 	}
-	// Existing plans keep the portions they were scaled to (plan_days stores
-	// the total, not a live recomputation), so say what did and did not move.
-	s.setNotify(w, NotifySuccess, fmt.Sprintf(
-		"Saved %s. Plans already generated keep their current portions.", name))
+	s.setNotify(w, NotifySuccess, fmt.Sprintf("Saved %s.", name)+s.rescalePlansForMembers(r.Context(), hh))
 	http.Redirect(w, r, "/preferences", http.StatusSeeOther)
+}
+
+// rescalePlansForMembers carries a change to the household's members onto
+// the plans still ahead: each day's portion total is recomputed from the
+// people eating that day, its meals are rescaled to it, and the shopping list
+// follows. Returns what to add to the "saved" notice.
+//
+// plan_days stores the total rather than recomputing it on read so that a
+// plan already cooked is not restated - which is why only plans ending today
+// or later are touched. A day with no member selection is a bare headcount
+// and has nothing to recompute.
+func (s *Server) rescalePlansForMembers(ctx context.Context, hh *db.Household) string {
+	plans, err := s.store.ListPlans(ctx, hh.ID)
+	if err != nil {
+		log.Printf("members: list plans: %v", err)
+		return ""
+	}
+	today := time.Now().Format("2006-01-02")
+	var changed int
+	for _, p := range plans {
+		if p.Canceled || p.WeekEnd < today {
+			continue
+		}
+		days, err := s.store.ListPlanDays(ctx, p.ID)
+		if err != nil {
+			log.Printf("members: list days of plan %d: %v", p.ID, err)
+			continue
+		}
+		moved := false
+		for _, d := range days {
+			if len(d.MemberIDs) == 0 {
+				continue
+			}
+			memberPortions, n, err := s.store.SumPortionFactors(ctx, hh.ID, d.MemberIDs)
+			if err != nil {
+				log.Printf("members: sum factors for %s: %v", d.Date, err)
+				continue
+			}
+			in := dayPortionInput{
+				Portions: memberPortions + float64(d.Guests), MemberPortions: memberPortions,
+				Headcount: n + d.Guests, Guests: d.Guests, GuestSlots: d.GuestSlots,
+			}
+			// Nobody left eating (every member on the day was removed): leave
+			// the day as it is rather than scale its meals to nothing.
+			if in.Portions < 1 || math.Abs(in.Portions-d.Portions) < 1e-9 {
+				continue
+			}
+			if err := s.store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
+				PlanID: p.ID, Date: d.Date, Headcount: in.Headcount, Note: d.Note,
+				MemberIDs: d.MemberIDs, Portions: in.Portions,
+				Guests: d.Guests, GuestSlots: d.GuestSlots,
+			}); err != nil {
+				log.Printf("members: save plan day %s: %v", d.Date, err)
+				continue
+			}
+			if _, err := s.scaleDayForInput(ctx, p.ID, d.Date, in); err != nil {
+				log.Printf("members: scale meals for %s: %v", d.Date, err)
+			}
+			moved = true
+		}
+		if moved {
+			changed++
+			s.repriceInBackground(p.ID, hh, true)
+		}
+	}
+	if changed == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" %d current %s rescaled to match. The shopping list is updating.",
+		changed, pluralize(changed, "plan was", "plans were"))
 }
 
 // handleMemberDelete removes one member.
@@ -189,7 +259,7 @@ func (s *Server) handleMemberDelete(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/preferences", http.StatusSeeOther)
 		return
 	}
-	s.setNotify(w, NotifySuccess, "Removed.")
+	s.setNotify(w, NotifySuccess, "Removed."+s.rescalePlansForMembers(r.Context(), hh))
 	http.Redirect(w, r, "/preferences", http.StatusSeeOther)
 }
 

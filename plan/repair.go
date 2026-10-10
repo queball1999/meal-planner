@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -71,8 +72,8 @@ func Repair(
 			return false, fmt.Errorf("repair: plan week start %q: %w", plan.WeekStart, perr)
 		}
 		weekEnd := weekStart.AddDate(0, 0, 6)
-		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd, nil, nil, nil)
-		userPmt := buildRepairPrompt(hh, profile, targets, plan.BudgetCents, plan.TotalCents)
+		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd, nil, nil, nil, nil, nil)
+		userPmt := buildRepairPrompt(hh, profile, targets, meals, plan.BudgetCents, plan.TotalCents)
 
 		j.EmitStatus(fmt.Sprintf(
 			"$%.2f over budget - asking the AI for %d cheaper meal(s) (round %d of %d)…",
@@ -82,10 +83,11 @@ func Repair(
 		// lookup - so the budget has to cover the thinking as well as the JSON.
 		j.EmitLLMStart()
 		resp, err := gen.Generate(llm.WithPurpose(ctx, "repair"), llm.GenerateRequest{
-			System:    sysPmt,
-			Prompt:    userPmt,
-			MaxTokens: 8192,
-			OnDelta:   j.EmitDelta,
+			System:      sysPmt,
+			Prompt:      userPmt,
+			MaxTokens:   8192,
+			OnDelta:     j.EmitDelta,
+			OnReasoning: j.EmitReasoning,
 		})
 		if err != nil {
 			fmt.Printf("repair iter %d: generate: %v\n", iter+1, err)
@@ -101,13 +103,17 @@ func Repair(
 			break
 		}
 		CleanMealTitles(GeneratedPlan{Meals: partial.Meals})
+		if err := expandSavedRecipes(ctx, store, hh.ID, partial.Meals, profile.TotalPortions(hh.HouseholdSize)); err != nil {
+			fmt.Printf("repair iter %d: saved recipe: %v\n", iter+1, err)
+			break
+		}
 
 		for _, gm := range partial.Meals {
 			if err := validateSingleMeal(gm, profile); err != nil {
 				fmt.Printf("repair iter %d: validation skip %q: %v\n", iter+1, gm.Title, err)
 				continue
 			}
-			if err := replaceMeal(ctx, store, meals, gm); err != nil {
+			if err := replaceMeal(ctx, store, hh.ID, meals, gm); err != nil {
 				fmt.Printf("repair iter %d: replace meal: %v\n", iter+1, err)
 			}
 		}
@@ -127,13 +133,30 @@ func Repair(
 	return false, nil
 }
 
-func buildRepairPrompt(hh *db.Household, profile *PreferenceProfile, targets []*db.Meal, budgetCents, totalCents int64) string {
+// buildRepairPrompt asks for cheaper replacements for targets. meals is the
+// whole plan: the model only sees the meals it is replacing otherwise, and
+// would happily hand back a dish the week already has.
+func buildRepairPrompt(hh *db.Household, profile *PreferenceProfile, targets, meals []*db.Meal, budgetCents, totalCents int64) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "The current meal plan costs $%.2f but the budget is $%.2f.\n",
 		float64(totalCents)/100, float64(budgetCents)/100)
 	b.WriteString("Replace ONLY these meals with cheaper alternatives that honor the same constraints:\n\n")
+	replacing := make(map[int64]bool, len(targets))
 	for _, m := range targets {
+		replacing[m.ID] = true
 		fmt.Fprintf(&b, "- %s %s: %q\n", weekdayName(m.Day), m.Slot, m.Title)
+	}
+	var kept []*db.Meal
+	for _, m := range meals {
+		if !replacing[m.ID] && !m.IsLeftover && m.Title != "" {
+			kept = append(kept, m)
+		}
+	}
+	if len(kept) > 0 {
+		b.WriteString("\nThe rest of the week stays as it is. NEVER repeat any of these meals, and never return the same replacement twice - every meal in the week must be a distinct dish:\n\n")
+		for _, m := range kept {
+			fmt.Fprintf(&b, "- %s %s: %q\n", weekdayName(m.Day), m.Slot, m.Title)
+		}
 	}
 	b.WriteString("\nReturn ONLY a JSON object with a \"meals\" array containing the replacement meals.\n")
 	b.WriteString("Each replacement must include: day, slot, title, effort, servings, cooked_portions, ingredients, steps.\n")
@@ -151,7 +174,7 @@ func buildRepairPrompt(hh *db.Household, profile *PreferenceProfile, targets []*
 
 // replaceMeal updates one meal DB row to match the replacement and rewrites its
 // recipe and ingredients. Identified by matching day+slot in the existing meals list.
-func replaceMeal(ctx context.Context, store db.Store, meals []*db.Meal, gm GeneratedMeal) error {
+func replaceMeal(ctx context.Context, store db.Store, householdID int64, meals []*db.Meal, gm GeneratedMeal) error {
 	day := strings.ToLower(gm.Day)
 	slot := strings.ToLower(gm.Slot)
 
@@ -169,13 +192,26 @@ func replaceMeal(ctx context.Context, store db.Store, meals []*db.Meal, gm Gener
 	if err := store.UpdateMealTitle(ctx, target.ID, gm.Title, gm.Effort, gm.Servings, gm.CookedPortions); err != nil {
 		return fmt.Errorf("update meal title: %w", err)
 	}
+	// The slot now holds a different dish: file it in the catalog as
+	// persistPlan does and follow that recipe instead of the one the old meal
+	// came from (SyncRecipeMeals). Non-fatal, and unlinked if it cannot be
+	// filed - following the old recipe would be worse than following none.
+	var link *int64
+	if recipeID, _, rerr := ensureGeneratedRecipe(ctx, store, householdID, gm); rerr != nil {
+		log.Printf("repair: save recipe %q to catalog: %v", gm.Title, rerr)
+	} else if recipeID != 0 {
+		link = &recipeID
+	}
+	if err := store.SetMealCatalogRecipe(ctx, target.ID, link); err != nil {
+		return fmt.Errorf("link recipe: %w", err)
+	}
 
+	// An upsert, not CreateMealRecipe: the meal being replaced already has a
+	// meal_recipes row (meal_id is UNIQUE), and a failed insert here used to
+	// return before the ingredients were swapped, leaving the new title on
+	// the old dish.
 	stepsJSON, _ := json.Marshal(gm.Steps)
-	if err := store.CreateMealRecipe(ctx, db.CreateMealRecipeParams{
-		MealID:    target.ID,
-		StepsJSON: string(stepsJSON),
-		Servings:  gm.Servings,
-	}); err != nil {
+	if err := store.SetMealSteps(ctx, target.ID, string(stepsJSON), gm.Servings); err != nil {
 		return fmt.Errorf("update recipe: %w", err)
 	}
 

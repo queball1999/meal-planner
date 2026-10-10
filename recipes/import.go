@@ -334,6 +334,13 @@ var knownUnits = map[string]bool{
 	"can": true, "cans": true, "slice": true, "slices": true,
 	"piece": true, "pieces": true, "whole": true, "large": true,
 	"medium": true, "small": true,
+	// Units plan generation writes. The recipe edit form prints each line as
+	// "2 each large eggs" and parses it back with splitIngredient, so a unit
+	// missing here is folded into the name on the first save.
+	"each": true, "packet": true, "packets": true, "package": true, "packages": true,
+	"head": true, "heads": true, "jar": true, "jars": true, "stalk": true, "stalks": true,
+	"leaf": true, "leaves": true, "handful": true, "container": true, "ball": true,
+	"portion": true, "serving": true,
 }
 
 // splitIngredient does a best-effort parse of a raw ingredient string into

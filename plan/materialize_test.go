@@ -244,3 +244,31 @@ func TestEffortFor(t *testing.T) {
 		}
 	}
 }
+
+// A meal made on a fractional day (two people at 1.0 and 0.8) is written for
+// 1.8 portions, but its baseline is the whole 2-serving meal - so when the
+// day later becomes 2.0 portions the meal comes back to the recipe as written
+// instead of staying 10% short.
+func TestMaterializeFractionalDayRescalesBackToWhole(t *testing.T) {
+	ctx := context.Background()
+	store, hh, planID := newMatStore(t)
+	recipeID := seedRecipe(t, store, hh.ID)
+
+	res, err := MaterializeRecipe(ctx, store, MaterializeParams{
+		PlanID: planID, HouseholdID: hh.ID, CatalogRecipeID: recipeID,
+		Date: "2026-01-05", Slot: "dinner", Portions: 1.8,
+	})
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	// 4-serving recipe, 2 lb beef: 1.8 portions is 0.9 lb.
+	if got := ingredientsByName(t, store, res.MealID)["ground beef"].Quantity; math.Abs(got-0.9) > 1e-9 {
+		t.Errorf("ground beef at 1.8 portions = %v, want 0.9", got)
+	}
+	if _, err := store.ScaleMealsForDay(ctx, planID, "2026-01-05", 2); err != nil {
+		t.Fatalf("scale: %v", err)
+	}
+	if got := ingredientsByName(t, store, res.MealID)["ground beef"].Quantity; math.Abs(got-1) > 1e-9 {
+		t.Errorf("ground beef at 2 portions = %v, want 1", got)
+	}
+}

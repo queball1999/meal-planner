@@ -15,7 +15,8 @@
      uses) and shows the dates on step 1, before anything is typed.
 
      Three steps: step 1 is "anything you want to eat" (recipe picker + free
-     text), step 2 is "anything already in the fridge or pantry": rows of
+     text, and a slider - "novelty" - for how the meals nobody asked for are
+     split between saved recipes and new dishes; see plan.rollRecipeMix), step 2 is "anything already in the fridge or pantry": rows of
      ingredient + quantity + unit (on_hand_name / on_hand_qty / on_hand_unit),
      added by searching the pantry/catalog (Choices.js) or typing a new one;
      handlers_plan.go saves them to the pantry and tells the plan. Step 3
@@ -101,6 +102,17 @@
                 placeholder="e.g. something with salmon on Friday"></textarea>
     </div>
 
+    <div class="field">
+      <label class="field-label" for="must-include-novelty">For every other meal</label>
+      <input class="novelty-range" id="must-include-novelty" name="novelty" type="range"
+             min="0" max="100" step="10" value="50" aria-describedby="must-include-novelty-hint">
+      <div class="novelty-scale" aria-hidden="true">
+        <span>Stick to what I know</span>
+        <span>Try something new</span>
+      </div>
+      <p class="field-hint" id="must-include-novelty-hint" aria-live="polite"></p>
+    </div>
+
     <div class="modal-dialog__footer modal-dialog__footer--sticky">
       <span class="field-hint modal-dialog__step">Step 1 of 3</span>
       <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
@@ -146,6 +158,14 @@
 
     <div id="must-include-step-3" tabindex="-1" hidden>
     <p class="text-muted">Nothing has been sent yet. This is what "Generate plan" will do.</p>
+    <div class="gen-when" id="must-include-mix" aria-live="polite" hidden>
+      <span class="gen-when__icon" aria-hidden="true">{{icon "chef-hat"}}</span>
+      <div>
+        <strong id="must-include-mix-text"></strong>
+        <p class="gen-when__note" id="must-include-mix-note" hidden></p>
+      </div>
+    </div>
+    <input type="hidden" name="saved_meals" id="must-include-saved" value="">
     <dl class="gen-review" id="must-include-summary"></dl>
 
     <div class="modal-dialog__footer modal-dialog__footer--sticky">
@@ -195,7 +215,7 @@
         step = n;
         steps.forEach(function (el, i) { el.hidden = i !== n - 1; });
         title.textContent = stepTitles[n - 1];
-        if (n === 3) renderSummary();
+        if (n === 3) { renderSummary(); loadMix(); }
         // The step itself, not its first field: on a phone, focusing a text
         // field throws the keyboard up over the thing you were about to tap.
         steps[n - 1].focus();
@@ -265,6 +285,96 @@
         });
     });
 
+    // ── Saved recipes or new dishes ──────────────────────────────────────
+    // The slider is a chance per meal, rolled on the server; a meal picked or
+    // typed above goes in whatever it says. The last setting is remembered in
+    // this browser so it doesn't have to be set again every week.
+    var noveltyEl = document.getElementById('must-include-novelty');
+    var noveltyHint = document.getElementById('must-include-novelty-hint');
+    var NOVELTY_KEY = 'genNovelty';
+
+    function noveltyText(pct) {
+        pct = parseInt(pct, 10) || 0;
+        if (pct <= 0) return 'Always one of your saved recipes.';
+        if (pct >= 100) return 'Always a new dish.';
+        return pct + '% chance of a new dish, otherwise one of your saved recipes.';
+    }
+
+    function setNovelty(pct) {
+        pct = Math.round(Number(pct) / 10) * 10;
+        if (!(pct >= 0 && pct <= 100)) pct = 50;
+        noveltyEl.value = pct;
+        noveltyHint.textContent = noveltyText(pct) + ' Meals you ask for above always go in.';
+    }
+
+    function storedNovelty() {
+        try {
+            var v = localStorage.getItem(NOVELTY_KEY);
+            return v === null ? 50 : v;
+        } catch (e) { return 50; }
+    }
+
+    noveltyEl.addEventListener('input', function () {
+        setNovelty(noveltyEl.value);
+        try { localStorage.setItem(NOVELTY_KEY, noveltyEl.value); } catch (e) { /* private mode */ }
+    });
+
+    // ── Step 3: how many saved recipes, how many new dishes ──────────────
+    // The slider is rolled on the server when the review opens (GET
+    // /plan/generate/mix) and the result posted back as saved_meals, so the
+    // numbers in the banner are the ones the plan is asked for. If the roll
+    // never arrives the field stays empty and the server rolls on submit.
+    var mixEl = document.getElementById('must-include-mix');
+    var mixText = document.getElementById('must-include-mix-text');
+    var mixNote = document.getElementById('must-include-mix-note');
+    var savedInput = document.getElementById('must-include-saved');
+    var mixSeq = 0;
+
+    function count(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+    function showMix(d, asked) {
+        var lead = asked ? 'Besides the ' + count(asked, 'meal', 'meals') + ' you asked for, this plan' : 'This plan';
+        var note = '';
+        if (!d.free) {
+            mixText.textContent = 'You asked for every meal, so nothing is left for the plan to choose.';
+        } else if (!d.saved) {
+            mixText.textContent = lead + ' will create ' + count(d.new, 'new dish', 'new dishes') + ' and repeat none of your saved recipes.';
+        } else if (!d.new) {
+            mixText.textContent = lead + ' will repeat ' + count(d.saved, 'saved recipe', 'saved recipes') + ' and create no new dishes.';
+        } else {
+            mixText.textContent = lead + ' will repeat ' + count(d.saved, 'saved recipe', 'saved recipes') +
+                ' and create ' + count(d.new, 'new dish', 'new dishes') + '.';
+        }
+        if (d.free && d.capped) {
+            note = d.available
+                ? 'Only ' + count(d.available, 'saved recipe', 'saved recipes') + ' can be used here, and each is cooked once a week, so the rest are new dishes.'
+                : 'You have no saved recipes this plan can use yet, so every dish is new.';
+        }
+        mixNote.textContent = note;
+        mixNote.hidden = !note;
+        mixEl.hidden = false;
+    }
+
+    function loadMix() {
+        var seq = ++mixSeq;
+        mixEl.hidden = true;
+        savedInput.value = '';
+        var ids = Object.keys(selected);
+        var asked = ids.length + textEl.value.split('\n').filter(function (l) { return l.trim(); }).length;
+        fetch('/plan/generate/mix?week=' + encodeURIComponent(weekInput.value) +
+            '&scope=' + encodeURIComponent(scopeInput.value) +
+            '&novelty=' + encodeURIComponent(noveltyEl.value) +
+            '&asked=' + asked + '&recipe_ids=' + encodeURIComponent(ids.join(',')),
+            { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (seq !== mixSeq || !d || !d.ok) return;
+                if (d.free) savedInput.value = d.saved;
+                showMix(d, asked);
+            })
+            .catch(function () {});
+    }
+
     // ── Step 3: read the request back ────────────────────────────────────
     var summaryEl = document.getElementById('must-include-summary');
 
@@ -302,6 +412,7 @@
         });
         summaryRow('Meals you asked for',
             asks.length ? asks : ['Nothing specific - the plan decides every meal.']);
+        summaryRow(asks.length ? 'Every other meal' : 'Every meal', [noveltyText(noveltyEl.value)]);
 
         var have = Object.keys(rows).map(function (key) {
             var li = rows[key];
@@ -571,6 +682,8 @@
         renderList(lastRows);
         (req.on_hand || []).forEach(function (it) { addRow(it.name, it.quantity, it.unit); });
         (req.on_hand_other || []).forEach(function (name) { addRow(name, 1, 'each'); });
+        // A request from before the slider existed leaves it where it is.
+        if (typeof req.novelty === 'number') setNovelty(req.novelty * 100);
     }
 
     function addReuseOption(req) {
@@ -729,6 +842,7 @@
         replacesEl.hidden = true;
 
         clearRequest();
+        setNovelty(storedNovelty());
         buildNameChoices();
         clearAddRow();
         step = 1;

@@ -404,6 +404,36 @@ body {
     .data-table td.data-table__grow { width: 100%; }
 }
 
+/* The select-for-bulk-action checkbox column: as narrow as its checkbox. */
+.data-table th.data-table__check,
+.data-table td.data-table__check {
+    width: 1%;
+    padding-right: 0;
+}
+.data-table__check input[type="checkbox"] {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* What can be done to the ticked rows; shown only while something is ticked. */
+.bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    margin-bottom: var(--sp-3);
+    border-radius: var(--radius);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+    font-size: var(--text-sm);
+}
+.bulk-bar[hidden] { display: none; }
+.bulk-bar__count { margin-right: auto; font-weight: var(--weight-semi); }
+
 /* ── Field row ──────────────────────────────────────────────────────────── */
 
 .field-row {

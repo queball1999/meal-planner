@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"goeat/db"
 )
@@ -39,6 +40,30 @@ type Session struct {
 	// synchronously from the run, so a slow handler slows the run - keep it to
 	// writing one event.
 	OnStep func(AuditEntry)
+
+	// PlanChanged is set once a tool has altered the plan's meals, and
+	// ChangedDays collects the dates a meal arrived on or left. The tools only
+	// write the plan; bringing a moved meal to its new day's portions and
+	// repricing the shopping list are the caller's, which already owns both
+	// for the plan page.
+	PlanChanged bool
+	ChangedDays map[string]bool
+
+	// Now overrides the clock the model is told about (tests). Zero means the
+	// real time.
+	Now time.Time
+}
+
+// planChanged records that the plan's meals changed, and on which days one
+// arrived or left.
+func (s *Session) planChanged(days ...string) {
+	s.PlanChanged = true
+	if s.ChangedDays == nil {
+		s.ChangedDays = map[string]bool{}
+	}
+	for _, d := range days {
+		s.ChangedDays[d] = true
+	}
 }
 
 // AuditEntry is one tool call and how it went.

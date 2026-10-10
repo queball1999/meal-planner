@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -120,7 +122,44 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	weekEnd := weekStart.AddDate(0, 0, 6)
 	days := daysFrom(weekStart, fromDate)
 
-	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd, requested, onHand, days)
+	// Saved recipes versus new dishes, for the meals nobody asked for by name.
+	// A meal the household picked goes in whatever the slider says, so it is
+	// neither offered again nor counted; with every slot spoken for there is
+	// nothing left to decide. Non-fatal: a plan is worth more than the mix.
+	picked := map[int64]bool{}
+	if req != nil {
+		for _, rc := range req.Recipes {
+			picked[rc.ID] = true
+		}
+	}
+	// Read before CreatePlan below makes this generation the week's plan.
+	eaten, eatenTitles := mealsBefore(ctx, store, householdID, weekStart, fromDate)
+
+	var mix *RecipeMix
+	if free := len(days)*len(validSlots) - len(requested); free > 0 {
+		saved, err := usableRecipes(ctx, store, householdID, profile, picked)
+		if err != nil {
+			log.Printf("plan: list saved recipes for household %d: %v", householdID, err)
+		}
+		// A recipe already cooked earlier this week is not offered again.
+		if len(eatenTitles) > 0 {
+			fresh := saved[:0]
+			for _, rc := range saved {
+				if !eatenTitles[strings.ToLower(strings.TrimSpace(rc.Title))] {
+					fresh = append(fresh, rc)
+				}
+			}
+			saved = fresh
+		}
+		if req != nil && req.SavedMeals != nil {
+			// Rolled already, for the dialog's review step.
+			mix = fixedRecipeMix(saved, free, *req.SavedMeals)
+		} else {
+			mix = rollRecipeMix(saved, free, noveltyFor(ctx, store, householdID, req), rand.Float64)
+		}
+	}
+
+	sysPmt, userPmt := BuildPrompt(hh, profile, stores, weekStart, weekEnd, requested, onHand, days, mix, eaten)
 
 	plan, err := store.CreatePlan(ctx, db.CreatePlanParams{
 		HouseholdID: householdID,
@@ -172,10 +211,62 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 		days:        days,
 		planID:      plan.ID,
 		pricer:      pricer,
-		gc:          &genToolCtx{store: store, householdID: householdID, checker: checker},
+		gc:          &genToolCtx{store: store, householdID: householdID, profile: profile, checker: checker},
 		loop:        newGenLoop(sysPmt, userPmt, llm.PlanMaxTokens(gen)),
 	}
 	return st.run(ctx, gen, j)
+}
+
+// mealsBefore returns what the week's current plan has on the days before
+// fromDate - the days a "just the remaining days" regenerate leaves out. The
+// new plan must not repeat them (one dish a week), and the model cannot avoid
+// meals it was never told about. lines are prompt-ready ("monday dinner:
+// Weeknight Chili"); titles is the same meals as a lowercase set. Both are
+// empty for a full-week plan, a week with no plan yet, or on any error: this
+// only ever narrows the model's choices, so failing open costs a possible
+// repeat and nothing else.
+//
+// Leftovers are left out - they are an earlier meal eaten again, already
+// listed under its own title - and so are meals on days that were skipped or
+// eaten out.
+func mealsBefore(ctx context.Context, store db.Store, householdID int64, weekStart, fromDate time.Time) (lines []string, titles map[string]bool) {
+	from := fromDate.Format("2006-01-02")
+	if from <= weekStart.Format("2006-01-02") {
+		return nil, nil
+	}
+	prev, err := store.GetPlanByWeekStart(ctx, householdID, weekStart.Format("2006-01-02"))
+	if err != nil || prev == nil {
+		return nil, nil
+	}
+	meals, err := store.ListMealsByPlan(ctx, prev.ID)
+	if err != nil {
+		log.Printf("plan: list earlier meals of plan %d: %v", prev.ID, err)
+		return nil, nil
+	}
+	titles = map[string]bool{}
+	for _, m := range meals {
+		title := strings.TrimSpace(m.Title)
+		if m.Day >= from || m.IsLeftover || title == "" || (m.Status != "" && m.Status != db.DayCooking) {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s %s: %s", weekdayName(m.Day), m.Slot, title))
+		titles[strings.ToLower(title)] = true
+	}
+	return lines, titles
+}
+
+// noveltyFor is the chance, per meal, that generation writes a new dish
+// instead of using a saved recipe: what the dialog's slider was set to, or -
+// for a caller with no form, like the auto-plan scheduler - whatever the
+// household chose last time.
+func noveltyFor(ctx context.Context, store db.Store, householdID int64, req *db.PlanRequest) float64 {
+	novelty := DefaultNovelty
+	if req != nil && req.Novelty != nil {
+		novelty = *req.Novelty
+	} else if last, err := store.ListPlanRequests(ctx, householdID, 1); err == nil && len(last) > 0 && last[0].Request.Novelty != nil {
+		novelty = *last[0].Request.Novelty
+	}
+	return math.Min(1, math.Max(0, novelty))
 }
 
 // genState is everything one generation needs after its prompt is built -
@@ -272,6 +363,12 @@ func (st *genState) run(ctx context.Context, gen llm.Generator, j *Job) (int64, 
 	}
 
 	CleanMealTitles(gp)
+
+	// After the title clean-up, so a saved recipe keeps its own title exactly.
+	if err := expandSavedRecipes(ctx, store, st.householdID, gp.Meals, st.profile.TotalPortions(st.hh.HouseholdSize)); err != nil {
+		_ = store.UpdatePlanStatus(ctx, planID, "error")
+		return planID, fmt.Errorf("validate plan: %w", err)
+	}
 
 	if err := Validate(gp, st.profile, st.days); err != nil {
 		_ = store.UpdatePlanStatus(ctx, planID, "error")
@@ -467,14 +564,30 @@ func persistPlan(ctx context.Context, store db.Store, householdID, planID int64,
 		// Keep the recipe, not just this week's meal. Non-fatal: a plan that
 		// cooks is worth more than a catalog entry, and losing the whole
 		// generation over a duplicate title would be absurd.
-		if err := saveGeneratedRecipe(ctx, store, householdID, gm); err != nil {
-			log.Printf("plan: save recipe %q to catalog: %v", gm.Title, err)
+		//
+		// The meal is linked to that catalog entry so an edit to the recipe
+		// reaches it (SyncRecipeMeals).
+		//
+		// A meal that came from a saved recipe (expandSavedRecipes) is linked
+		// to that one directly: looking it up by title could land on another
+		// recipe that happens to share it.
+		recipeID := gm.RecipeID
+		if recipeID == 0 {
+			recipeID, _, err = ensureGeneratedRecipe(ctx, store, householdID, gm)
+			if err != nil {
+				log.Printf("plan: save recipe %q to catalog: %v", gm.Title, err)
+			}
+		}
+		if recipeID != 0 {
+			if err := store.SetMealCatalogRecipe(ctx, meal.ID, &recipeID); err != nil {
+				log.Printf("plan: link meal %d to recipe %d: %v", meal.ID, recipeID, err)
+			}
 		}
 	}
 	return nil
 }
 
-// saveGeneratedRecipe files one generated meal in the household's recipe
+// ensureGeneratedRecipe files one generated meal in the household's recipe
 // catalog so it can be cooked again outside this week's plan.
 //
 // Skips a title the household already has. The same meals come back week after
@@ -484,30 +597,41 @@ func persistPlan(ctx context.Context, store db.Store, householdID, planID int64,
 //
 // Skips a leftovers meal too: it eats an earlier meal's surplus, so there is
 // no recipe to keep - just the model's placeholder "ingredients" for it.
-func saveGeneratedRecipe(ctx context.Context, store db.Store, householdID int64, gm GeneratedMeal) error {
+//
+// Returns the id of the catalog entry carrying gm's title, and whether this
+// call wrote it. id is 0 for a meal that is not kept (no title, or leftovers).
+func ensureGeneratedRecipe(ctx context.Context, store db.Store, householdID int64, gm GeneratedMeal) (id int64, created bool, err error) {
 	title := strings.TrimSpace(gm.Title)
 	if title == "" || db.IsLeftoverTitle(title) {
-		return nil
+		return 0, false, nil
 	}
 	existing, err := store.GetCatalogRecipeByTitle(ctx, householdID, title)
 	if err != nil {
-		return err
+		return 0, false, err
 	}
 	if existing != nil {
-		return nil
+		return existing.ID, false, nil
+	}
+
+	// The ingredient quantities cover everything the meal cooks, so a
+	// batch-cook meal (2 eating, 4 cooked) is a 4-serving recipe. Filing it
+	// under its eaters would make every later use of the recipe cook double.
+	yield := gm.Servings
+	if gm.CookedPortions > yield {
+		yield = gm.CookedPortions
 	}
 
 	recipe, err := store.CreateCatalogRecipe(ctx, db.CreateCatalogRecipeParams{
 		HouseholdID: householdID,
 		Title:       title,
 		SourceKind:  "ai",
-		Servings:    gm.Servings,
+		Servings:    yield,
 		PrepMinutes: gm.PrepMinutes,
 		CookMinutes: gm.CookMinutes,
 		Tags:        gm.Tags,
 	})
 	if err != nil {
-		return err
+		return 0, false, err
 	}
 
 	for i, ing := range gm.Ingredients {
@@ -516,15 +640,15 @@ func saveGeneratedRecipe(ctx context.Context, store db.Store, householdID int64,
 		// to two decimals, since this text is what the recipe page shows.
 		qty := pricing.FormatQty(ing.Quantity)
 		if err := store.AddCatalogRecipeIngredient(ctx, recipe.ID, ing.Name, qty, ing.Unit, i); err != nil {
-			return err
+			return recipe.ID, true, err
 		}
 	}
 	for i, step := range gm.Steps {
 		if err := store.AddCatalogRecipeStep(ctx, recipe.ID, i, step); err != nil {
-			return err
+			return recipe.ID, true, err
 		}
 	}
-	return nil
+	return recipe.ID, true, nil
 }
 
 // seedPlanDays writes a row for each of the week's seven days, defaulting to

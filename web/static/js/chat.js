@@ -40,6 +40,7 @@
     // the browser for that would be silly.
     const MUTATING = new Set([
         'move_meal', 'swap_meals', 'edit_meal', 'delete_meal', 'fill_slot',
+        'create_meal',
         'set_day_status', 'set_day_headcount',
         'add_list_item', 'remove_list_item', 'mark_already_have', 'set_item_price',
         'set_pantry_qty',

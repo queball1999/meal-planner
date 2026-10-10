@@ -81,6 +81,25 @@ func formatArg(v any) string {
 		return strconv.FormatFloat(t, 'g', -1, 64)
 	case nil:
 		return "(none)"
+	case []any:
+		// A recipe's ingredients and steps (create_meal). Raw JSON for a whole
+		// recipe would bury the day and slot the reader is actually checking,
+		// so ingredients read as their names and steps as a count.
+		var names []string
+		for _, item := range t {
+			if obj, ok := item.(map[string]any); ok {
+				if name, _ := obj["name"].(string); name != "" {
+					names = append(names, name)
+				}
+			}
+		}
+		if len(names) == len(t) && len(names) > 0 {
+			return strings.Join(names, ", ")
+		}
+		if len(t) == 1 {
+			return "1 item"
+		}
+		return strconv.Itoa(len(t)) + " items"
 	default:
 		blob, err := json.Marshal(t)
 		if err != nil {

@@ -228,6 +228,10 @@ func (s *Server) finishChatTurn(
 	err error,
 	send func(string, any),
 ) {
+	// Before anything else, and whether or not the turn ended well: a change
+	// that was made is on the plan either way.
+	s.settlePlanAfterChat(ctx, hh, sess)
+
 	if err != nil {
 		log.Printf("chat: run: %v", err)
 		send("error", map[string]any{"error": err.Error()})
@@ -259,6 +263,25 @@ func (s *Server) finishChatTurn(
 	s.saveAssistantTurn(ctx, hh.ID, text, reply.Audit)
 
 	send("done", chatTurn{Role: "assistant", Content: text, Audit: reply.Audit})
+}
+
+// settlePlanAfterChat does for the assistant's plan edits what the plan
+// page's own handlers do after theirs: brings each day a meal landed on to
+// that day's portions, and reprices the shopping list in the background. The
+// agent's tools only write the plan (agent.Session.PlanChanged).
+func (s *Server) settlePlanAfterChat(ctx context.Context, hh *db.Household, sess *agent.Session) {
+	if !sess.PlanChanged {
+		return
+	}
+	p, err := s.store.GetLatestPlan(ctx, hh.ID)
+	if err != nil || p == nil {
+		return
+	}
+	for date := range sess.ChangedDays {
+		s.rescaleDay(ctx, p.ID, date)
+	}
+	// Not quantity-only: the assistant can put a whole new meal on the plan.
+	s.repriceInBackground(p.ID, hh, false)
 }
 
 // putPending parks a held call, replacing any earlier one for the household.

@@ -12,6 +12,10 @@ var unitAliases = map[string]string{
 	"":   "each",
 	"ea": "each", "each": "each", "ct": "each", "count": "each",
 	"piece": "each", "pieces": "each", "pc": "each", "pcs": "each", "unit": "each",
+	// A size is a count, not a measure: the recipe parser files "3 large
+	// eggs" as 3 x "large", and left unconvertible those eggs fell off the
+	// shopping list.
+	"large": "each", "medium": "each", "small": "each", "whole": "each",
 	"lb": "lb", "lbs": "lb", "pound": "lb", "pounds": "lb", "#": "lb",
 	"oz": "oz", "ounce": "oz", "ounces": "oz",
 	"g": "g", "gram": "g", "grams": "g", "gm": "g",

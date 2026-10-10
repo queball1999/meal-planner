@@ -14,11 +14,11 @@ func (s *store) CreateMeal(ctx context.Context, p CreateMealParams) (*Meal, erro
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO meals
 		  (plan_id, day, slot, title, effort, servings, cooked_portions,
-		   base_servings, base_cooked_portions, ai_run_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		   base_servings, base_cooked_portions, ai_run_id, catalog_recipe_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.PlanID, p.Day, p.Slot, p.Title, p.Effort,
 		p.Servings, p.CookedPortions,
-		p.Servings, p.CookedPortions, p.AIRunID,
+		p.Servings, p.CookedPortions, p.AIRunID, p.CatalogRecipeID,
 	)
 	if err != nil {
 		return nil, err
@@ -70,6 +70,52 @@ func (s *store) ListMealsByHouseholdRange(ctx context.Context, householdID int64
 		WHERE p.household_id = ? AND p.canceled = 0 AND m.day >= ? AND m.day <= ?
 		ORDER BY m.day, CASE m.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END`,
 		householdID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Meal
+	for rows.Next() {
+		m, err := scanMeal(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SetMealCatalogRecipe records which saved recipe a meal is made from, or
+// clears the link with nil when the meal's content stops being that recipe's
+// (00043_meal_catalog_recipe.sql).
+func (s *store) SetMealCatalogRecipe(ctx context.Context, mealID int64, recipeID *int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE meals SET catalog_recipe_id = ? WHERE id = ?`, recipeID, mealID)
+	return err
+}
+
+// ListMealsByCatalogRecipe returns the meals made from one saved recipe on
+// the household's active plans that end on or after fromDate (YYYY-MM-DD) -
+// the meals an edit to that recipe has to reach.
+//
+// Canceled plans are left out for the same reason as in
+// ListMealsByHouseholdRange, and so are leftover meals: they carry no
+// ingredients of their own. The household join keeps a link from crossing
+// tenants even if a row were ever written wrong.
+func (s *store) ListMealsByCatalogRecipe(ctx context.Context, recipeID int64, fromDate string) ([]*Meal, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.plan_id, m.day, m.slot, m.title, m.effort, m.servings,
+		       m.cooked_portions, m.base_servings, m.base_cooked_portions,
+		       m.is_leftover, m.leftover_source_meal_id,
+		       m.locked, m.ai_run_id, m.status
+		FROM meals m
+		JOIN plans p ON p.id = m.plan_id
+		JOIN catalog_recipes cr ON cr.id = m.catalog_recipe_id
+		WHERE m.catalog_recipe_id = ? AND cr.household_id = p.household_id
+		  AND p.canceled = 0 AND p.week_end >= ? AND m.is_leftover = 0
+		ORDER BY m.day, CASE m.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END`,
+		recipeID, fromDate)
 	if err != nil {
 		return nil, err
 	}
@@ -249,6 +295,16 @@ func (s *store) SetMealBaseline(ctx context.Context, mealID int64) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ScaleMealFromBaseline sets every ingredient of one meal to factor times its
+// baseline amount, leaving the baseline itself alone - ScaleMealsForDay's
+// ingredient step for a single meal.
+func (s *store) ScaleMealFromBaseline(ctx context.Context, mealID int64, factor float64) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE meal_ingredients SET quantity = ROUND(base_quantity * ?, 3)
+		WHERE meal_id = ?`, factor, mealID)
+	return err
 }
 
 // MoveMeal relocates a meal to another day and/or slot within its own plan.

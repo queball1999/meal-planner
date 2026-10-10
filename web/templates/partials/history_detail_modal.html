@@ -77,6 +77,12 @@
             var have = (req.on_hand || []).map(function (it) {
                 return esc(it.name) + ' - ' + esc(it.quantity) + ' ' + esc(it.unit);
             }).concat((req.on_hand_other || []).map(esc));
+            if (typeof req.novelty === 'number') {
+                var pct = Math.round(req.novelty * 100);
+                html += '<dt>Other meals</dt><dd>' + (pct <= 0 ? 'Always a saved recipe'
+                    : pct >= 100 ? 'Always a new dish'
+                    : pct + '% chance of a new dish, otherwise a saved recipe') + '</dd>';
+            }
             html += '<dt>Already had</dt><dd>' + (have.length ? have.join('<br>') : 'Nothing listed') + '</dd>';
             html += '<dt>Days</dt><dd>' + (req.scope === 'remaining' ? 'The remaining days of the week' : 'The whole week') + '</dd>';
             html += '</dl>';

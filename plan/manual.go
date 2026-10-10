@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"time"
 
 	"goeat/db"
@@ -222,6 +223,10 @@ const (
 
 	MoveUnlink = "unlink" // stranded leftovers stay, tied to no meal
 	MoveClear  = "clear"  // stranded leftovers are removed
+	// MoveFollow shifts a moved meal's leftovers by the same number of days,
+	// so they are still eaten after it is cooked; any that cannot follow are
+	// settled as MoveUnlink. For a caller with nobody to ask - the assistant.
+	MoveFollow = "follow"
 )
 
 // MoveImpact is what a move would do beyond relocating one meal.
@@ -300,7 +305,7 @@ type MoveParams struct {
 	Date      string
 	Slot      string
 	Occupied  string // MoveSwap (default) | MoveReplace
-	Leftovers string // MoveUnlink (default) | MoveClear
+	Leftovers string // MoveUnlink (default) | MoveClear | MoveFollow
 }
 
 // MoveResult reports what a move did.
@@ -311,6 +316,11 @@ type MoveResult struct {
 	Displaced string // title of the meal that was in the destination, "" if none
 	Replaced  bool   // Displaced was removed rather than swapped
 	Stranded  int    // leftover meals unlinked or cleared
+	// StrandedMeals are those meals, as they were before being settled.
+	StrandedMeals []*db.Meal
+	// Followed are the leftover meals MoveFollow carried along, where they
+	// ended up.
+	Followed []*db.Meal
 }
 
 // ErrMealLocked is returned when a move would remove a locked meal.
@@ -360,7 +370,32 @@ func MoveMeal(ctx context.Context, store db.Store, p MoveParams) (*MoveResult, e
 		return nil, fmt.Errorf("move meal: %w", err)
 	}
 
-	for _, m := range impact.Stranded {
+	stranded := impact.Stranded
+	if p.Leftovers == MoveFollow {
+		// Whatever is out of order afterwards that was not before is what
+		// this move stranded - following changes which those are, so
+		// PlanMove's forecast no longer holds.
+		already := outOfOrderLeftovers(meals)
+		if days := daysBetween(mover.Day, p.Date); days != 0 {
+			res.Followed = followLeftovers(ctx, store, mover, days)
+			if d := impact.Displaced; d != nil {
+				// The meal swapped into the mover's old place went the other way.
+				res.Followed = append(res.Followed, followLeftovers(ctx, store, d, -days)...)
+			}
+		}
+		after, err := store.ListMealsByPlan(ctx, mover.PlanID)
+		if err != nil {
+			return nil, fmt.Errorf("list meals: %w", err)
+		}
+		stranded = nil
+		for id, m := range outOfOrderLeftovers(after) {
+			if already[id] == nil {
+				stranded = append(stranded, m)
+			}
+		}
+	}
+
+	for _, m := range stranded {
 		if p.Leftovers == MoveClear {
 			err = store.DeleteMeal(ctx, m.ID)
 		} else {
@@ -373,8 +408,93 @@ func MoveMeal(ctx context.Context, store db.Store, p MoveParams) (*MoveResult, e
 			continue
 		}
 		res.Stranded++
+		res.StrandedMeals = append(res.StrandedMeals, m)
 	}
 	return res, nil
+}
+
+// outOfOrderLeftovers returns the leftover meals with nothing to reheat: tied
+// to a meal that is not on the plan, or that is cooked no earlier than they
+// are eaten. Keyed by meal id.
+func outOfOrderLeftovers(meals []*db.Meal) map[int64]*db.Meal {
+	byID := make(map[int64]*db.Meal, len(meals))
+	for _, m := range meals {
+		byID[m.ID] = m
+	}
+	out := map[int64]*db.Meal{}
+	for _, m := range meals {
+		if !m.IsLeftover || m.LeftoverSourceMealID == nil {
+			continue
+		}
+		src := byID[*m.LeftoverSourceMealID]
+		if src == nil || !before(src.Day, src.Slot, m.Day, m.Slot) {
+			out[m.ID] = m
+		}
+	}
+	return out
+}
+
+// daysBetween is how many days after from the date to is; negative when to is
+// earlier, 0 when either is unreadable.
+func daysBetween(from, to string) int {
+	a, errA := time.Parse("2006-01-02", from)
+	b, errB := time.Parse("2006-01-02", to)
+	if errA != nil || errB != nil {
+		return 0
+	}
+	return int(math.Round(b.Sub(a).Hours() / 24))
+}
+
+// followLeftovers shifts every meal eating src's leftovers by days, keeping
+// its slot, and returns the ones it moved as they now stand. A leftover whose
+// shifted day falls outside the plan's week stays put, as does one that fails
+// to move; the caller finds those out of order and settles them.
+//
+// Whatever occupies a leftover's new slot is swapped back into its old one
+// (store.MoveMeal), the same trade the main meal's own move makes.
+func followLeftovers(ctx context.Context, store db.Store, src *db.Meal, days int) []*db.Meal {
+	deps, err := store.ListLeftoversSourcedFromMeal(ctx, src.ID)
+	if err != nil || len(deps) == 0 {
+		return nil
+	}
+	p, err := store.GetPlanByID(ctx, src.PlanID)
+	if err != nil || p == nil {
+		return nil
+	}
+	// Farthest in the direction of travel first, so two leftovers of the same
+	// meal never land on each other and trade places.
+	sort.Slice(deps, func(i, j int) bool {
+		if days > 0 {
+			return before(deps[j].Day, deps[j].Slot, deps[i].Day, deps[i].Slot)
+		}
+		return before(deps[i].Day, deps[i].Slot, deps[j].Day, deps[j].Slot)
+	})
+
+	var moved []*db.Meal
+	for _, d := range deps {
+		day, err := time.Parse("2006-01-02", d.Day)
+		if err != nil {
+			continue
+		}
+		target := day.AddDate(0, 0, days).Format("2006-01-02")
+		if target < p.WeekStart || target > p.WeekEnd {
+			continue
+		}
+		// An earlier swap in this same move may already have put it there.
+		cur, err := store.GetMealByID(ctx, d.ID)
+		if err != nil || cur == nil {
+			continue
+		}
+		if cur.Day != target || cur.Slot != d.Slot {
+			if _, err := store.MoveMeal(ctx, d.ID, target, d.Slot); err != nil {
+				log.Printf("move: carry leftover meal %d along: %v", d.ID, err)
+				continue
+			}
+		}
+		cur.Day, cur.Slot = target, d.Slot
+		moved = append(moved, cur)
+	}
+	return moved
 }
 
 // ValidMoveChoice reports whether occupied and leftovers are choices MoveMeal

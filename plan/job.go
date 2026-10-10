@@ -22,7 +22,7 @@ const (
 
 // JobEvent is one SSE event emitted during plan generation.
 type JobEvent struct {
-	Type    string // "status" | "plan" | "llm_start" | "llm_delta" | "done" | "error" | "canceled"
+	Type    string // "status" | "plan" | "llm_start" | "llm_reasoning" | "llm_delta" | "done" | "error" | "canceled"
 	Message string
 	PlanID  int64 // set on "done" events
 }
@@ -141,6 +141,16 @@ func (j *Job) EmitDelta(chunk string) {
 		return
 	}
 	j.Emit(JobEvent{Type: "llm_delta", Message: chunk})
+}
+
+// EmitReasoning is EmitDelta for the model's chain of thought ("llm_reasoning")
+// - passed as llm.GenerateRequest.OnReasoning so the debug panel shows the
+// thinking live, apart from the reply it leads up to.
+func (j *Job) EmitReasoning(chunk string) {
+	if j == nil || chunk == "" {
+		return
+	}
+	j.Emit(JobEvent{Type: "llm_reasoning", Message: chunk})
 }
 
 // Subscribe returns all events emitted so far, then blocks until new ones

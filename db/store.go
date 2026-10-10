@@ -164,6 +164,7 @@ type Store interface {
 
 	CreateMealRecipe(ctx context.Context, p CreateMealRecipeParams) error
 	GetMealRecipe(ctx context.Context, mealID int64) (*MealRecipe, error)
+	SetMealSteps(ctx context.Context, mealID int64, stepsJSON string, servings int) error
 
 	// ── Meal ingredients (§5.2, §6.3, §10.1) ────────────────────────────────
 
@@ -246,12 +247,17 @@ type Store interface {
 	GetMealByID(ctx context.Context, mealID int64) (*Meal, error)
 	DeleteMeal(ctx context.Context, mealID int64) error
 	SetMealBaseline(ctx context.Context, mealID int64) error
+	ScaleMealFromBaseline(ctx context.Context, mealID int64, factor float64) error
 	MoveMeal(ctx context.Context, mealID int64, day, slot string) (displaced string, err error)
 	ExtendMealCooked(ctx context.Context, mealID int64, extra int) error
 	UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error
 	UpdateMealTitle(ctx context.Context, mealID int64, title, effort string, servings, cookedPortions int) error
 	DeleteMealIngredients(ctx context.Context, mealID int64) error
 	SetMealStatus(ctx context.Context, mealID int64, status string) error
+
+	// The saved recipe a meal is made from (00043_meal_catalog_recipe.sql).
+	SetMealCatalogRecipe(ctx context.Context, mealID int64, recipeID *int64) error
+	ListMealsByCatalogRecipe(ctx context.Context, recipeID int64, fromDate string) ([]*Meal, error)
 	ListLeftoversSourcedFromMeal(ctx context.Context, mealID int64) ([]*Meal, error)
 
 	// ── Plan days (§5.6) ──────────────────────────────────────────────────────

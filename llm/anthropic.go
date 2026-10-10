@@ -62,7 +62,7 @@ func (c *anthropicClient) Generate(ctx context.Context, req GenerateRequest) (Ge
 	}
 
 	if req.OnDelta != nil {
-		return c.generateStreaming(ctx, params, req.OnDelta)
+		return c.generateStreaming(ctx, params, req.OnDelta, req.OnReasoning)
 	}
 
 	msg, err := c.client.Messages.New(ctx, params)
@@ -93,8 +93,8 @@ func (c *anthropicClient) Generate(ctx context.Context, req GenerateRequest) (Ge
 // from the event stream exactly as the non-streaming call would have
 // returned it, so onDelta is purely an extra tap on the text as it arrives -
 // every other field below reads from the accumulated message, unchanged from
-// the blocking path.
-func (c *anthropicClient) generateStreaming(ctx context.Context, params anthropic.MessageNewParams, onDelta func(string)) (GenerateResponse, error) {
+// the blocking path. onReasoning (when set) taps thinking deltas the same way.
+func (c *anthropicClient) generateStreaming(ctx context.Context, params anthropic.MessageNewParams, onDelta, onReasoning func(string)) (GenerateResponse, error) {
 	stream := c.client.Messages.NewStreaming(ctx, params)
 	defer stream.Close()
 
@@ -106,6 +106,9 @@ func (c *anthropicClient) generateStreaming(ctx context.Context, params anthropi
 		}
 		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
 			onDelta(event.Delta.Text)
+		}
+		if onReasoning != nil && event.Type == "content_block_delta" && event.Delta.Type == "thinking_delta" && event.Delta.Thinking != "" {
+			onReasoning(event.Delta.Thinking)
 		}
 	}
 	if err := stream.Err(); err != nil {

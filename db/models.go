@@ -361,6 +361,15 @@ type PlanRequest struct {
 	// on_hand_text), already merged into one list.
 	OnHandOther []string `json:"on_hand_other,omitempty"`
 	Scope       string   `json:"scope,omitempty"` // "full" | "remaining"
+	// Novelty is the dialog's slider: the chance, per meal not asked for by
+	// name, of a new dish rather than a saved recipe. 0 sticks to what the
+	// household knows, 1 tries something new every time; nil for a request
+	// saved before the slider existed.
+	Novelty *float64 `json:"novelty,omitempty"`
+	// SavedMeals is that chance already rolled: how many meals the dialog's
+	// review step said would come from saved recipes. nil rolls it at
+	// generation instead.
+	SavedMeals *int `json:"saved_meals,omitempty"`
 }
 
 // PlanRequestRecipe is a saved recipe picked on the generate dialog. The title
@@ -459,6 +468,9 @@ type CreateMealParams struct {
 	Servings       int
 	CookedPortions int
 	AIRunID        *int64
+	// CatalogRecipeID is the saved recipe the meal is made from, nil when
+	// there is none (00043_meal_catalog_recipe.sql).
+	CatalogRecipeID *int64
 }
 
 // ScaleDayResult reports what ScaleMealsForDay changed, so a caller can decide

@@ -41,6 +41,19 @@ Rules:
 - slot values: breakfast, lunch, dinner
 - effort values: quick, standard, elaborate
 - Generate exactly 21 meals - one per slot per day, all 7 days covered
+- NEVER plan the same meal twice in the same week. Every meal must be a distinct
+  dish - not the same title again, and not the same dish under a reworded title
+  or with a token ingredient swapped. This holds across slots too: Monday's
+  breakfast may not come back as Thursday's breakfast. The ONLY exception is a
+  leftovers meal, allowed when the request says leftover tolerance is ON: it
+  eats what an earlier meal already cooked rather than cooking it again, and its
+  title must say it is leftovers.
+- A meal that is one of the household's saved recipes - they come with an id, in
+  the request or from a recipe search - is written as ONLY
+  {"day": ..., "slot": ..., "recipe_id": <id>, "title": ...}. Leave out the
+  ingredients, steps and everything else: the app fills the recipe in exactly as
+  saved, scaled to the household. Add "servings" and "cooked_portions" only to
+  batch-cook it for leftovers. Never put a recipe_id on a dish you wrote yourself.
 - "servings" is the recipe's yield and MUST equal the household size stated below,
   for every meal. Scale the ingredient quantities to match that yield - a 4-person
   plan lists roughly twice the quantities of a 2-person one. The app rescales a
@@ -110,8 +123,12 @@ func storeNames(stores []*db.GroceryStore) (names []string, hasWarehouse bool) {
 // ("sunday", ...); nil/empty means the full week, all 7 days from weekStart
 // on whichever weekday that falls. A mid-week regenerate that
 // only wants the remaining days passes a subset here instead of asking (and
-// paying) for meals on days that have already happened.
-func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time, requested, onHand, days []string) (system, user string) {
+// paying) for meals on days that have already happened. mix is how the meals
+// nobody asked for by name are split between saved recipes and new dishes
+// (rollRecipeMix); nil leaves that to the model. eaten is what the days of a
+// mid-week plan that already happened had ("monday dinner: Weeknight Chili"),
+// so the rest of the week does not serve it again; nil for a full week.
+func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time, requested, onHand, days []string, mix *RecipeMix, eaten []string) (system, user string) {
 	var b strings.Builder
 
 	// Servings come from what the household eats, not from how many people it
@@ -140,6 +157,12 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 			"Only plan breakfast, lunch, and dinner for these %d day(s), in this exact order: %s. "+
 			"Do NOT include any other day - return exactly %d meals total (breakfast, lunch, dinner for each of these days), not 21.\n",
 			len(days), strings.Join(days, ", "), len(days)*3)
+		if len(eaten) > 0 {
+			b.WriteString("\nMeals already had earlier this week - the same week, so NEVER plan any of these again, under this title or a reworded one:\n")
+			for _, e := range eaten {
+				fmt.Fprintf(&b, "- %s\n", e)
+			}
+		}
 	}
 
 	// Selected stores (§10.1 GroceryStore): steers ingredient choices toward
@@ -204,6 +227,10 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 		for _, rq := range requested {
 			fmt.Fprintf(&b, "- %s\n", rq)
 		}
+	}
+
+	if mix != nil {
+		writeRecipeMix(&b, mix, len(requested))
 	}
 
 	// Food already in the fridge or pantry, typed on the generate form. Unlike

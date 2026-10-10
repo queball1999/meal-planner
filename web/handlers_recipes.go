@@ -1,16 +1,21 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"goeat/db"
 	"goeat/middleware"
+	"goeat/plan"
+	"goeat/pricing"
 	"goeat/recipes"
 	"goeat/video"
 )
@@ -234,7 +239,69 @@ func (s *Server) handleRecipeDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.DeleteCatalogRecipe(r.Context(), id)
-	http.Redirect(w, r, "/recipes", http.StatusSeeOther)
+	http.Redirect(w, r, recipesReturnURL(r), http.StatusSeeOther)
+}
+
+// recipesReturnURL is where a delete goes back to: the recipes list as it was
+// being looked at - same filters, same page - when that is where the request
+// came from, and the plain list otherwise (the detail page's own Delete).
+func recipesReturnURL(r *http.Request) string {
+	ref, err := url.Parse(r.Referer())
+	if err != nil || ref.Path != "/recipes" || ref.RawQuery == "" {
+		return "/recipes"
+	}
+	return "/recipes?" + ref.RawQuery
+}
+
+// handleRecipesBulk applies one action to every recipe ticked on the recipes
+// list. "delete" is the only action so far.
+//
+//	POST /recipes/bulk  action=delete  ids=1&ids=2
+//
+// Each id is checked against the household on its own: one that is not this
+// household's recipe is skipped, not an error for the rest.
+func (s *Server) handleRecipesBulk(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.setNotify(w, NotifyDanger, "Could not read form data.")
+		http.Redirect(w, r, "/recipes", http.StatusSeeOther)
+		return
+	}
+	back := recipesReturnURL(r)
+	if r.FormValue("action") != "delete" {
+		s.setNotify(w, NotifyDanger, "That isn't something that can be done to recipes.")
+		http.Redirect(w, r, back, http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	deleted := 0
+	for _, idStr := range r.Form["ids"] {
+		id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
+		if err != nil {
+			continue
+		}
+		rc, err := s.store.GetCatalogRecipe(ctx, id)
+		if err != nil || rc == nil || rc.HouseholdID != hh.ID {
+			continue
+		}
+		if err := s.store.DeleteCatalogRecipe(ctx, id); err != nil {
+			log.Printf("recipes bulk delete: recipe %d: %v", id, err)
+			continue
+		}
+		deleted++
+	}
+
+	if deleted == 0 {
+		s.setNotify(w, NotifyWarning, "No recipes were deleted.")
+	} else {
+		s.setNotify(w, NotifySuccess, fmt.Sprintf("Deleted %d %s.", deleted, pluralize(deleted, "recipe", "recipes")))
+	}
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // handleRecipeEdit rewrites a recipe's fields plus its ingredient and step
@@ -294,9 +361,63 @@ func (s *Server) handleRecipeEdit(w http.ResponseWriter, r *http.Request) {
 	if err := recipes.ReplaceContent(ctx, s.store, cr.ID, ings, steps); err != nil {
 		s.setNotify(w, NotifyWarning, fmt.Sprintf("Recipe saved, but ingredients/steps failed: %v", err))
 	} else {
-		s.setNotify(w, NotifySuccess, "Recipe updated.")
+		s.setNotify(w, NotifySuccess, "Recipe updated."+s.syncRecipeToPlans(ctx, cr.ID))
 	}
 	http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
+}
+
+// syncRecipeToPlans carries a just-changed recipe onto the meals made from it
+// (plan.SyncRecipeMeals) and refreshes the shopping list of every plan that
+// cooks one. Returns what to add to the "saved" notice, "" when no current
+// or upcoming plan uses the recipe.
+func (s *Server) syncRecipeToPlans(ctx context.Context, recipeID int64) string {
+	res, err := plan.SyncRecipeMeals(ctx, s.store, recipeID, time.Now().Format("2006-01-02"))
+	if err != nil {
+		log.Printf("recipe %d: sync to plans: %v", recipeID, err)
+	}
+	if res == nil || len(res.PlanIDs) == 0 {
+		if err != nil {
+			return " Planned meals using it could not be updated."
+		}
+		return ""
+	}
+	for _, planID := range res.PlanIDs {
+		s.refreshShoppingList(ctx, planID)
+	}
+	if err != nil {
+		return " Some planned meals using it could not be updated."
+	}
+	return fmt.Sprintf(" %d planned %s now %s it. The shopping list is updating.",
+		res.Meals, pluralize(res.Meals, "meal", "meals"), pluralize(res.Meals, "uses", "use"))
+}
+
+// refreshShoppingList brings one plan's shopping list in line with its meals
+// after their ingredients changed under it.
+func (s *Server) refreshShoppingList(ctx context.Context, planID int64) {
+	p, err := s.store.GetPlanByID(ctx, planID)
+	if err != nil || p == nil {
+		return
+	}
+	hh, err := s.store.GetHousehold(ctx, p.HouseholdID)
+	if err != nil || hh == nil {
+		return
+	}
+	if s.priceChain() != nil {
+		// Quantity-only: lines that are already priced keep their price and
+		// are rescaled, an ingredient the edit added is priced fresh, and one
+		// it removed is dropped (pricing.RescaleShoppingList).
+		s.repriceInBackground(planID, hh, true)
+		return
+	}
+	// No pricing chain, so nothing above would touch an existing list
+	// (EnsureShoppingList is a no-op once there is one). Rebuild it unpriced.
+	if err := s.store.DeleteShoppingListItems(ctx, planID); err != nil {
+		log.Printf("recipe sync: clear shopping list for plan %d: %v", planID, err)
+		return
+	}
+	if _, err := pricing.EnsureShoppingList(ctx, s.store, planID, hh); err != nil {
+		log.Printf("recipe sync: rebuild shopping list for plan %d: %v", planID, err)
+	}
 }
 
 // handleRecipeReimport re-fetches the source page and replaces the recipe's
@@ -313,7 +434,7 @@ func (s *Server) handleRecipeReimport(w http.ResponseWriter, r *http.Request) {
 	if err := recipes.Refresh(r.Context(), s.store, id, s.imageDir); err != nil {
 		s.setNotify(w, NotifyDanger, fmt.Sprintf("Re-import failed: %v", err))
 	} else {
-		s.setNotify(w, NotifySuccess, "Recipe re-imported from source.")
+		s.setNotify(w, NotifySuccess, "Recipe re-imported from source."+s.syncRecipeToPlans(r.Context(), id))
 	}
 	http.Redirect(w, r, fmt.Sprintf("/recipes/%d", id), http.StatusSeeOther)
 }

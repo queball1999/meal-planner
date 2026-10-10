@@ -137,7 +137,7 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 
 	var cr chatResp
 	if body.Stream {
-		cr, err = c.doStreamRequest(httpReq, req.OnDelta)
+		cr, err = c.doStreamRequest(httpReq, req.OnDelta, req.OnReasoning)
 	} else {
 		cr, err = c.doRequest(httpReq)
 	}
@@ -156,7 +156,7 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 	// parse "" and report "unexpected end of JSON input", which says nothing
 	// about the actual cause. Name it instead.
 	if strings.TrimSpace(content) == "" {
-		reasoned := strings.TrimSpace(choice.Message.ReasoningContent)
+		reasoned := strings.TrimSpace(choice.Message.reasoningText())
 		// No content, but the usage is real: callers report how much came back.
 		spent := GenerateResponse{
 			InputTokens:  cr.Usage.PromptTokens,
@@ -220,8 +220,9 @@ func (c *openAIClient) doRequest(httpReq *http.Request) (chatResp, error) {
 // onDelta (when set) with each chunk of assistant text as it arrives and
 // assembling the same chatResp shape doRequest returns, so the caller's
 // post-processing (empty-content classification, usage, model name) is
-// identical either way.
-func (c *openAIClient) doStreamRequest(httpReq *http.Request, onDelta func(string)) (chatResp, error) {
+// identical either way. onReasoning (when set) gets the chain of thought the
+// same way, for servers that report it apart from the answer.
+func (c *openAIClient) doStreamRequest(httpReq *http.Request, onDelta, onReasoning func(string)) (chatResp, error) {
 	resp, err := c.httpCli.Do(httpReq)
 	if err != nil {
 		return chatResp{}, fmt.Errorf("openai: do: %w", err)
@@ -274,8 +275,11 @@ func (c *openAIClient) doStreamRequest(httpReq *http.Request, onDelta func(strin
 				onDelta(delta.Delta.Content)
 			}
 		}
-		if delta.Delta.ReasoningContent != "" {
-			reasoning.WriteString(delta.Delta.ReasoningContent)
+		if r := delta.Delta.reasoningText(); r != "" {
+			reasoning.WriteString(r)
+			if onReasoning != nil {
+				onReasoning(r)
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -298,6 +302,17 @@ type chatMsg struct {
 	// model's chain of thought, separate from the answer. Never sent on a
 	// request; read only to explain an empty Content.
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+	// Reasoning is the same thing under the name Ollama and OpenRouter use.
+	Reasoning string `json:"reasoning,omitempty"`
+}
+
+// reasoningText returns the chain of thought under whichever field name the
+// server used for it.
+func (m chatMsg) reasoningText() string {
+	if m.ReasoningContent != "" {
+		return m.ReasoningContent
+	}
+	return m.Reasoning
 }
 
 type chatReq struct {

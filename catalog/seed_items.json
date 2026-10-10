@@ -15,6 +15,19 @@
       ]
     },
     {
+      "name": "Onion",
+      "category": "Produce",
+      "stock_unit": "each",
+      "default_purchase_qty": 3,
+      "conversions": [
+        {
+          "from": "each",
+          "to": "g",
+          "factor": 110
+        }
+      ]
+    },
+    {
       "name": "Garlic",
       "category": "Produce",
       "stock_unit": "clove",
@@ -74,6 +87,19 @@
           "from": "each",
           "to": "g",
           "factor": 170
+        }
+      ]
+    },
+    {
+      "name": "Tomato",
+      "category": "Produce",
+      "stock_unit": "each",
+      "default_purchase_qty": 4,
+      "conversions": [
+        {
+          "from": "each",
+          "to": "g",
+          "factor": 125
         }
       ]
     },

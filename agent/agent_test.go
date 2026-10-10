@@ -454,3 +454,161 @@ func TestParseAction(t *testing.T) {
 		}
 	}
 }
+
+// The transcript that prompted create_meal: "Monday's lunch is a turkey
+// sandwich" with no such saved recipe. The slot's old meal has to go, the new
+// one has to arrive with real ingredients, and the recipe has to be kept.
+func TestCreateMealReplacesSlotAndSavesRecipe(t *testing.T) {
+	s, planID := newAgentTestStore(t)
+	ctx := context.Background()
+	r := NewRegistry()
+	RegisterAll(r)
+
+	res := mustCall(t, r, s, "create_meal", `{
+		"day": "monday", "slot": "dinner", "title": "Turkey Sandwich", "servings": 1,
+		"ingredients": [
+			{"name": "sliced turkey", "quantity": 3, "unit": "oz"},
+			{"name": "bread", "quantity": "2"}
+		],
+		"steps": ["Layer the turkey on the bread."]
+	}`)
+	if !strings.Contains(res.Summary, `replacing "Weeknight Chili"`) {
+		t.Errorf("summary should name the replaced meal, got: %s", res.Summary)
+	}
+
+	m := mealAt(t, s, planID, "2026-01-05", "dinner")
+	if m == nil || m.Title != "Turkey Sandwich" {
+		t.Fatalf("monday dinner = %+v, want Turkey Sandwich", m)
+	}
+	ings, err := s.Store.ListIngredientsByMeal(ctx, m.ID)
+	if err != nil || len(ings) != 2 {
+		t.Fatalf("ingredients = %d (%v), want 2", len(ings), err)
+	}
+	// Written for 1, the household is 2: every amount doubles. The quoted
+	// quantity and the missing unit are both accepted rather than bounced.
+	for _, ing := range ings {
+		switch ing.Name {
+		case "sliced turkey":
+			if ing.Quantity != 6 {
+				t.Errorf("turkey = %v oz, want 6", ing.Quantity)
+			}
+		case "bread":
+			if ing.Quantity != 4 || ing.Unit != "each" {
+				t.Errorf("bread = %v %q, want 4 each", ing.Quantity, ing.Unit)
+			}
+		}
+	}
+
+	rc, err := s.Store.GetCatalogRecipeByTitle(ctx, s.HouseholdID, "Turkey Sandwich")
+	if err != nil || rc == nil {
+		t.Fatalf("recipe was not saved to the catalog (%v)", err)
+	}
+	if !s.PlanChanged || !s.ChangedDays["2026-01-05"] {
+		t.Errorf("session should record the changed day, got %v %v", s.PlanChanged, s.ChangedDays)
+	}
+}
+
+// "Move shepherd's pie to Thursday" has to take Tuesday's leftover lunch to
+// Friday with it - the user should not have to ask for that separately.
+func TestMoveMealCarriesItsLeftovers(t *testing.T) {
+	s, planID := newAgentTestStore(t)
+	ctx := context.Background()
+	r := NewRegistry()
+	RegisterAll(r)
+
+	chili := mealAt(t, s, planID, "2026-01-05", "dinner")
+	left, err := s.Store.CreateMeal(ctx, db.CreateMealParams{
+		PlanID: planID, Day: "2026-01-06", Slot: "lunch", Title: "Leftover Weeknight Chili",
+		Effort: "quick", Servings: 2, CookedPortions: 2,
+	})
+	if err != nil {
+		t.Fatalf("leftover: %v", err)
+	}
+	if err := s.Store.UpdateMealLeftover(ctx, left.ID, true, &chili.ID); err != nil {
+		t.Fatalf("link leftover: %v", err)
+	}
+
+	// Monday -> Thursday is three days, so Tuesday lunch -> Friday lunch.
+	res := mustCall(t, r, s, "move_meal", `{"title":"Weeknight Chili","day":"thursday"}`)
+
+	if m := mealAt(t, s, planID, "2026-01-08", "dinner"); m == nil || m.ID != chili.ID {
+		t.Fatalf("chili should be on thursday dinner, got %+v", m)
+	}
+	m := mealAt(t, s, planID, "2026-01-09", "lunch")
+	if m == nil || m.ID != left.ID {
+		t.Fatalf("leftover should have followed to friday lunch, got %+v", m)
+	}
+	if m.LeftoverSourceMealID == nil || *m.LeftoverSourceMealID != chili.ID {
+		t.Errorf("leftover lost its link to the chili")
+	}
+	if mealAt(t, s, planID, "2026-01-06", "lunch") != nil {
+		t.Errorf("tuesday lunch should be empty now")
+	}
+	if !strings.Contains(res.Summary, "friday lunch") {
+		t.Errorf("summary should say where the leftover went, got: %s", res.Summary)
+	}
+}
+
+// A leftover with no room to follow (the shift runs off the end of the week)
+// stays put, and the result says so instead of reporting a clean move.
+func TestMoveMealReportsLeftoversThatCannotFollow(t *testing.T) {
+	s, planID := newAgentTestStore(t)
+	ctx := context.Background()
+	r := NewRegistry()
+	RegisterAll(r)
+
+	chili := mealAt(t, s, planID, "2026-01-05", "dinner")
+	left, err := s.Store.CreateMeal(ctx, db.CreateMealParams{
+		PlanID: planID, Day: "2026-01-07", Slot: "lunch", Title: "Leftover Weeknight Chili",
+		Effort: "quick", Servings: 2, CookedPortions: 2,
+	})
+	if err != nil {
+		t.Fatalf("leftover: %v", err)
+	}
+	if err := s.Store.UpdateMealLeftover(ctx, left.ID, true, &chili.ID); err != nil {
+		t.Fatalf("link leftover: %v", err)
+	}
+
+	// Monday -> Saturday is five days; Wednesday + 5 is past the week's end.
+	res := mustCall(t, r, s, "move_meal", `{"title":"Weeknight Chili","day":"saturday"}`)
+
+	if m := mealAt(t, s, planID, "2026-01-07", "lunch"); m == nil || m.ID != left.ID {
+		t.Fatalf("leftover should have stayed on wednesday lunch, got %+v", m)
+	}
+	if !strings.Contains(res.Summary, "could not follow") {
+		t.Errorf("summary should flag the stranded leftover, got: %s", res.Summary)
+	}
+}
+
+// "Tonight we're making beef tacos with ingredients on hand": the meal goes on
+// the plan and its ingredients onto the plan's on-hand list, which is what the
+// shopping list build reads to mark them owned and skip pricing them.
+func TestCreateMealOnHandMarksIngredientsOwned(t *testing.T) {
+	s, planID := newAgentTestStore(t)
+	ctx := context.Background()
+	r := NewRegistry()
+	RegisterAll(r)
+	if err := s.Store.SetPlanOnHand(ctx, planID, []string{"Rice"}); err != nil {
+		t.Fatalf("seed on-hand: %v", err)
+	}
+
+	res := mustCall(t, r, s, "create_meal", `{
+		"day": "sunday", "slot": "dinner", "title": "Beef Tacos", "on_hand": true,
+		"ingredients": [
+			{"name": "ground beef", "quantity": 1, "unit": "lb"},
+			{"name": "taco shells", "quantity": 8, "unit": "each"}
+		]
+	}`)
+	if !strings.Contains(res.Summary, "already owned") {
+		t.Errorf("summary should say the ingredients are marked owned, got: %s", res.Summary)
+	}
+
+	got, err := s.Store.GetPlanOnHand(ctx, planID)
+	if err != nil {
+		t.Fatalf("on-hand: %v", err)
+	}
+	want := []string{"Rice", "ground beef", "taco shells"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("on-hand = %v, want %v", got, want)
+	}
+}

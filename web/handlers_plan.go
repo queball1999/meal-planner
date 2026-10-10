@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -1013,6 +1014,11 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 		Text:        strings.TrimSpace(r.FormValue("must_include_text")),
 		OnHandOther: other,
 		Scope:       "full",
+		Novelty:     parseNovelty(r.FormValue("novelty")),
+	}
+	// The split the review step showed, so the plan is what it said.
+	if n, err := strconv.Atoi(strings.TrimSpace(r.FormValue("saved_meals"))); err == nil && n >= 0 {
+		req.SavedMeals = &n
 	}
 	if !target.FromDate.Equal(target.WeekStart) {
 		req.Scope = "remaining"
@@ -1023,6 +1029,65 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 
 	s.startPlanGenerationForWeek(hh.ID, target.WeekStart, target.FromDate, requested, onHand, req)
 	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
+}
+
+// parseNovelty reads the generate dialog's "stick to what I know" / "try
+// something new" slider, posted as a whole percentage, into the 0-1 chance
+// plan.GenerateForWeek rolls per meal. nil when the field is absent or
+// unusable, which leaves the choice to whatever the household used last.
+func parseNovelty(raw string) *float64 {
+	pct, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(pct) {
+		return nil
+	}
+	v := math.Min(100, math.Max(0, pct)) / 100
+	return &v
+}
+
+// handlePlanGenerateMix rolls the generate dialog's slider for its review
+// step: of the meals not asked for by name, how many will come from saved
+// recipes and how many will be new dishes. The dialog posts "saved" back as
+// saved_meals, so the plan uses this roll rather than making another.
+//
+//	GET /plan/generate/mix?week=&scope=&novelty=&asked=&recipe_ids=1,2
+//
+// asked is how many meals were picked or typed; recipe_ids are the picked
+// ones, which are not offered a second time.
+func (s *Server) handlePlanGenerateMix(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	q := r.URL.Query()
+	target, err := s.resolveGenerateTarget(q.Get("week"), q.Get("scope"), time.Now())
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	novelty := plan.DefaultNovelty
+	if v := parseNovelty(q.Get("novelty")); v != nil {
+		novelty = *v
+	}
+	asked, _ := strconv.Atoi(q.Get("asked"))
+	picked := map[int64]bool{}
+	for _, idStr := range strings.Split(q.Get("recipe_ids"), ",") {
+		if id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64); err == nil {
+			picked[id] = true
+		}
+	}
+
+	days := int(target.WeekStart.AddDate(0, 0, 7).Sub(target.FromDate).Hours() / 24)
+	mix, err := plan.PreviewRecipeMix(r.Context(), s.store, hh.ID, days*3, max(0, asked), picked, novelty)
+	if err != nil {
+		log.Printf("plan mix preview: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't work out the mix"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "free": mix.Free, "saved": mix.Saved, "new": mix.New,
+		"available": mix.Available, "capped": mix.Capped,
+	})
 }
 
 // handlePlanGeneratePreview tells the generate dialog exactly what a submit
@@ -1089,6 +1154,9 @@ type planRequestView struct {
 	OnHand    []db.PlanRequestOnHand `json:"on_hand"`
 	Other     []string               `json:"on_hand_other"`
 	Scope     string                 `json:"scope"`
+	// Novelty is the slider as it was set, 0-1; nil for a request saved
+	// before it existed.
+	Novelty *float64 `json:"novelty"`
 }
 
 type planRequestRecipe struct {
@@ -1108,6 +1176,7 @@ func (s *Server) planRequestView(ctx context.Context, householdID, planID int64,
 		OnHand:    req.OnHand,
 		Other:     req.OnHandOther,
 		Scope:     req.Scope,
+		Novelty:   req.Novelty,
 	}
 	for _, rc := range req.Recipes {
 		row := planRequestRecipe{ID: rc.ID, Title: rc.Title, Missing: true}
