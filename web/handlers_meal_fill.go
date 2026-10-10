@@ -141,12 +141,14 @@ func (s *Server) handlePantryOptions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "items": out})
 }
 
-// handleMealFill puts a saved recipe into one slot of the current plan,
-// scaled to whatever that day is feeding.
+// handleMealFill puts a meal into one slot of the plan covering that day,
+// scaled to whatever the day is feeding: a saved recipe (recipe_id), or the
+// leftovers of an earlier meal on the same plan (leftover_of), in which case
+// that meal is made to cook enough to cover it.
 //
-// The work itself is plan.MaterializeRecipe - shared with the agent's meal
-// tools, so a meal created by hand and one created by the assistant are the
-// same meal.
+// The work itself is plan.MaterializeRecipe / plan.AddLeftoverMeal - shared
+// with the agent's meal tools, so a meal created by hand and one created by
+// the assistant are the same meal.
 func (s *Server) handleMealFill(w http.ResponseWriter, r *http.Request) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
@@ -159,17 +161,20 @@ func (s *Server) handleMealFill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad slot", http.StatusBadRequest)
 		return
 	}
-	recipeID, err := strconv.ParseInt(r.FormValue("recipe_id"), 10, 64)
-	if err != nil {
-		s.setNotify(w, NotifyDanger, "Pick a recipe first.")
+
+	ctx := r.Context()
+	p := s.planForDate(ctx, hh, date)
+	if p == nil {
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
 		return
 	}
+	back := planURL(p)
 
-	ctx := r.Context()
-	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
-	if p == nil {
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+	recipeID, recipeErr := strconv.ParseInt(r.FormValue("recipe_id"), 10, 64)
+	leftoverOf, leftoverErr := strconv.ParseInt(r.FormValue("leftover_of"), 10, 64)
+	if recipeErr != nil && leftoverErr != nil {
+		s.setNotify(w, NotifyDanger, "Pick a recipe first.")
+		http.Redirect(w, r, back, http.StatusSeeOther)
 		return
 	}
 
@@ -180,19 +185,38 @@ func (s *Server) handleMealFill(w http.ResponseWriter, r *http.Request) {
 		portions = day.Portions
 	}
 
-	res, err := plan.MaterializeRecipe(ctx, s.store, plan.MaterializeParams{
-		PlanID:          p.ID,
-		HouseholdID:     hh.ID,
-		CatalogRecipeID: recipeID,
-		Date:            date,
-		Slot:            slot,
-		Portions:        portions,
-	})
-	if err != nil {
-		log.Printf("meal fill %s %s: %v", date, slot, err)
-		s.setNotify(w, NotifyDanger, "Couldn't add that recipe to the plan.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
-		return
+	var msg string
+	if leftoverErr == nil {
+		res, err := plan.AddLeftoverMeal(ctx, s.store, plan.LeftoverParams{
+			PlanID:       p.ID,
+			SourceMealID: leftoverOf,
+			Date:         date,
+			Slot:         slot,
+			Portions:     portions,
+		})
+		if err != nil {
+			log.Printf("meal fill %s %s: leftovers of meal %d: %v", date, slot, leftoverOf, err)
+			s.setNotify(w, NotifyDanger, "Couldn't use those leftovers there.")
+			http.Redirect(w, r, back, http.StatusSeeOther)
+			return
+		}
+		msg = leftoverFillMessage(res, slot, date)
+	} else {
+		res, err := plan.MaterializeRecipe(ctx, s.store, plan.MaterializeParams{
+			PlanID:          p.ID,
+			HouseholdID:     hh.ID,
+			CatalogRecipeID: recipeID,
+			Date:            date,
+			Slot:            slot,
+			Portions:        portions,
+		})
+		if err != nil {
+			log.Printf("meal fill %s %s: %v", date, slot, err)
+			s.setNotify(w, NotifyDanger, "Couldn't add that recipe to the plan.")
+			http.Redirect(w, r, back, http.StatusSeeOther)
+			return
+		}
+		msg = mealFillMessage(res, slot, date)
 	}
 
 	// A day being filled is a day being cooked; leaving it marked eating-out
@@ -202,11 +226,22 @@ func (s *Server) handleMealFill(w http.ResponseWriter, r *http.Request) {
 		log.Printf("meal fill: reset day status %s: %v", date, err)
 	}
 
-	// Not quantity-only: this adds new meal content (a picked/generated
-	// recipe), so its ingredients need a real price the same as generation.
+	// Not quantity-only: a recipe adds new meal content, so its ingredients
+	// need a real price the same as generation. Leftovers add none, but they
+	// do make their source cook more, and a full pass covers that too.
 	s.repriceInBackground(p.ID, hh, false)
-	s.setNotify(w, NotifySuccess, mealFillMessage(res, slot, date))
-	http.Redirect(w, r, "/plan", http.StatusSeeOther)
+	s.setNotify(w, NotifySuccess, msg)
+	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// leftoverFillMessage says what landed and what it cost the meal it eats.
+func leftoverFillMessage(res *plan.LeftoverResult, slot, date string) string {
+	base := fmt.Sprintf("%s added to %s %s for %d.", res.Title, dayLabel(date), slot, res.Servings)
+	if res.ExtraCooked > 0 {
+		return base + fmt.Sprintf(" %s now cooks %d more %s to cover it. The shopping list is updating.",
+			res.SourceTitle, res.ExtraCooked, pluralize(res.ExtraCooked, "portion", "portions"))
+	}
+	return base + fmt.Sprintf(" %s already cooks enough to cover it.", res.SourceTitle)
 }
 
 func validSlot(slot string) bool {

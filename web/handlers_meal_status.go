@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"goeat/db"
@@ -98,7 +99,7 @@ func (s *Server) handleMealStatus(w http.ResponseWriter, r *http.Request) {
 	status := r.FormValue("status")
 	if !db.ValidDayStatus(status) {
 		s.setNotify(w, NotifyDanger, "That isn't a meal status.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, planURL(plan), http.StatusSeeOther)
 		return
 	}
 
@@ -113,7 +114,7 @@ func (s *Server) handleMealStatus(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.SetMealStatus(ctx, id, status); err != nil {
 		s.setNotify(w, NotifyDanger, "Couldn't save that. Try again.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, planURL(plan), http.StatusSeeOther)
 		return
 	}
 
@@ -148,9 +149,9 @@ func (s *Server) handleMealStatus(w http.ResponseWriter, r *http.Request) {
 	mealLabel := dayLabel(meal.Day) + " " + meal.Slot
 	s.setNotify(w, NotifySuccess, mealStatusMessage(mealLabel, status, resolved, resolution))
 
-	dest := "/plan"
+	dest := planURL(plan)
 	if fillDate != "" {
-		dest += fmt.Sprintf("?fill=%s|%s", fillDate, fillSlot)
+		dest += "&fill=" + url.QueryEscape(fillDate+"|"+fillSlot)
 	}
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }

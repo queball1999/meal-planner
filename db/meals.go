@@ -315,3 +315,51 @@ func (s *store) MoveMeal(ctx context.Context, mealID int64, day, slot string) (d
 	}
 	return displaced, tx.Commit()
 }
+
+// ExtendMealCooked makes a meal cook `extra` more portions than it does now,
+// for a later meal that will eat them as leftovers. Servings stay as they are;
+// cooked_portions and every ingredient grow in proportion.
+//
+// The base columns (00017) grow by the same factor, so a later headcount
+// change, which rescales from the base, keeps the extra instead of quietly
+// scaling it away.
+func (s *store) ExtendMealCooked(ctx context.Context, mealID int64, extra int) error {
+	if extra < 1 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var servings, cooked int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT servings, cooked_portions FROM meals WHERE id = ?`, mealID).
+		Scan(&servings, &cooked); err != nil {
+		return err
+	}
+	if cooked < servings {
+		cooked = servings
+	}
+	if cooked < 1 {
+		cooked = 1
+	}
+	factor := float64(cooked+extra) / float64(cooked)
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE meals
+		SET cooked_portions = ?,
+		    base_cooked_portions = CAST(ROUND(
+		        CASE WHEN base_cooked_portions > 0 THEN base_cooked_portions ELSE ? END * ?) AS INTEGER)
+		WHERE id = ?`, cooked+extra, cooked, factor, mealID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE meal_ingredients
+		SET quantity = ROUND(quantity * ?, 3), base_quantity = ROUND(base_quantity * ?, 3)
+		WHERE meal_id = ?`, factor, factor, mealID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

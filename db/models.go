@@ -1,6 +1,9 @@
 package db
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // User is a login (§9.1, §10.1). Role is the *instance* role - see
 // InstanceRoleAdmin; what a user may do inside a household is the
@@ -344,6 +347,50 @@ type Plan struct {
 	Status            string // "generating" | "ready" | "error"
 	Canceled          bool   // true once superseded by a regenerate for the same week (00016) - kept for history
 	CreatedAt         time.Time
+}
+
+// PlanRequest is the generate dialog's submission, kept on the plan it
+// produced (plans.gen_request, 00041) so it can be shown afterwards and sent
+// again for another week.
+type PlanRequest struct {
+	Recipes []PlanRequestRecipe `json:"recipes,omitempty"`
+	// Text is the "or type meals you want" box, verbatim.
+	Text   string              `json:"text,omitempty"`
+	OnHand []PlanRequestOnHand `json:"on_hand,omitempty"`
+	// OnHandOther is the older name-only on-hand inputs (on_hand_items /
+	// on_hand_text), already merged into one list.
+	OnHandOther []string `json:"on_hand_other,omitempty"`
+	Scope       string   `json:"scope,omitempty"` // "full" | "remaining"
+}
+
+// PlanRequestRecipe is a saved recipe picked on the generate dialog. The title
+// is kept beside the id so the request still reads after the recipe is renamed
+// or deleted.
+type PlanRequestRecipe struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+// PlanRequestOnHand is one "already have" row of the generate dialog.
+type PlanRequestOnHand struct {
+	Name     string  `json:"name"`
+	Quantity float64 `json:"quantity"`
+	Unit     string  `json:"unit"`
+}
+
+// Empty reports whether the household asked for nothing in particular.
+func (r *PlanRequest) Empty() bool {
+	return r == nil || (len(r.Recipes) == 0 && strings.TrimSpace(r.Text) == "" &&
+		len(r.OnHand) == 0 && len(r.OnHandOther) == 0)
+}
+
+// StoredPlanRequest is a plan's saved request with the week it was for.
+type StoredPlanRequest struct {
+	PlanID    int64
+	WeekStart string
+	WeekEnd   string
+	CreatedAt time.Time
+	Request   PlanRequest
 }
 
 // Meal is one slot in a plan (§10.1).

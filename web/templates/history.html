@@ -70,9 +70,7 @@
                     <a href="/plan?plan_id={{.ID}}" class="btn-icon" title="{{if .Canceled}}View archived plan{{else}}View plan{{end}}" aria-label="View plan">{{icon "calendar"}}</a>
                     {{else if and .CanRegenerate $.Data.HasLLM}}
                     <button type="button" class="btn-icon" data-modal-open="must-include-modal" data-requires="edit"
-                            data-week="{{.WeekStart}}" data-mid-week="{{.TodayMidWeek}}"
-                            data-generate-confirm-title="Retry plan"
-                            data-generate-confirm="Retry generating the plan for {{fmtWeekRange .WeekStart .WeekEnd}}? This replaces the failed attempt."
+                            data-week="{{.WeekStart}}" data-mid-week="{{.TodayMidWeek}}" data-reuse-plan="{{.ID}}"
                             title="Retry generating this plan" aria-label="Retry generating this plan">{{icon "autorenew"}}</button>
                     {{else}}
                     <span class="btn-icon is-disabled" title="This plan didn't finish generating">{{icon "alert"}}</span>

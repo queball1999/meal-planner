@@ -11,7 +11,7 @@ import (
 )
 
 // fakeGenerator returns a fixed, schema-valid 21-meal plan every time it's
-// called - enough to drive Generate() through persistence without a real LLM.
+// called - enough to drive GenerateForWeek through persistence without a real LLM.
 // A distinct titlePrefix per instance lets a test tell two generations apart.
 type fakeGenerator struct {
 	titlePrefix string
@@ -78,7 +78,7 @@ func TestGenerate_CancelsPreviousPlanForSameWeek(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	firstID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, nil, nil, nil)
+	firstID, err := GenerateForWeek(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, testWeek, testWeek, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("first generate: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestGenerate_CancelsPreviousPlanForSameWeek(t *testing.T) {
 		t.Fatal("first plan should not start canceled")
 	}
 
-	secondID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "Second"}, hhID, nil, nil, nil)
+	secondID, err := GenerateForWeek(ctx, store, &fakeGenerator{titlePrefix: "Second"}, hhID, testWeek, testWeek, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("second generate: %v", err)
 	}
@@ -151,12 +151,12 @@ func TestGenerate_CancelsOldPlanImmediatelyEvenOnFailure(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	firstID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, nil, nil, nil)
+	firstID, err := GenerateForWeek(ctx, store, &fakeGenerator{titlePrefix: "First"}, hhID, testWeek, testWeek, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("first generate: %v", err)
 	}
 
-	_, err = Generate(ctx, store, failingGenerator{}, hhID, nil, nil, nil)
+	_, err = GenerateForWeek(ctx, store, failingGenerator{}, hhID, testWeek, testWeek, nil, nil, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected the second generate to fail")
 	}

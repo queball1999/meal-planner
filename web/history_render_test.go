@@ -51,6 +51,7 @@ func TestHistoryPageExecutes(t *testing.T) {
 		`Retry generating this plan`,           // CanRegenerate row gets a retry button, not the disabled alert icon
 		`data-modal-open="must-include-modal"`, // retry opens the same picker/confirm modal, not a bare form POST
 		`data-week="2026-01-12"`,
+		`data-reuse-plan="2"`, // retry opens pre-filled with what the failed attempt asked for
 		`id="history-detail-modal"`,
 		`/plan/history/`, // JS fetch target prefix
 	} {

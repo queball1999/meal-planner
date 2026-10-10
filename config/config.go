@@ -107,8 +107,9 @@ type Config struct {
 	// AutoPlanHour is the local hour (0-23, household timezone) the night
 	// before the week starts to automatically generate next week's plan.
 	// -1 (default) disables auto-generation; the manual generate/regenerate
-	// button always works regardless. The trigger day is always Saturday -
-	// plan.Generate's week always starts the following Sunday.
+	// button always works regardless. The trigger day is the last day of the
+	// week under WeekStartDay: Saturday for a Sunday week, Sunday for a Monday
+	// week.
 	AutoPlanHour int
 	// Kroger OfficialAPIProvider (§6.2)
 	KrogerClientID     string

@@ -176,7 +176,7 @@ var Defs = []Definition{
 		Help:       "First day of the planning week.",
 		FromConfig: func(c *config.Config) string { return c.WeekStartDay }},
 	{Key: "AUTO_PLAN_HOUR", Label: "Auto-generate hour", Category: "Calendar", Kind: KindInt,
-		Help: "Local hour (0-23) the Saturday night before the week starts to automatically generate " +
+		Help: "Local hour (0-23) the night before the week starts (see Week start day) to automatically generate " +
 			"next week's plan. Set to -1 to disable auto-generation - the Regenerate/Plan my week " +
 			"button in the app always works regardless.",
 		FromConfig: func(c *config.Config) string { return strconv.Itoa(c.AutoPlanHour) }},

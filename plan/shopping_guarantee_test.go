@@ -17,7 +17,7 @@ func TestGenerate_AlwaysWritesAShoppingList(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
+	planID, err := generateTestWeek(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestGenerate_PricingRunsInBackground(t *testing.T) {
 	}
 
 	start := time.Now()
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, pricer, nil, nil)
+	planID, err := generateTestWeek(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, pricer, nil, nil)
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -116,7 +116,7 @@ func TestGenerate_SeedsPlanDays(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
+	planID, err := generateTestWeek(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestGenerate_RecordsScalingBaseline(t *testing.T) {
 	ctx := context.Background()
 	store, hhID := newGenerateTestStore(t)
 
-	planID, err := Generate(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
+	planID, err := generateTestWeek(ctx, store, &fakeGenerator{titlePrefix: "X"}, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

@@ -23,3 +23,16 @@ func WeekBounds(t time.Time, startDay string) (start, end time.Time) {
 	end = start.AddDate(0, 0, 6)
 	return start, end
 }
+
+// PlanningWeek is the week a "plan my week" with no week named should target:
+// the week containing now, unless now is that week's last day, in which case
+// it is the week after (rolled is then true). Planning on a Saturday night for
+// a Sunday-start week means next week - a plan for a week with hours left in
+// it is not what anyone sitting down to plan is after.
+func PlanningWeek(now time.Time, startDay string) (start time.Time, rolled bool) {
+	start, end := WeekBounds(now, startDay)
+	if now.UTC().Truncate(24 * time.Hour).Equal(end) {
+		return start.AddDate(0, 0, 7), true
+	}
+	return start, false
+}

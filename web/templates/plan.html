@@ -63,12 +63,14 @@
     {{end}}
     {{if and .Data.HasLLM (not .Data.ReadOnly)}}
     <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal"
-            data-week="" data-mid-week="{{.Data.TodayMidWeek}}" data-generate-confirm-title="Regenerate plan"
-            data-generate-confirm="This replaces your current plan for {{.Data.WeekStart}} - {{.Data.WeekEnd}} with a new one. The current plan will be canceled but kept in Plan History for reference.">
+            data-week="{{.Data.WeekStart}}" data-mid-week="{{.Data.ViewedMidWeek}}">
         {{icon "autorenew"}} Regenerate plan
     </button>
     {{end}}
 </div>
+{{if not .Data.ReadOnly}}
+<p class="plan-hint no-print">Drag a meal onto another slot to move it, or use a meal's {{icon "dots-horizontal"}} menu. Empty slots take any saved recipe or an earlier meal's leftovers.</p>
+{{end}}
 
 <div class="plan-board" aria-label="Weekly meal plan">
     {{range .Data.Days}}
@@ -149,7 +151,11 @@
 
         {{range $slot := slots}}
         {{$cell := index $day.Slots $slot}}
-        <article class="meal-card meal-card--{{$slot}}{{if $cell.Locked}} meal-card--locked{{end}}{{if and (not $cell.IsEmpty) $cell.Status (ne $cell.Status "cooking")}} meal-card--off{{end}}" data-meal-id="{{$cell.MealID}}">
+        {{/* Every slot is somewhere a meal can be dropped; a meal that isn't
+             locked can be picked up. Read-only boards get neither. */}}
+        <article class="meal-card meal-card--{{$slot}}{{if $cell.Locked}} meal-card--locked{{end}}{{if and (not $cell.IsEmpty) $cell.Status (ne $cell.Status "cooking")}} meal-card--off{{end}}" data-meal-id="{{$cell.MealID}}"
+                 {{if not $.Data.ReadOnly}}data-drop-date="{{$day.Date}}" data-drop-slot="{{$slot}}"
+                 {{if and (not $cell.IsEmpty) (not $cell.Locked)}}draggable="true" data-drag-meal="{{$cell.MealID}}" data-title="{{$cell.Title}}"{{end}}{{end}}>
             <span class="meal-card__slot">{{titleCase $slot}}</span>
             {{if $cell.IsEmpty}}
             <span class="meal-card__empty">No meal</span>
@@ -162,7 +168,7 @@
             </button>
             {{end}}
             {{else}}
-            <a href="/meals/{{$cell.MealID}}" class="meal-card__title"
+            <a href="/meals/{{$cell.MealID}}" class="meal-card__title" draggable="false"
                data-meal-id="{{$cell.MealID}}">{{$cell.Title}}</a>
             <div class="meal-card__meta">
                 <span>{{$cell.Effort}}</span>
@@ -200,6 +206,13 @@
                                 data-label="{{$day.DateLabel}}" data-title="{{$cell.Title}}">
                             {{icon "swap-horizontal"}} Swap
                         </button>
+                        {{if not $cell.Locked}}
+                        <button type="button" class="popover__item" data-move-meal
+                                data-meal-id="{{$cell.MealID}}" data-title="{{$cell.Title}}"
+                                data-move-date="{{$day.Date}}" data-move-slot="{{$slot}}">
+                            {{icon "calendar"}} Move
+                        </button>
+                        {{end}}
                         <form method="POST" action="/meals/{{$cell.MealID}}/lock">
                             {{$.CSRFField}}<input type="hidden" name="locked" value="{{if $cell.Locked}}0{{else}}1{{end}}">
                             <button type="submit" class="popover__item">
@@ -217,6 +230,13 @@
                                 aria-pressed="{{if eq $cell.Status "skipped"}}true{{else}}false{{end}}">
                             {{icon "close"}} {{if eq $cell.Status "skipped"}}Undo skip{{else}}Skip this meal{{end}}
                         </button>
+                        {{if not $cell.Locked}}
+                        <button type="button" class="popover__item" data-remove-meal
+                                data-meal-id="{{$cell.MealID}}" data-title="{{$cell.Title}}"
+                                data-label="{{$day.DateLabel}} {{$slot}}">
+                            {{icon "delete"}} Remove from plan
+                        </button>
+                        {{end}}
                     </div>
                 </div>
             </div>
@@ -235,7 +255,16 @@
   <form method="POST" id="pick-recipe-form" action="">
     {{.CSRFField}}
     <input type="hidden" name="recipe_id" id="pick-recipe-id">
+    <input type="hidden" name="leftover_of" id="pick-leftover-of">
     <input type="hidden" name="resolution" id="pick-recipe-resolution">
+    {{/* Filled per slot from GET .../leftover-sources: earlier meals this
+         slot could eat the leftovers of. Picking one makes that meal cook
+         enough to cover it (plan.AddLeftoverMeal). */}}
+    <div class="field" id="pick-leftovers" hidden>
+      <span class="field-label">Use leftovers from an earlier meal</span>
+      <ul class="recipe-picker" id="pick-leftovers-list" aria-label="Earlier meals"></ul>
+      <p class="field-hint">That meal will cook extra to cover this one - nothing new to buy beyond the bigger batch.</p>
+    </div>
     <div class="field">
       <label class="field-label" for="pick-recipe-q">Search your saved recipes</label>
       <input class="field-input" id="pick-recipe-q" type="search" autocomplete="off"
@@ -312,6 +341,63 @@
   </div>
 {{template "partials/modal_close.html" .}}
 
+{{template "partials/modal_open.html" dict "ID" "move-meal" "Title" "Move meal"}}
+  <p id="move-meal-intro"></p>
+  <div class="field move-meal__target" id="move-meal-target-field">
+    <div>
+      <label class="field-label" for="move-meal-date">Day</label>
+      <select class="field-input" id="move-meal-date">
+        {{range .Data.Days}}<option value="{{.Date}}">{{.DateLabel}}</option>{{end}}
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="move-meal-slot">Meal</label>
+      <select class="field-input" id="move-meal-slot">
+        {{range $sl := slots}}<option value="{{$sl}}">{{titleCase $sl}}</option>{{end}}
+      </select>
+    </div>
+  </div>
+  <div class="field" id="move-meal-occupied-field" hidden>
+    <span class="field-label" id="move-meal-occupied-label"></span>
+    <label class="people-picker__option">
+      <input type="radio" name="move-meal-occupied" value="swap" checked>
+      <span>Swap them <span class="text-muted" id="move-meal-swap-note"></span></span>
+    </label>
+    <label class="people-picker__option">
+      <input type="radio" name="move-meal-occupied" value="replace">
+      <span>Replace it <span class="text-muted" id="move-meal-replace-note"></span></span>
+    </label>
+  </div>
+  <div class="field" id="move-meal-stranded-field" hidden>
+    <span class="field-label" id="move-meal-stranded-label"></span>
+    <ul id="move-meal-stranded"></ul>
+    <label class="people-picker__option">
+      <input type="radio" name="move-meal-leftovers" value="unlink" checked>
+      <span>Keep them on the plan - I'll sort it out myself</span>
+    </label>
+    <label class="people-picker__option">
+      <input type="radio" name="move-meal-leftovers" value="clear">
+      <span>Remove them and leave the slots empty</span>
+    </label>
+  </div>
+  <div class="modal-dialog__footer">
+    <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+    <button type="button" class="btn btn-primary" id="move-meal-confirm">{{icon "check"}} Move</button>
+  </div>
+{{template "partials/modal_close.html" .}}
+
+<form method="POST" id="move-meal-form" action="" hidden>
+  {{.CSRFField}}
+  <input type="hidden" name="date" id="move-meal-form-date">
+  <input type="hidden" name="slot" id="move-meal-form-slot">
+  <input type="hidden" name="occupied" id="move-meal-form-occupied">
+  <input type="hidden" name="leftovers" id="move-meal-form-leftovers">
+</form>
+
+<form method="POST" id="remove-meal-form" action="" hidden>
+  {{.CSRFField}}
+</form>
+
 <form method="POST" id="meal-status-form" action="" hidden>
   {{.CSRFField}}
   <input type="hidden" name="status" id="meal-status-value">
@@ -356,6 +442,9 @@
     var pickTarget = document.getElementById('pick-recipe-target');
     var pickID = document.getElementById('pick-recipe-id');
     var pickResolution = document.getElementById('pick-recipe-resolution');
+    var pickLeftoverOf = document.getElementById('pick-leftover-of');
+    var pickLeftovers = document.getElementById('pick-leftovers');
+    var pickLeftoversList = document.getElementById('pick-leftovers-list');
     var pickTimer;
     // Set while the picker is replacing an existing meal (the leftover meals
     // it feeds, from status-impact); null while it is filling an empty slot.
@@ -414,16 +503,58 @@
         document.getElementById('pick-recipe-title').textContent = title;
         pickTarget.textContent = target;
         pickID.value = '';
+        pickLeftoverOf.value = '';
         pickResolution.value = '';
         pickQ.value = '';
+        pickLeftovers.hidden = true;
+        pickLeftoversList.innerHTML = '';
         loadRecipes('');
         window.goeat.openModal('pick-recipe');
+    }
+
+    // Earlier meals this slot could be the leftovers of. Only offered when
+    // filling an empty slot: a swap already has its own leftover questions.
+    function loadLeftoverSources(date, slot) {
+        var action = pickForm.action;
+        fetch('/plan/days/' + date + '/' + slot + '/leftover-sources', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                // The picker was re-aimed at another slot while this loaded.
+                if (pickForm.action !== action) return;
+                var sources = (d && d.sources) || [];
+                pickLeftovers.hidden = sources.length === 0;
+                sources.forEach(function (src) {
+                    var li = document.createElement('li');
+                    li.className = 'recipe-picker__row';
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'recipe-picker__btn';
+                    // textContent: meal titles are user- and LLM-supplied.
+                    var title = document.createElement('span');
+                    title.className = 'recipe-picker__title';
+                    title.textContent = 'Leftover ' + src.title;
+                    var meta = document.createElement('span');
+                    meta.className = 'recipe-picker__meta text-muted';
+                    meta.textContent = 'from ' + src.label;
+                    btn.appendChild(title);
+                    btn.appendChild(meta);
+                    btn.addEventListener('click', function () {
+                        pickID.value = '';
+                        pickLeftoverOf.value = src.meal_id;
+                        pickForm.submit();
+                    });
+                    li.appendChild(btn);
+                    pickLeftoversList.appendChild(li);
+                });
+            })
+            .catch(function () {});
     }
 
     function openPicker(date, slot, label) {
         swapPending = null;
         showPicker('/plan/days/' + date + '/' + slot + '/fill', 'Pick a meal',
             'For ' + label + ' ' + slot + ' - amounts are scaled to what that day is feeding.');
+        loadLeftoverSources(date, slot);
     }
 
     document.querySelectorAll('[data-fill-slot]').forEach(function (btn) {
@@ -510,6 +641,280 @@
         var parts = fill.split('|');
         openPicker(parts[0], parts[1], parts[0]);
     }
+
+    // ── Move a meal ──────────────────────────────────────────────────────
+    // Two ways in, one way out. Dragging a card onto another slot names the
+    // destination by where it was dropped; a card's "Move" menu item (the
+    // route for a touch screen, where HTML drag-and-drop never fires, and
+    // for a keyboard) names it with two selects in the dialog. Either way
+    // the server is asked what the move would disturb before anything is
+    // written (GET move-impact): a meal already in that slot, and leftover
+    // meals that would end up ahead of the meal they are leftovers of. A
+    // move that disturbs nothing just happens; anything else asks first.
+    var moveForm = document.getElementById('move-meal-form');
+    var moveIntro = document.getElementById('move-meal-intro');
+    var moveTargetField = document.getElementById('move-meal-target-field');
+    var moveDateSel = document.getElementById('move-meal-date');
+    var moveSlotSel = document.getElementById('move-meal-slot');
+    var moveOccupiedField = document.getElementById('move-meal-occupied-field');
+    var moveOccupiedLabel = document.getElementById('move-meal-occupied-label');
+    var moveSwapNote = document.getElementById('move-meal-swap-note');
+    var moveReplaceNote = document.getElementById('move-meal-replace-note');
+    var moveStrandedField = document.getElementById('move-meal-stranded-field');
+    var moveStrandedLabel = document.getElementById('move-meal-stranded-label');
+    var moveStrandedList = document.getElementById('move-meal-stranded');
+    var moveConfirmBtn = document.getElementById('move-meal-confirm');
+    var move = null; // { mealId, title, fromDate, fromSlot, date, slot, impact }
+    var moveSeq = 0;
+
+    function moveOccupiedChoice() {
+        var c = document.querySelector('input[name="move-meal-occupied"]:checked');
+        return c ? c.value : 'swap';
+    }
+
+    function submitMove(occupied, leftovers) {
+        moveForm.action = '/meals/' + move.mealId + '/move';
+        document.getElementById('move-meal-form-date').value = move.date;
+        document.getElementById('move-meal-form-slot').value = move.slot;
+        document.getElementById('move-meal-form-occupied').value = occupied || '';
+        document.getElementById('move-meal-form-leftovers').value = leftovers || '';
+        moveForm.submit();
+    }
+
+    function fetchMoveImpact() {
+        return fetch('/meals/' + move.mealId + '/move-impact?date=' + encodeURIComponent(move.date) +
+            '&slot=' + encodeURIComponent(move.slot), { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || !d.ok) throw new Error((d && d.error) || 'bad response');
+                return d;
+            });
+    }
+
+    // Stranded leftovers depend on the occupied-slot choice: swapping keeps
+    // both meals on the plan, replacing takes one (and what it fed) off.
+    function renderMoveStranded() {
+        var impact = move.impact;
+        var list = (impact && (moveOccupiedChoice() === 'replace' ? impact.stranded_replace : impact.stranded_swap)) || [];
+        moveStrandedField.hidden = list.length === 0;
+        moveStrandedList.innerHTML = '';
+        moveStrandedLabel.textContent = list.length === 1
+            ? 'This leaves a leftover meal with nothing to eat - the meal it comes from would no longer be cooked before it:'
+            : 'This leaves ' + list.length + ' leftover meals with nothing to eat - the meals they come from would no longer be cooked before them:';
+        list.forEach(function (m) {
+            var li = document.createElement('li');
+            // textContent: meal titles come from the LLM and from user edits.
+            li.textContent = m.date_label + ' ' + m.slot + ' - ' + m.title;
+            moveStrandedList.appendChild(li);
+        });
+    }
+
+    function renderMove() {
+        var impact = move.impact;
+        var same = move.date === move.fromDate && move.slot === move.fromSlot;
+        moveConfirmBtn.disabled = same || !impact;
+        if (same) {
+            moveIntro.textContent = move.title + ' is already there. Pick another day or meal.';
+            moveOccupiedField.hidden = true;
+            moveStrandedField.hidden = true;
+            return;
+        }
+        if (!impact) {
+            moveIntro.textContent = 'Checking that slot…';
+            moveOccupiedField.hidden = true;
+            moveStrandedField.hidden = true;
+            return;
+        }
+        moveIntro.textContent = 'Move ' + move.title + ' from ' + impact.meal_label + ' to ' + impact.target_label + '.';
+
+        var displaced = impact.displaced;
+        moveOccupiedField.hidden = !displaced;
+        if (displaced) {
+            moveOccupiedLabel.textContent = impact.target_label + ' already has ' + displaced.title + '. What should happen to it?';
+            moveSwapNote.textContent = '(' + displaced.title + ' goes to ' + impact.meal_label + ')';
+            var replace = document.querySelector('input[name="move-meal-occupied"][value="replace"]');
+            replace.disabled = !!displaced.locked;
+            moveReplaceNote.textContent = displaced.locked
+                ? '(it is locked - unlock it first)'
+                : '(' + displaced.title + ' comes off the plan)';
+            if (displaced.locked) {
+                document.querySelector('input[name="move-meal-occupied"][value="swap"]').checked = true;
+            }
+        }
+        renderMoveStranded();
+    }
+
+    function refreshMove() {
+        var seq = ++moveSeq;
+        move.impact = null;
+        renderMove();
+        if (move.date === move.fromDate && move.slot === move.fromSlot) return Promise.resolve(null);
+        return fetchMoveImpact().then(function (d) {
+            if (seq !== moveSeq) return null; // a newer target is already being checked
+            move.impact = d;
+            renderMove();
+            return d;
+        });
+    }
+
+    function resetMoveChoices() {
+        document.querySelector('input[name="move-meal-occupied"][value="swap"]').checked = true;
+        document.querySelector('input[name="move-meal-leftovers"][value="unlink"]').checked = true;
+    }
+
+    // From a drop: the destination is already chosen, so only stop to ask
+    // when there is something to ask about.
+    function moveByDrop(mealId, title, fromDate, fromSlot, date, slot) {
+        move = { mealId: mealId, title: title, fromDate: fromDate, fromSlot: fromSlot, date: date, slot: slot, impact: null };
+        resetMoveChoices();
+        moveTargetField.hidden = true;
+        refreshMove().then(function (d) {
+            if (!d) return;
+            if (!d.displaced && !d.stranded_swap.length) { submitMove('', ''); return; }
+            window.goeat.openModal('move-meal');
+        }).catch(function () {
+            window.goeat.alert('Couldn\'t check that slot. Try again.', { title: 'Move meal' });
+        });
+    }
+
+    document.querySelectorAll('[data-move-meal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            closeMealMenu(btn);
+            move = {
+                mealId: btn.dataset.mealId, title: btn.dataset.title,
+                fromDate: btn.dataset.moveDate, fromSlot: btn.dataset.moveSlot,
+                date: btn.dataset.moveDate, slot: btn.dataset.moveSlot, impact: null,
+            };
+            resetMoveChoices();
+            moveTargetField.hidden = false;
+            moveDateSel.value = move.date;
+            moveSlotSel.value = move.slot;
+            renderMove();
+            window.goeat.openModal('move-meal');
+        });
+    });
+
+    [moveDateSel, moveSlotSel].forEach(function (sel) {
+        if (!sel) return;
+        sel.addEventListener('change', function () {
+            if (!move) return;
+            move.date = moveDateSel.value;
+            move.slot = moveSlotSel.value;
+            refreshMove().catch(function () {
+                moveIntro.textContent = 'Couldn\'t check that slot. Try another, or try again.';
+            });
+        });
+    });
+
+    document.querySelectorAll('input[name="move-meal-occupied"]').forEach(function (r) {
+        r.addEventListener('change', function () { if (move) renderMoveStranded(); });
+    });
+
+    if (moveConfirmBtn) {
+        moveConfirmBtn.addEventListener('click', function () {
+            if (!move || !move.impact) return;
+            var leftovers = document.querySelector('input[name="move-meal-leftovers"]:checked');
+            var occupied = move.impact.displaced ? moveOccupiedChoice() : '';
+            window.goeat.closeModal('move-meal');
+            submitMove(occupied, moveStrandedField.hidden ? '' : (leftovers ? leftovers.value : ''));
+        });
+    }
+
+    // Drag and drop, delegated from the board: the cards are server-rendered
+    // and there are 21 of them. State is shown with fills (the card being
+    // dragged fades, the slot under it tints), never an outline.
+    var board = document.querySelector('.plan-board');
+    var dragging = null;
+
+    function clearDropTarget() {
+        var cur = board.querySelector('.is-drop-target');
+        if (cur) cur.classList.remove('is-drop-target');
+    }
+
+    function dropCell(e) {
+        if (!dragging || !(e.target instanceof Element)) return null;
+        var cell = e.target.closest('[data-drop-date]');
+        if (!cell) return null;
+        // Dropping a meal back where it came from is not a move.
+        if (cell.dataset.dropDate === dragging.fromDate && cell.dataset.dropSlot === dragging.fromSlot) return null;
+        return cell;
+    }
+
+    if (board) {
+        board.addEventListener('dragstart', function (e) {
+            if (!(e.target instanceof Element)) return;
+            var card = e.target.closest('[data-drag-meal]');
+            if (!card) return;
+            dragging = {
+                mealId: card.dataset.dragMeal, title: card.dataset.title,
+                fromDate: card.dataset.dropDate, fromSlot: card.dataset.dropSlot, card: card,
+            };
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', card.dataset.title);
+            card.classList.add('is-dragging');
+            if (window.goeat.hideHoverCard) window.goeat.hideHoverCard();
+        });
+        board.addEventListener('dragover', function (e) {
+            var cell = dropCell(e);
+            if (!cell) return;
+            e.preventDefault(); // this is what makes the slot accept a drop
+            e.dataTransfer.dropEffect = 'move';
+            if (!cell.classList.contains('is-drop-target')) {
+                clearDropTarget();
+                cell.classList.add('is-drop-target');
+            }
+        });
+        board.addEventListener('dragleave', function (e) {
+            if (!(e.target instanceof Element)) return;
+            var cell = e.target.closest('[data-drop-date]');
+            // Moving between a card's own children fires dragleave too.
+            if (cell && !(e.relatedTarget instanceof Node && cell.contains(e.relatedTarget))) {
+                cell.classList.remove('is-drop-target');
+            }
+        });
+        board.addEventListener('drop', function (e) {
+            var cell = dropCell(e);
+            clearDropTarget();
+            if (!cell) return;
+            e.preventDefault();
+            var d = dragging;
+            moveByDrop(d.mealId, d.title, d.fromDate, d.fromSlot, cell.dataset.dropDate, cell.dataset.dropSlot);
+        });
+        board.addEventListener('dragend', function () {
+            if (dragging) dragging.card.classList.remove('is-dragging');
+            dragging = null;
+            clearDropTarget();
+        });
+    }
+
+    // ── Remove a meal ────────────────────────────────────────────────────
+    // Leaves the slot empty. Meals eating its leftovers go with it, so the
+    // confirm says how many before anything is removed.
+    var removeForm = document.getElementById('remove-meal-form');
+    document.querySelectorAll('[data-remove-meal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            closeMealMenu(btn);
+            var mealId = btn.dataset.mealId;
+            function ask(orphans) {
+                var msg = 'Remove ' + btn.dataset.title + ' from ' + btn.dataset.label + '? Its slot is left empty.';
+                if (orphans > 0) {
+                    msg += ' ' + orphans + (orphans === 1 ? ' later meal eats' : ' later meals eat') +
+                        ' its leftovers and will be removed too.';
+                }
+                window.goeat.confirm(msg, { title: 'Remove meal', confirmLabel: 'Remove', danger: true })
+                    .then(function (ok) {
+                        if (!ok) return;
+                        removeForm.action = '/meals/' + mealId + '/delete';
+                        removeForm.submit();
+                    });
+            }
+            fetch('/meals/' + mealId + '/status-impact', { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { ask((d && d.ok && d.orphaned) ? d.orphaned.length : 0); })
+                // No impact info: still ask, just without the count.
+                .catch(function () { ask(0); });
+        });
+    });
 
     // ── Per-meal status (skip / eating out) ──────────────────────────────
     // Icons on the meal card itself, not a day-level dropdown: a click can
@@ -611,17 +1016,33 @@
 {{else}}
 <div class="skeleton-card">
     <div class="skeleton-card__icon" aria-hidden="true">{{icon "chef-hat"}}</div>
-    <h2 class="skeleton-card__title">No meal plan yet</h2>
-    <p class="skeleton-card__body">
-        Generate your first weekly plan - the AI will respect your preferences,
-        allergies, budget, and meal slot hints.
-    </p>
-    {{if .Data.HasLLM}}
-    <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-week="" data-mid-week="{{.Data.TodayMidWeek}}">
-        {{icon "chef-hat"}} Generate this week's plan
-    </button>
+    <h2 class="skeleton-card__title">No meal plan for {{.Data.WeekNavTitle}}</h2>
+    {{if not .Data.CanPlanWeek}}
+    <p class="skeleton-card__body">Nothing was planned for this week, and a week that has ended can't be planned now.</p>
+    {{else if not $.CanEdit}}
+    <p class="skeleton-card__body">Nothing has been planned for this week yet.</p>
     {{else}}
-    <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
+    <p class="skeleton-card__body">
+        Have the AI plan it around your preferences, allergies and budget, or
+        build it yourself: pick a saved recipe for each meal and move them
+        around until the week looks right.
+    </p>
+    {{/* The viewed week, named outright - never "" here, so the week on
+         screen is the week that gets planned whatever day it is. */}}
+    <div class="skeleton-card__actions">
+        {{if .Data.HasLLM}}
+        <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-week="{{.Data.ViewedWeek}}" data-mid-week="{{.Data.ViewedMidWeek}}">
+            {{icon "chef-hat"}} Generate a plan
+        </button>
+        {{end}}
+        <form method="POST" action="/plan/manual">
+            {{.CSRFField}}<input type="hidden" name="week" value="{{.Data.ViewedWeek}}">
+            <button type="submit" class="btn {{if .Data.HasLLM}}btn-secondary{{else}}btn-primary{{end}}">{{icon "pencil"}} Plan it myself</button>
+        </form>
+    </div>
+    {{if not .Data.HasLLM}}
+    <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to have the AI plan it for you.</p>
+    {{end}}
     {{end}}
 </div>
 {{end}}

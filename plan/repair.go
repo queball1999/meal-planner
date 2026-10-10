@@ -64,7 +64,12 @@ func Repair(
 			break
 		}
 
-		weekStart := weekStartFromMeals(meals)
+		// The plan's own week, not one inferred from its meals: a week need
+		// not start on a Sunday, and its first day need not have a meal.
+		weekStart, perr := time.Parse("2006-01-02", plan.WeekStart)
+		if perr != nil {
+			return false, fmt.Errorf("repair: plan week start %q: %w", plan.WeekStart, perr)
+		}
 		weekEnd := weekStart.AddDate(0, 0, 6)
 		sysPmt, _ := BuildPrompt(hh, profile, stores, weekStart, weekEnd, nil, nil, nil)
 		userPmt := buildRepairPrompt(hh, profile, targets, plan.BudgetCents, plan.TotalCents)
@@ -207,27 +212,6 @@ func estimateMealCosts(meals []*db.Meal, items []*db.ShoppingListItem) map[int64
 		costs[m.ID] = avg
 	}
 	return costs
-}
-
-func weekStartFromMeals(meals []*db.Meal) time.Time {
-	if len(meals) == 0 {
-		return nextSunday(time.Now())
-	}
-	earliest := meals[0].Day
-	for _, m := range meals[1:] {
-		if m.Day < earliest {
-			earliest = m.Day
-		}
-	}
-	t, err := time.Parse("2006-01-02", earliest)
-	if err != nil {
-		return nextSunday(time.Now())
-	}
-	// Walk back to Sunday.
-	for t.Weekday() != time.Sunday {
-		t = t.AddDate(0, 0, -1)
-	}
-	return t
 }
 
 func weekdayName(isoDate string) string {

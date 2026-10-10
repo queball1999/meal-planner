@@ -42,7 +42,7 @@ func TestGenerate_TruncatedReplyResumesWithSamePrompt(t *testing.T) {
 		truncated: []bool{false, true, false},
 	}
 
-	planID, err := Generate(ctx, store, gen, hhID, nil, nil, nil)
+	planID, err := generateTestWeek(ctx, store, gen, hhID, nil, nil, nil)
 	var te *TruncatedError
 	if !errors.As(err, &te) {
 		t.Fatalf("err = %v, want *TruncatedError", err)

@@ -92,6 +92,15 @@ type planPageData struct {
 	// remaining days" - see dashPageData.TodayMidWeek for the same flag on
 	// the dashboard.
 	TodayMidWeek bool
+
+	// ViewedWeek is the start (YYYY-MM-DD) of the week the toolbar is showing,
+	// plan or no plan - what "Generate" and "Plan it myself" on the empty
+	// state act on. CanPlanWeek is false for a week that has already ended.
+	ViewedWeek  string
+	CanPlanWeek bool
+	// ViewedMidWeek is TodayMidWeek narrowed to the viewed week: true only
+	// when that week is the live one and today is not its first day.
+	ViewedMidWeek bool
 }
 
 // weekNav holds the plan page's week-switcher links, computed once so the
@@ -260,7 +269,7 @@ func (s *Server) reconcilePlanStatus(ctx context.Context, hhID int64, p *db.Plan
 	_ = s.store.UpdatePlanStatus(ctx, p.ID, effective)
 	p.Status = effective
 	if effective == "ready" {
-		// The normal success path (plan.Generate) retires other plans for the
+		// The normal success path (plan.GenerateForWeek) retires other plans for the
 		// same week once it confirms "ready" - do the same here, since a job
 		// that died without updating status (e.g. a server restart mid-run)
 		// bypasses that path entirely and leaves stale "ready" plans stacked
@@ -279,10 +288,12 @@ func (s *Server) reconcilePlanStatus(ctx context.Context, hhID int64, p *db.Plan
 // ?plan_id=123 loads one specific plan (e.g. a canceled one from
 // /plan/history - its own week now resolves to whatever superseded it, so it
 // can only be reached by id) and is always read-only. ?week=YYYY-MM-DD loads
-// that week's plan and is read-only unless it names the live week - the
-// Prev/Next toolbar links always carry ?week=, so landing back on the current
-// week that way (rather than via the bare "Today" link) must still be
-// editable, not silently fall back to a past-plan view.
+// that week's plan and is read-only only for a week that has already ended:
+// the live week and any later one stay editable, which is what lets next
+// week be planned, by hand or by the AI, before it starts. Every edit
+// handler finds its plan from the date or meal it was given (planForDate,
+// loadOwnedMeal), not from "the latest plan", so an edit made on a future
+// week's board lands on that week.
 //
 // A viewer always gets readOnly: the page's existing read-only mode is exactly
 // "show everything, offer no edits", which is what the viewer role means.
@@ -303,7 +314,9 @@ func (s *Server) resolvePlanWeek(ctx context.Context, hh *db.Household, r *http.
 	liveWeekStart, _ := plan.WeekBounds(time.Now().UTC(), s.cfg.WeekStartDay)
 	if week := r.URL.Query().Get("week"); week != "" {
 		p, _ = s.store.GetPlanByWeekStart(ctx, hh.ID, week)
-		return p, week != liveWeekStart.Format("2006-01-02")
+		// An unparseable ?week= finds no plan; read-only is the safe side.
+		asked, err := time.Parse("2006-01-02", week)
+		return p, err != nil || asked.UTC().Before(liveWeekStart)
 	}
 	p, _ = s.store.GetLatestPlan(ctx, hh.ID)
 	// GetLatestPlan is "most recently created", not "current or later" - a
@@ -405,18 +418,24 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	weekNav := buildWeekNav(viewedWeekStart, todayWeekStart, planBasePath(tab))
+	viewedWeek := viewedWeekStart.Format("2006-01-02")
+	canPlanWeek := !viewedWeekStart.Before(todayWeekStart)
+	viewedMidWeek := todayMidWeek && viewedWeekStart.Equal(todayWeekStart)
 	planTabHref := planTabURL(r, "/plan")
 	listTabHref := planTabURL(r, "/plan/list")
 
 	// Show any plan that actually has meals, whatever its status - a plan
 	// still finishing (or one that erred after persisting some meals) is far
-	// more useful on screen than an empty "no plan" card. Only fall back to
-	// the empty state when there is genuinely nothing to show.
+	// more useful on screen than an empty "no plan" card. A ready plan with no
+	// meals is shown too: that is a plan being built by hand (plan.CreateManual),
+	// or one whose meals were all removed, and its empty slots are where the
+	// next meal gets added. Only fall back to the empty state when there is
+	// genuinely nothing to show.
 	var meals []*db.Meal
 	if p != nil {
 		meals, _ = s.store.ListMealsByPlan(ctx, p.ID)
 	}
-	if p == nil || len(meals) == 0 {
+	if p == nil || (len(meals) == 0 && status != "ready") {
 		if status == "error" {
 			s.setNotify(w, NotifyDanger, "The last plan generation failed. Check Settings → AI Logs for details, then regenerate.")
 		} else if status == "generating" {
@@ -434,6 +453,9 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 			WeekNavTodayURL: weekNav.today,
 			WeekNavTitle:    weekNav.title,
 			TodayMidWeek:    todayMidWeek,
+			ViewedWeek:      viewedWeek,
+			CanPlanWeek:     canPlanWeek,
+			ViewedMidWeek:   viewedMidWeek,
 		})
 		return
 	}
@@ -562,6 +584,9 @@ func (s *Server) handlePlanPage(w http.ResponseWriter, r *http.Request) {
 		WeekNavTodayURL:   weekNav.today,
 		WeekNavTitle:      weekNav.title,
 		TodayMidWeek:      todayMidWeek,
+		ViewedWeek:        viewedWeek,
+		CanPlanWeek:       canPlanWeek,
+		ViewedMidWeek:     viewedMidWeek,
 	})
 }
 
@@ -714,6 +739,7 @@ func (s *Server) handlePlanHistoryDetail(w http.ResponseWriter, r *http.Request)
 		"can_regenerate": canRegen,
 		"mid_week":       canRegen && planIsMidWeekRetry(p, curStart, todayMidWeek),
 		"has_llm":        s.llmGen() != nil,
+		"request":        s.planRequestViewFor(ctx, hh.ID, p),
 	})
 }
 
@@ -740,7 +766,7 @@ func (s *Server) handlePlanDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/plan/history", http.StatusSeeOther)
 }
 
-// runPlanGenerationJob wraps one call to plan.Generate/plan.GenerateForWeek in
+// runPlanGenerationJob wraps one call to plan.GenerateForWeek/ResumeGeneration in
 // the job bookkeeping (status emission, hard timeout, success/error events)
 // both entry points below share, so neither can drift from the other on how
 // progress is reported.
@@ -800,31 +826,21 @@ func (s *Server) runPlanGenerationJob(hhID int64, generate func(ctx context.Cont
 	})
 }
 
-// startPlanGeneration launches a background generation job for the upcoming
-// week (plan.Generate → next Sunday), unless one is already running
-// (single-flight, see plan.JobManager). Used by the auto-plan scheduler
-// (§ RunAutoPlanScheduler); the dashboard's "Plan my week" / "Regenerate"
-// buttons go through startPlanGenerationForWeek with an explicit week.
-func (s *Server) startPlanGeneration(hhID int64) (job *plan.Job, started bool) {
-	store, gen := s.store, s.llmGen()
-	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
-		s.setResumableGen(hhID, nil) // a fresh generation supersedes any cut-off one
-		return plan.Generate(ctx, store, gen, hhID, pricer, checker, j)
-	})
-}
-
-// startPlanGenerationForWeek is startPlanGeneration for one specific week -
-// the dashboard's manual generate/regenerate action after navigating the
-// calendar widget to a future week. See handlePlanGenerate for why past weeks
-// never reach this. requested is the household's "make sure to include this
+// startPlanGenerationForWeek launches a background generation job for one
+// week, unless one is already running (single-flight, see plan.JobManager) -
+// the generate dialog's submit, and the auto-plan scheduler
+// (RunAutoPlanScheduler) with nothing asked. See resolveGenerateTarget for
+// why past weeks never reach this. requested is the household's "make sure to include this
 // week" list gathered on the generate form; nil when they asked for nothing
 // specific. fromDate is plan.GenerateForWeek's "start here, not at weekStart"
-// - pass weekStart itself for the normal full-week case.
-func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart, fromDate time.Time, requested, onHand []string) (job *plan.Job, started bool) {
+// - pass weekStart itself for the normal full-week case. req is the form
+// itself, saved on the plan so it can be reused (db.PlanRequest); nil for a
+// caller with no form.
+func (s *Server) startPlanGenerationForWeek(hhID int64, weekStart, fromDate time.Time, requested, onHand []string, req *db.PlanRequest) (job *plan.Job, started bool) {
 	store, gen := s.store, s.llmGen()
 	return s.runPlanGenerationJob(hhID, func(ctx context.Context, pricer plan.Pricer, checker plan.PriceChecker, j *plan.Job) (int64, error) {
 		s.setResumableGen(hhID, nil) // a fresh generation supersedes any cut-off one
-		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, fromDate, pricer, checker, j, requested, onHand)
+		return plan.GenerateForWeek(ctx, store, gen, hhID, weekStart, fromDate, pricer, checker, j, requested, onHand, req)
 	})
 }
 
@@ -898,21 +914,67 @@ func (s *Server) handlePlanGenerateResume(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
 }
 
-// handlePlanGenerate starts a background generation job, then redirects to
-// the progress screen.
+// generateTarget is which days one generate request plans.
+type generateTarget struct {
+	WeekStart time.Time
+	// FromDate is the first day planned: WeekStart, or today for "just the
+	// remaining days" of a week already underway.
+	FromDate time.Time
+	// Rolled is true when no week was named and today is the last day of its
+	// week, so the target moved on to the week after (plan.PlanningWeek).
+	Rolled bool
+	// MidWeek is true when the target is the live week and today is not its
+	// first day - the only time "remaining days" differs from the whole week.
+	MidWeek bool
+}
+
+var (
+	errGenerateBadWeek  = errors.New("that isn't a valid week")
+	errGeneratePastWeek = errors.New("past weeks can't be planned")
+)
+
+// resolveGenerateTarget turns the generate form's "week" and "scope" fields
+// into the days that will be planned. It is the one place that decision is
+// made: the dialog's date preview (handlePlanGeneratePreview) and the submit
+// itself (handlePlanGenerate) both call it, so what the dialog says will
+// happen is what happens.
 //
-// With no "week" form field it plans the week containing today (honouring
-// WEEK_START_DAY). An optional "week" field (YYYY-MM-DD, any day within the
-// target week) asks for that specific week instead - the dashboard's
-// generate/regenerate action once the calendar widget has been navigated away
-// from the current week. Only the current week and future weeks are allowed:
-// plan.Generate's callers throughout the app (the dashboard, the shopping
-// list, day-status, meal-fill, ...) all resolve "the current plan" as
-// whichever plan row was created most recently, on the assumption that plans
-// are only ever created for now or later. Regenerating a week that has
-// already ended would make that stale plan "the latest" everywhere else in
-// the app - wrong shopping list, wrong headcount target, wrong everything -
-// so it is refused here rather than silently corrupting those.
+// week is YYYY-MM-DD, any day within the wanted week; "" means "whichever week
+// someone planning right now wants" - the week containing today, or the next
+// one when today is the last day of its week. Only the current week and later
+// are allowed: a plan for a week that has already ended would have every
+// screen that asks for "the latest plan" showing last week's shopping list.
+// On errGeneratePastWeek the returned WeekStart is still that week's start,
+// for the caller's redirect.
+//
+// scope "remaining" skips the days of the live week that have already
+// happened; it is ignored for any other week, where nothing has happened yet.
+func (s *Server) resolveGenerateTarget(week, scope string, now time.Time) (generateTarget, error) {
+	var t generateTarget
+	curStart, _ := plan.WeekBounds(now, s.cfg.WeekStartDay)
+	if week = strings.TrimSpace(week); week == "" {
+		t.WeekStart, t.Rolled = plan.PlanningWeek(now, s.cfg.WeekStartDay)
+	} else {
+		asked, err := time.Parse("2006-01-02", week)
+		if err != nil {
+			return t, errGenerateBadWeek
+		}
+		t.WeekStart, _ = plan.WeekBounds(asked, s.cfg.WeekStartDay)
+		if t.WeekStart.Before(curStart) {
+			return t, errGeneratePastWeek
+		}
+	}
+	today := now.UTC().Truncate(24 * time.Hour)
+	t.MidWeek = t.WeekStart.Equal(curStart) && !today.Equal(curStart)
+	t.FromDate = t.WeekStart
+	if scope == "remaining" && t.MidWeek {
+		t.FromDate = today
+	}
+	return t, nil
+}
+
+// handlePlanGenerate starts a background generation job for the days
+// resolveGenerateTarget picks, then redirects to the progress screen.
 func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 	if s.llmGen() == nil {
 		http.Error(w, "No LLM configured", http.StatusServiceUnavailable)
@@ -924,57 +986,223 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requested := s.buildRequestedMeals(r, hh.ID)
+	requested, recipes := s.buildRequestedMeals(r, hh.ID)
+	target, err := s.resolveGenerateTarget(r.FormValue("week"), r.FormValue("scope"), time.Now())
+	switch {
+	case errors.Is(err, errGeneratePastWeek):
+		s.setNotify(w, NotifyDanger, "Past weeks can't be regenerated - they're kept in Plan History for reference.")
+		http.Redirect(w, r, "/?cal=week&calref="+target.WeekStart.Format("2006-01-02"), http.StatusSeeOther)
+		return
+	case err != nil:
+		s.setNotify(w, NotifyDanger, "That isn't a valid week.")
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
 	// r.Form parsed by buildRequestedMeals. The dialog's rows (name, quantity,
 	// unit) are saved to the pantry first, so what the plan is told about
 	// matches what the Pantry page says; on_hand_items/on_hand_text are the
 	// older name-only inputs, still honoured.
 	entries := parseOnHandEntries(r.Form["on_hand_name"], r.Form["on_hand_qty"], r.Form["on_hand_unit"])
 	s.saveOnHandToPantry(r, hh.ID, entries)
-	onHand := parseOnHand(append(onHandLabels(entries), r.Form["on_hand_items"]...), r.FormValue("on_hand_text"))
-	// "scope=remaining" is the generate form's "just the remaining days"
-	// choice, offered only when regenerating the live week mid-week (see
-	// must_include_modal.html) - skip the days that have already happened
-	// instead of asking (and paying) the LLM for meals nobody will eat.
-	// Harmless if sent for a future week: fromDate (today) then falls before
-	// that week's start, and plan.GenerateForWeek/daysFrom clamps that back
-	// to the normal full week.
-	fromDate := time.Time{}
-	if r.FormValue("scope") == "remaining" {
-		fromDate = time.Now()
+	other := parseOnHand(r.Form["on_hand_items"], r.FormValue("on_hand_text"))
+	onHand := parseOnHand(append(onHandLabels(entries), other...), "")
+
+	req := &db.PlanRequest{
+		Recipes:     recipes,
+		Text:        strings.TrimSpace(r.FormValue("must_include_text")),
+		OnHandOther: other,
+		Scope:       "full",
+	}
+	if !target.FromDate.Equal(target.WeekStart) {
+		req.Scope = "remaining"
+	}
+	for _, e := range entries {
+		req.OnHand = append(req.OnHand, db.PlanRequestOnHand{Name: e.Name, Quantity: e.Quantity, Unit: e.Unit})
 	}
 
-	if raw := strings.TrimSpace(r.FormValue("week")); raw != "" {
-		asked, err := time.Parse("2006-01-02", raw)
+	s.startPlanGenerationForWeek(hh.ID, target.WeekStart, target.FromDate, requested, onHand, req)
+	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
+}
+
+// handlePlanGeneratePreview tells the generate dialog exactly what a submit
+// with the same week and scope would do - which days get planned, and whether
+// an existing plan gets replaced - before anything is sent to the LLM.
+//
+//	GET /plan/generate/preview?week=&scope=
+func (s *Server) handlePlanGeneratePreview(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	now := time.Now()
+	target, err := s.resolveGenerateTarget(r.URL.Query().Get("week"), r.URL.Query().Get("scope"), now)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	ctx := r.Context()
+
+	weekEnd := target.WeekStart.AddDate(0, 0, 6)
+	var days []string
+	for d := target.FromDate; !d.After(weekEnd); d = d.AddDate(0, 0, 1) {
+		days = append(days, d.Format("Mon Jan 2"))
+	}
+
+	// What is already there for that week: a plan with meals is replaced
+	// (canceled, kept in history); anything else is nothing to lose.
+	replaces := ""
+	if existing, _ := s.store.GetPlanByWeekStart(ctx, hh.ID, target.WeekStart.Format("2006-01-02")); existing != nil {
+		if meals, _ := s.store.ListMealsByPlan(ctx, existing.ID); len(meals) > 0 {
+			replaces = fmt.Sprintf("%d %s", len(meals), pluralize(len(meals), "meal", "meals"))
+		}
+	}
+
+	curStart, curEnd := plan.WeekBounds(now, s.cfg.WeekStartDay)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":         true,
+		"week_start": target.WeekStart.Format("2006-01-02"),
+		"week_label": target.WeekStart.Format("Mon Jan 2") + " – " + weekEnd.Format("Mon Jan 2"),
+		"from_label": target.FromDate.Format("Mon Jan 2"),
+		"to_label":   weekEnd.Format("Mon Jan 2"),
+		"days":       days,
+		"partial":    !target.FromDate.Equal(target.WeekStart),
+		"mid_week":   target.MidWeek,
+		"rolled":     target.Rolled,
+		"replaces":   replaces,
+		// The live week, for the "plan this week instead" choice offered
+		// when the target rolled forward.
+		"current_week_start": curStart.Format("2006-01-02"),
+		"current_week_label": curStart.Format("Mon Jan 2") + " – " + curEnd.Format("Mon Jan 2"),
+	})
+}
+
+// planRequestView is a saved generate request as the dialog and the history
+// modal read it.
+type planRequestView struct {
+	PlanID    int64                  `json:"plan_id"`
+	WeekLabel string                 `json:"week_label"`
+	Summary   string                 `json:"summary"`
+	Recipes   []planRequestRecipe    `json:"recipes"`
+	Text      string                 `json:"text"`
+	OnHand    []db.PlanRequestOnHand `json:"on_hand"`
+	Other     []string               `json:"on_hand_other"`
+	Scope     string                 `json:"scope"`
+}
+
+type planRequestRecipe struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	// Missing is true when the recipe has since been deleted: the dialog then
+	// carries its title over as a typed ask instead of a pick.
+	Missing bool `json:"missing"`
+}
+
+func (s *Server) planRequestView(ctx context.Context, householdID, planID int64, weekStart, weekEnd string, req db.PlanRequest) planRequestView {
+	v := planRequestView{
+		PlanID:    planID,
+		WeekLabel: fmtMonthDay(weekStart) + " - " + fmtMonthDay(weekEnd),
+		Recipes:   []planRequestRecipe{},
+		Text:      req.Text,
+		OnHand:    req.OnHand,
+		Other:     req.OnHandOther,
+		Scope:     req.Scope,
+	}
+	for _, rc := range req.Recipes {
+		row := planRequestRecipe{ID: rc.ID, Title: rc.Title, Missing: true}
+		if cur, err := s.store.GetCatalogRecipe(ctx, rc.ID); err == nil && cur != nil && cur.HouseholdID == householdID {
+			row.Title, row.Missing = cur.Title, false
+		}
+		v.Recipes = append(v.Recipes, row)
+	}
+
+	var bits []string
+	if n := len(req.Recipes); n > 0 {
+		bits = append(bits, fmt.Sprintf("%d %s", n, pluralize(n, "recipe", "recipes")))
+	}
+	asks := 0
+	for _, line := range strings.Split(req.Text, "\n") {
+		if strings.TrimSpace(line) != "" {
+			asks++
+		}
+	}
+	if asks > 0 {
+		bits = append(bits, fmt.Sprintf("%d typed %s", asks, pluralize(asks, "ask", "asks")))
+	}
+	if n := len(req.OnHand) + len(req.OnHandOther); n > 0 {
+		bits = append(bits, fmt.Sprintf("%d on hand", n))
+	}
+	if len(bits) == 0 {
+		bits = append(bits, "nothing specific asked")
+	}
+	v.Summary = strings.Join(bits, ", ")
+	return v
+}
+
+// planRequestViewFor is planRequestView for one plan, nil when it has no saved
+// request.
+func (s *Server) planRequestViewFor(ctx context.Context, householdID int64, p *db.Plan) *planRequestView {
+	req, err := s.store.GetPlanRequest(ctx, p.ID)
+	if err != nil || req == nil {
+		return nil
+	}
+	v := s.planRequestView(ctx, householdID, p.ID, p.WeekStart, p.WeekEnd, *req)
+	return &v
+}
+
+// maxReusableRequests is how many earlier requests the generate dialog lists.
+const maxReusableRequests = 12
+
+// handlePlanRequests lists the household's recent generate requests so the
+// dialog can load one back in and send it again for another week. Requests
+// that asked for nothing are left out - there is nothing in them to reuse.
+// ?plan_id= returns just that plan's request, however old.
+//
+//	GET /plan/requests[?plan_id=]
+func (s *Server) handlePlanRequests(w http.ResponseWriter, r *http.Request) {
+	hh := middleware.HouseholdFromCtx(r)
+	if hh == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
+		return
+	}
+	ctx := r.Context()
+	out := []planRequestView{}
+
+	if idStr := r.URL.Query().Get("plan_id"); idStr != "" {
+		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
-			s.setNotify(w, NotifyDanger, "That isn't a valid week.")
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad id"})
 			return
 		}
-		weekStart, _ := plan.WeekBounds(asked, s.cfg.WeekStartDay)
-		curStart, _ := plan.WeekBounds(time.Now(), s.cfg.WeekStartDay)
-		if weekStart.Before(curStart) {
-			s.setNotify(w, NotifyDanger, "Past weeks can't be regenerated - they're kept in Plan History for reference.")
-			http.Redirect(w, r, "/?cal=week&calref="+weekStart.Format("2006-01-02"), http.StatusSeeOther)
+		p, err := s.store.GetPlanByID(ctx, id)
+		if err != nil || p == nil || p.HouseholdID != hh.ID {
+			writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "plan not found"})
 			return
 		}
-		if fromDate.IsZero() {
-			fromDate = weekStart
+		if v := s.planRequestViewFor(ctx, hh.ID, p); v != nil {
+			out = append(out, *v)
 		}
-		s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested, onHand)
-		http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "requests": out})
 		return
 	}
 
-	// No "week" field: plan the week that contains today (honouring
-	// WEEK_START_DAY), not the next one. Same week the dashboard and calendar
-	// treat as current.
-	weekStart, _ := plan.WeekBounds(time.Now(), s.cfg.WeekStartDay)
-	if fromDate.IsZero() {
-		fromDate = weekStart
+	stored, err := s.store.ListPlanRequests(ctx, hh.ID, maxReusableRequests*2)
+	if err != nil {
+		log.Printf("plan requests: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "couldn't load earlier requests"})
+		return
 	}
-	s.startPlanGenerationForWeek(hh.ID, weekStart, fromDate, requested, onHand)
-	http.Redirect(w, r, "/plan/generate", http.StatusSeeOther)
+	for _, st := range stored {
+		if st.Request.Empty() {
+			continue
+		}
+		out = append(out, s.planRequestView(ctx, hh.ID, st.PlanID, st.WeekStart, st.WeekEnd, st.Request))
+		if len(out) == maxReusableRequests {
+			break
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "requests": out})
 }
 
 // buildRequestedMeals reads the generate form's "meals you want to eat this
@@ -983,12 +1211,14 @@ func (s *Server) handlePlanGenerate(w http.ResponseWriter, r *http.Request) {
 // strings for plan.GenerateForWeek's requested param. A recipe is rendered
 // with its full ingredient list so the LLM reproduces it rather than
 // reinventing something similar; a bad/foreign recipe_id is silently
-// skipped rather than failing the whole generation.
-func (s *Server) buildRequestedMeals(r *http.Request, householdID int64) []string {
+// skipped rather than failing the whole generation. The recipes that were
+// used come back as well, for the saved copy of the request (db.PlanRequest).
+func (s *Server) buildRequestedMeals(r *http.Request, householdID int64) ([]string, []db.PlanRequestRecipe) {
 	ctx := r.Context()
 	_ = r.ParseForm()
 
 	var out []string
+	var picked []db.PlanRequestRecipe
 	for _, idStr := range r.Form["recipe_ids"] {
 		id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 		if err != nil {
@@ -1007,6 +1237,7 @@ func (s *Server) buildRequestedMeals(r *http.Request, householdID int64) []strin
 			desc += " - ingredients: " + strings.Join(parts, ", ")
 		}
 		out = append(out, desc+" (an existing recipe the household picked - use it as specified rather than inventing a substitute)")
+		picked = append(picked, db.PlanRequestRecipe{ID: rec.ID, Title: rec.Title})
 	}
 
 	for _, line := range strings.Split(r.FormValue("must_include_text"), "\n") {
@@ -1015,7 +1246,7 @@ func (s *Server) buildRequestedMeals(r *http.Request, householdID int64) []strin
 			out = append(out, line)
 		}
 	}
-	return out
+	return out, picked
 }
 
 // maxOnHandItems caps the "already in the fridge" list. It goes into the
@@ -1269,10 +1500,16 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	p := s.planForDate(ctx, hh, date)
+	if p == nil {
+		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		return
+	}
+	back := planURL(p)
 	in, msg := s.dayPortions(ctx, hh.ID, r)
 	if msg != "" {
 		s.setNotify(w, NotifyDanger, msg)
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, back, http.StatusSeeOther)
 		return
 	}
 
@@ -1283,11 +1520,6 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
-	if p == nil {
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
-		return
-	}
 	if err := s.store.UpsertPlanDay(ctx, db.UpsertPlanDayParams{
 		PlanID:     p.ID,
 		Date:       date,
@@ -1299,7 +1531,7 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		log.Printf("headcount: save plan day %s: %v", date, err)
 		s.setNotify(w, NotifyDanger, "Couldn't save that headcount. Try again.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, back, http.StatusSeeOther)
 		return
 	}
 
@@ -1309,13 +1541,13 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 		// rather than implying the portions moved.
 		log.Printf("headcount: scale meals for %s: %v", date, err)
 		s.setNotify(w, NotifyDanger, "Saved who's eating, but the portions couldn't be rescaled. Check the logs.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, back, http.StatusSeeOther)
 		return
 	}
 
 	if scaled.MealsScaled == 0 {
 		s.setNotify(w, NotifySuccess, fmt.Sprintf("Headcount for %s set to %d.", date, in.Headcount))
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, back, http.StatusSeeOther)
 		return
 	}
 
@@ -1325,7 +1557,7 @@ func (s *Server) handlePlanHeadcount(w http.ResponseWriter, r *http.Request) {
 	s.setNotify(w, NotifySuccess, fmt.Sprintf(
 		"%s now serves %d%s - rescaled %d meals. The shopping list is updating.",
 		date, in.Headcount, guestNote(in.Guests, in.GuestSlots), scaled.MealsScaled))
-	http.Redirect(w, r, "/plan", http.StatusSeeOther)
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // scaleDayForInput rescales a day from a resolved people-picker submission:

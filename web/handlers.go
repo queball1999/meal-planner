@@ -62,6 +62,7 @@ type dashPageData struct {
 	WeekNavLabel  string // "Sep 8 – Sep 14", shown when IsCurrentWeek is false
 	WeekParam     string // "2026-09-08" - the viewed week's start, for the generate form's hidden field
 	PlanWeekParam string // "?week=2026-09-08" when viewing a past/future week, else ""
+	PlanWeekStart string // the shown plan's own week start - what its Regenerate replans
 
 	// PlanWeekAhead is set when the live-week dashboard is showing a plan for a
 	// later week (generation plans the next full week once this one is partway
@@ -271,6 +272,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	if p != nil {
 		data.HasPlan = true
+		data.PlanWeekStart = p.WeekStart
 		data.PlanStatus = p.Status // already reconciled by usableDashPlan
 		data.WeekLabel = fmt.Sprintf("%s - %s",
 			fmtMonthDay(p.WeekStart), fmtMonthDay(p.WeekEnd))

@@ -68,7 +68,7 @@ func TestGenerate_ToolLoopCallsToolsBeforeFinalPlan(t *testing.T) {
 		onePlan("Tool"),
 	}}
 
-	planID, err := Generate(ctx, store, gen, hhID, nil, nil, nil)
+	planID, err := generateTestWeek(ctx, store, gen, hhID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestGenerate_ToolLoopChecksPrices(t *testing.T) {
 		onePlan("Priced"),
 	}}
 
-	if _, err := Generate(ctx, store, gen, hhID, nil, checker, nil); err != nil {
+	if _, err := generateTestWeek(ctx, store, gen, hhID, nil, checker, nil); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	if checkedTerm != "chicken breast" {
@@ -145,7 +145,7 @@ func TestGenerate_ToolLoopCheckPriceWithNilChecker(t *testing.T) {
 		onePlan("NoChecker"),
 	}}
 
-	if _, err := Generate(ctx, store, gen, hhID, nil, nil, nil); err != nil {
+	if _, err := generateTestWeek(ctx, store, gen, hhID, nil, nil, nil); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 }
@@ -158,7 +158,7 @@ func TestGenerate_ToolLoopStepBudgetExhausted(t *testing.T) {
 
 	gen := &scriptedGenerator{replies: []string{`{"tool": "read_pantry", "args": {}}`}} // repeats forever
 
-	_, err := Generate(ctx, store, gen, hhID, nil, nil, nil)
+	_, err := generateTestWeek(ctx, store, gen, hhID, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error once the tool-call budget ran out")
 	}
@@ -178,7 +178,7 @@ func TestGenerate_ToolLoopUnknownToolIsRecoverable(t *testing.T) {
 		onePlan("Recovered"),
 	}}
 
-	if _, err := Generate(ctx, store, gen, hhID, nil, nil, nil); err != nil {
+	if _, err := generateTestWeek(ctx, store, gen, hhID, nil, nil, nil); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 

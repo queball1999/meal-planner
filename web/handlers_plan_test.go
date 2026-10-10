@@ -214,7 +214,12 @@ func TestBuildRequestedMeals(t *testing.T) {
 	}
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	out := s.buildRequestedMeals(r, hh.ID)
+	out, picked := s.buildRequestedMeals(r, hh.ID)
+
+	// The saved copy of the request names exactly the recipes that were used.
+	if len(picked) != 1 || picked[0].ID != recipe.ID || picked[0].Title != "Grandma's Lasagna" {
+		t.Errorf("picked recipes = %+v, want just Grandma's Lasagna", picked)
+	}
 
 	joined := strings.Join(out, "\n")
 	if !strings.Contains(joined, "Grandma's Lasagna") {

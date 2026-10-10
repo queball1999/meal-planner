@@ -232,6 +232,11 @@ type Store interface {
 	SetPlanOnHand(ctx context.Context, planID int64, names []string) error
 	GetPlanOnHand(ctx context.Context, planID int64) ([]string, error)
 
+	// The generate dialog's submission, kept per plan (00041_plan_gen_request.sql).
+	SetPlanRequest(ctx context.Context, planID int64, req PlanRequest) error
+	GetPlanRequest(ctx context.Context, planID int64) (*PlanRequest, error)
+	ListPlanRequests(ctx context.Context, householdID int64, limit int) ([]*StoredPlanRequest, error)
+
 	// ── Spend stats (§5.5) ────────────────────────────────────────────────────
 
 	GetSpendStats(ctx context.Context, householdID int64, from, to string) (*SpendStats, error)
@@ -242,6 +247,7 @@ type Store interface {
 	DeleteMeal(ctx context.Context, mealID int64) error
 	SetMealBaseline(ctx context.Context, mealID int64) error
 	MoveMeal(ctx context.Context, mealID int64, day, slot string) (displaced string, err error)
+	ExtendMealCooked(ctx context.Context, mealID int64, extra int) error
 	UpdateMealLeftover(ctx context.Context, mealID int64, isLeftover bool, sourceMealID *int64) error
 	UpdateMealTitle(ctx context.Context, mealID int64, title, effort string, servings, cookedPortions int) error
 	DeleteMealIngredients(ctx context.Context, mealID int64) error

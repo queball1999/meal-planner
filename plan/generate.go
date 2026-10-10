@@ -25,12 +25,24 @@ var dayOffset = map[string]int{
 	"saturday":  6,
 }
 
-var dayNameByOffset = [7]string{"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"}
+// DayInWeek returns the date of a named weekday ("monday", any case) inside
+// the 7-day week starting at weekStart, whichever weekday that week starts on.
+//
+// Relative to weekStart's own weekday rather than "sunday is day 0": with
+// WEEK_START_DAY=monday the week runs Monday to Sunday, and counting from
+// Sunday would put every meal one day late and Sunday's on the Monday.
+func DayInWeek(weekStart time.Time, day string) (time.Time, bool) {
+	n, ok := dayOffset[strings.ToLower(strings.TrimSpace(day))]
+	if !ok {
+		return time.Time{}, false
+	}
+	return weekStart.AddDate(0, 0, (n-int(weekStart.Weekday())+7)%7), true
+}
 
 // daysFrom returns the lowercase day names from fromDate (inclusive) through
-// the end of weekStart's week (6 days after weekStart), so a mid-week
-// generation can ask the LLM/Validate for only the days that haven't
-// happened yet instead of the full 7. fromDate is clamped into
+// the end of weekStart's week (6 days after weekStart), in that week's own
+// order, so a mid-week generation can ask the LLM/Validate for only the days
+// that haven't happened yet instead of the full 7. fromDate is clamped into
 // [weekStart, weekStart+6]; a fromDate on or before weekStart (the normal,
 // non-mid-week case) yields all 7 days.
 func daysFrom(weekStart, fromDate time.Time) []string {
@@ -43,38 +55,24 @@ func daysFrom(weekStart, fromDate time.Time) []string {
 	if offset > 6 {
 		offset = 6
 	}
-	return append([]string(nil), dayNameByOffset[offset:]...)
+	days := make([]string, 0, 7-offset)
+	for i := offset; i < 7; i++ {
+		days = append(days, strings.ToLower(weekStart.AddDate(0, 0, i).Weekday().String()))
+	}
+	return days
 }
 
 // Pricer is called after meals are persisted to price the full plan (§6.4).
 // Passing nil skips costing (useful in tests).
 type Pricer func(ctx context.Context, planID int64, hh *db.Household) error
 
-// Generate resolves preferences, calls the LLM, validates the result, persists
-// it to the DB, optionally prices it, and returns the new plan ID for the
-// upcoming week (today's date rolled forward to the next Sunday - today
-// itself, if today is Sunday). This is what the auto-plan scheduler calls;
-// the dashboard's "Plan my week" / "Regenerate" buttons go through
-// GenerateForWeek with an explicit week (the one containing today). See
-// GenerateForWeek for a specific past or future week.
-func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, pricer Pricer, checker PriceChecker, j *Job) (int64, error) {
-	hh, err := store.GetHousehold(ctx, householdID)
-	if err != nil {
-		return 0, fmt.Errorf("get household: %w", err)
-	}
-	if hh == nil {
-		return 0, fmt.Errorf("household not configured")
-	}
-	weekStart := nextSunday(time.Now().In(mustLocation(hh.Timezone)))
-	return generate(ctx, store, gen, householdID, weekStart, weekStart, pricer, checker, j, nil, nil)
-}
-
-// GenerateForWeek is Generate for one specific week rather than "whichever
-// week is next" - the dashboard's manual "generate"/"regenerate" action for a
-// past or future week, reached by navigating the calendar widget away from
-// the current one. weekStart need not be a Sunday; it is used exactly as
-// given (the caller - handlePlanGenerate - is expected to pass a real week
-// boundary from plan.WeekBounds, the same helper the calendar itself uses).
+// GenerateForWeek resolves preferences, calls the LLM, validates the result,
+// persists it to the DB, optionally prices it, and returns the new plan ID
+// for one week - the generate dialog's week, or the one the auto-plan
+// scheduler picked. weekStart is used exactly as given, on whichever weekday
+// WEEK_START_DAY puts it (callers pass a real boundary from plan.WeekBounds,
+// the same helper the calendar uses); meals are placed by weekday name within
+// it (DayInWeek).
 // fromDate restricts generation to fromDate through the end of that week -
 // the "just the remaining days" choice offered when regenerating mid-week, so
 // a day that has already happened is never asked of the LLM (and never
@@ -86,20 +84,21 @@ func Generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 // (handlePlanGenerate) rather than pulled from standing preferences. onHand
 // is the "already in the fridge or pantry" list typed on the same form - food
 // the plan should use up before buying more. Both are nil for the auto-plan
-// scheduler and any other caller with nothing to ask.
-func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested, onHand []string) (int64, error) {
-	return generate(ctx, store, gen, householdID, weekStart, fromDate, pricer, checker, j, requested, onHand)
+// scheduler and any other caller with nothing to ask. req is the form those
+// two were built from, saved on the plan as submitted so it can be shown later
+// and sent again for another week; nil saves nothing.
+func GenerateForWeek(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested, onHand []string, req *db.PlanRequest) (int64, error) {
+	return generate(ctx, store, gen, householdID, weekStart, fromDate, pricer, checker, j, requested, onHand, req)
 }
 
-// generate is the shared implementation behind Generate and GenerateForWeek:
-// resolves preferences, calls the LLM, validates the result, persists it to
+// generate is the implementation behind GenerateForWeek: resolves preferences, calls the LLM, validates the result, persists it to
 // the DB, optionally prices it, and returns the new plan ID. j is an optional
 // progress sink (nil is fine, e.g. in tests) - it emits a status update at
 // each real stage so the progress screen reflects what's actually happening
 // instead of sitting on "asking the AI" through pricing and budget repair,
 // which can run long after the LLM has already answered. See GenerateForWeek
 // for fromDate.
-func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested, onHand []string) (int64, error) {
+func generate(ctx context.Context, store db.Store, gen llm.Generator, householdID int64, weekStart, fromDate time.Time, pricer Pricer, checker PriceChecker, j *Job, requested, onHand []string, req *db.PlanRequest) (int64, error) {
 	hh, err := store.GetHousehold(ctx, householdID)
 	if err != nil {
 		return 0, fmt.Errorf("get household: %w", err)
@@ -140,6 +139,14 @@ func generate(ctx context.Context, store db.Store, gen llm.Generator, householdI
 	if len(onHand) > 0 {
 		if err := store.SetPlanOnHand(ctx, plan.ID, onHand); err != nil {
 			log.Printf("plan: save on-hand list for plan %d: %v", plan.ID, err)
+		}
+	}
+
+	// Non-fatal for the same reason: losing "what did I ask for" is not worth
+	// losing the plan over.
+	if req != nil {
+		if err := store.SetPlanRequest(ctx, plan.ID, *req); err != nil {
+			log.Printf("plan: save request for plan %d: %v", plan.ID, err)
 		}
 	}
 
@@ -379,12 +386,11 @@ func itemHintFrom(ing GeneratedIngredient) catalog.ItemHint {
 // line stayed unmatched forever.
 func persistPlan(ctx context.Context, store db.Store, householdID, planID int64, aiRunID *int64, weekStart time.Time, gp GeneratedPlan) error {
 	for _, gm := range gp.Meals {
-		day := strings.ToLower(gm.Day)
-		offset, ok := dayOffset[day]
+		day, ok := DayInWeek(weekStart, gm.Day)
 		if !ok {
 			return fmt.Errorf("unknown day %q", gm.Day)
 		}
-		mealDate := weekStart.AddDate(0, 0, offset).Format("2006-01-02")
+		mealDate := day.Format("2006-01-02")
 
 		meal, err := store.CreateMeal(ctx, db.CreateMealParams{
 			PlanID:         planID,
@@ -557,13 +563,6 @@ func stripFences(s string) string {
 		}
 	}
 	return s
-}
-
-// nextSunday returns the upcoming Sunday (or today if today is Sunday).
-func nextSunday(t time.Time) time.Time {
-	t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-	daysUntil := (7 - int(t.Weekday())) % 7
-	return t.AddDate(0, 0, daysUntil)
 }
 
 func mustLocation(tz string) *time.Location {

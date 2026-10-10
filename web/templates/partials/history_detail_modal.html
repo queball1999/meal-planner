@@ -60,6 +60,27 @@
         } else {
             html += '<p class="text-muted">This plan has no saved meals.</p>';
         }
+
+        // What was asked for when this plan was generated (db.PlanRequest) -
+        // absent for a plan built by hand, by the scheduler, or before
+        // requests were kept.
+        var req = d.request;
+        if (req) {
+            html += '<h3 class="history-detail__heading">What was asked for</h3><dl class="gen-review">';
+            var asks = (req.recipes || []).map(function (rc) {
+                return esc(rc.title) + (rc.missing ? ' (recipe since deleted)' : ' (saved recipe)');
+            });
+            String(req.text || '').split('\n').forEach(function (line) {
+                if (line.trim()) asks.push(esc(line.trim()));
+            });
+            html += '<dt>Meals</dt><dd>' + (asks.length ? asks.join('<br>') : 'Nothing specific') + '</dd>';
+            var have = (req.on_hand || []).map(function (it) {
+                return esc(it.name) + ' - ' + esc(it.quantity) + ' ' + esc(it.unit);
+            }).concat((req.on_hand_other || []).map(esc));
+            html += '<dt>Already had</dt><dd>' + (have.length ? have.join('<br>') : 'Nothing listed') + '</dd>';
+            html += '<dt>Days</dt><dd>' + (req.scope === 'remaining' ? 'The remaining days of the week' : 'The whole week') + '</dd>';
+            html += '</dl>';
+        }
         body.innerHTML = html;
 
         actions.innerHTML = '';
@@ -85,14 +106,30 @@
             retryBtn.setAttribute('data-modal-open', 'must-include-modal');
             retryBtn.setAttribute('data-week', d.week_start || '');
             retryBtn.setAttribute('data-mid-week', d.mid_week ? 'true' : 'false');
-            retryBtn.setAttribute('data-generate-confirm-title', 'Retry plan');
-            retryBtn.setAttribute('data-generate-confirm',
-                'Retry generating the plan for ' + (d.week_label || 'this week') + '? This replaces the failed attempt.');
+            // A retry starts from what the failed attempt asked for.
+            if (d.request) retryBtn.setAttribute('data-reuse-plan', d.plan_id);
             // This modal has to get out of the way first, or the two stack.
             retryBtn.addEventListener('click', function () {
                 window.goeat.closeModal('history-detail-modal');
             });
             actions.appendChild(retryBtn);
+        }
+        // The same request, sent again for a new week: opens the generate
+        // dialog with it loaded and no week named, so the dialog picks the
+        // week someone planning today wants and shows its dates.
+        if (d.request && d.has_llm) {
+            var reuseBtn = document.createElement('button');
+            reuseBtn.type = 'button';
+            reuseBtn.className = 'btn btn-secondary';
+            reuseBtn.textContent = 'Reuse for a new week';
+            reuseBtn.setAttribute('data-modal-open', 'must-include-modal');
+            reuseBtn.setAttribute('data-requires', 'edit');
+            reuseBtn.setAttribute('data-week', '');
+            reuseBtn.setAttribute('data-reuse-plan', d.plan_id);
+            reuseBtn.addEventListener('click', function () {
+                window.goeat.closeModal('history-detail-modal');
+            });
+            actions.appendChild(reuseBtn);
         }
         var closeBtn = document.createElement('button');
         closeBtn.type = 'button';

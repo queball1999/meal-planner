@@ -114,6 +114,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /plan/generate", edit(http.HandlerFunc(s.handlePlanGenerate)))
 	mux.Handle("GET /plan/generate", view(http.HandlerFunc(s.handlePlanGeneratePage)))
 	mux.Handle("GET /plan/generate/status", view(http.HandlerFunc(s.handlePlanGenerateStatus)))
+	mux.Handle("GET /plan/generate/preview", view(http.HandlerFunc(s.handlePlanGeneratePreview)))
+	mux.Handle("GET /plan/requests", view(http.HandlerFunc(s.handlePlanRequests)))
+	mux.Handle("POST /plan/manual", edit(http.HandlerFunc(s.handlePlanManual)))
 	mux.Handle("POST /plan/generate/cancel", edit(http.HandlerFunc(s.handlePlanGenerateCancel)))
 	mux.Handle("POST /plan/generate/resume", edit(http.HandlerFunc(s.handlePlanGenerateResume)))
 	mux.Handle("POST /plan/days/{date}/headcount", edit(http.HandlerFunc(s.handlePlanHeadcount)))
@@ -127,6 +130,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /plan/recipe-options", view(http.HandlerFunc(s.handleRecipeOptions)))
 	mux.Handle("GET /plan/pantry-options", view(http.HandlerFunc(s.handlePantryOptions)))
 	mux.Handle("POST /plan/days/{date}/{slot}/fill", edit(http.HandlerFunc(s.handleMealFill)))
+	mux.Handle("GET /plan/days/{date}/{slot}/leftover-sources", view(http.HandlerFunc(s.handleLeftoverSources)))
 	mux.Handle("POST /plan/{id}/delete", edit(http.HandlerFunc(s.handlePlanDelete)))
 
 	mux.Handle("GET /admin/prices", view(http.HandlerFunc(s.handleAdminPricesPage)))
@@ -161,6 +165,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /meals/{id}/status-impact", view(http.HandlerFunc(s.handleMealStatusImpact)))
 	mux.Handle("POST /meals/{id}/status", edit(http.HandlerFunc(s.handleMealStatus)))
 	mux.Handle("POST /meals/{id}/swap", edit(http.HandlerFunc(s.handleMealSwap)))
+	mux.Handle("GET /meals/{id}/move-impact", view(http.HandlerFunc(s.handleMealMoveImpact)))
+	mux.Handle("POST /meals/{id}/move", edit(http.HandlerFunc(s.handleMealMove)))
+	mux.Handle("POST /meals/{id}/delete", edit(http.HandlerFunc(s.handleMealDelete)))
 
 	// Recipe catalog - literal routes before /recipes/{id} wildcard (§8.2)
 	mux.Handle("GET /recipes/import", view(http.HandlerFunc(s.handleRecipeImportPage)))

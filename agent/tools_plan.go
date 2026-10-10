@@ -13,11 +13,6 @@ import (
 
 var slotNames = []string{"breakfast", "lunch", "dinner"}
 
-var weekdayOffset = map[string]int{
-	"sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3,
-	"thursday": 4, "friday": 5, "saturday": 6,
-}
-
 // currentPlan loads the household's active plan, with a message the model can
 // act on when there is none.
 func currentPlan(ctx context.Context, s *Session) (*db.Plan, error) {
@@ -42,12 +37,15 @@ func resolveDay(p *db.Plan, day string) (string, error) {
 	if d == "" {
 		return "", fmt.Errorf("which day?")
 	}
-	if off, ok := weekdayOffset[d]; ok {
+	// A weekday name resolves within the plan's own week (plan.DayInWeek),
+	// which starts on whichever weekday WEEK_START_DAY says.
+	if _, named := plan.DayInWeek(time.Time{}, d); named {
 		start, err := time.Parse("2006-01-02", p.WeekStart)
 		if err != nil {
 			return "", fmt.Errorf("this plan has an unreadable week start (%q)", p.WeekStart)
 		}
-		return start.AddDate(0, 0, off).Format("2006-01-02"), nil
+		date, _ := plan.DayInWeek(start, d)
+		return date.Format("2006-01-02"), nil
 	}
 	t, err := time.Parse("2006-01-02", d)
 	if err != nil {

@@ -3470,3 +3470,82 @@ img[data-lightbox]:focus-visible { outline: 2px solid var(--accent); outline-off
     .recipe-edit .form-actions { flex-wrap: wrap; }
     .recipe-edit .form-actions .btn { flex: 1 1 auto; justify-content: center; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PLAN BY HAND: generate-dialog dates and read-back, manual start, and the
+   board's drag-and-drop.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Which days a generate will plan, at the top of the dialog's first step. A
+ * tinted block, not a bordered one: state and emphasis are fills here (§4.11). */
+.gen-when {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    margin-bottom: var(--sp-4);
+    border-radius: var(--radius);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+}
+.gen-when__icon { display: inline-flex; flex: 0 0 auto; margin-top: 2px; }
+.gen-when__icon svg { width: 18px; height: 18px; }
+.gen-when__note { margin: var(--sp-1) 0 0; font-size: var(--text-sm); }
+
+/* The dialog's last step, and the same request shown again in Plan History. */
+.gen-review {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--sp-3) var(--sp-4);
+    margin: var(--sp-3) 0 var(--sp-4);
+}
+.gen-review dt { font-weight: var(--weight-semi); }
+.gen-review dd { margin: 0; overflow-wrap: anywhere; }
+.gen-review .field-hint { margin-top: var(--sp-1); }
+.history-detail__heading {
+    margin-top: var(--sp-5);
+    font-size: var(--text-base);
+    font-weight: var(--weight-semi);
+}
+
+/* "Generate" beside "Plan it myself" on an empty week. */
+.skeleton-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+}
+.skeleton-card__actions form { margin: 0; }
+
+.plan-hint {
+    margin: 0 0 var(--sp-3);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+.plan-hint svg { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* A meal that can be picked up. The card fades while it is in the air and the
+ * slot under it takes the accent fill - fills only, never a ring (§4.11). */
+.meal-card[draggable="true"] { cursor: grab; }
+.meal-card[draggable="true"]:active { cursor: grabbing; }
+.meal-card.is-dragging { opacity: .45; }
+.meal-card.is-drop-target {
+    background-color: var(--accent-bg);
+    color: var(--accent-text);
+}
+.meal-card.is-drop-target .meal-card__empty,
+.meal-card.is-drop-target .meal-card__slot { color: var(--accent-text); }
+/* The card's own children would otherwise each take dragenter/dragleave and
+ * make the tint flicker as the pointer crosses them. */
+.plan-board:has(.is-dragging) .meal-card > * { pointer-events: none; }
+
+/* Day + meal selects of the "Move" dialog, side by side. */
+.move-meal__target {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-3);
+}
+@media (max-width: 480px) {
+    .move-meal__target { grid-template-columns: 1fr; }
+}

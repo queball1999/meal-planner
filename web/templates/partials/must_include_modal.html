@@ -4,33 +4,66 @@
      say "make sure X is in there" before the LLM runs.
 
      Usage: a trigger button carries data-modal-open="must-include-modal",
-     data-week (may be "", meaning "the current week"), data-mid-week
-     ("true" when today isn't that week's first day - see dashPageData/
-     planPageData.TodayMidWeek), and, for a regenerate that should confirm
-     before replacing a plan, data-generate-confirm / data-generate-confirm-
-     title matching what the old direct-submit form used. Deliberately not
-     data-confirm/data-confirm-title on the trigger itself: modal.js
-     intercepts and confirms *any* click on a data-confirm element outside a
-     form, which would pop the dialog before this picker even opened. This
-     script copies them onto the form instead, so modal.js's normal
-     submit-time interception fires once "Generate plan" is clicked - after
-     the picker, not before it.
+     data-week (a day in the week to plan; "" means "whichever week someone
+     planning now wants" - this week, or next week on this week's last day),
+     data-mid-week ("true" when today isn't that week's first day - see
+     dashPageData/planPageData.TodayMidWeek) and optionally data-reuse-plan
+     (a plan id whose saved request is loaded straight in).
 
-     Two steps: step 1 is "anything you want to eat" (recipe picker + free
+     Which days get planned is never left to guesswork: the dialog asks
+     GET /plan/generate/preview (the same resolveGenerateTarget the submit
+     uses) and shows the dates on step 1, before anything is typed.
+
+     Three steps: step 1 is "anything you want to eat" (recipe picker + free
      text), step 2 is "anything already in the fridge or pantry": rows of
      ingredient + quantity + unit (on_hand_name / on_hand_qty / on_hand_unit),
-     added by searching the pantry/catalog (Choices.js) or typing a new one. handlers_plan.go
-     saves them to the pantry and tells the plan. Only step 2 submits.
+     added by searching the pantry/catalog (Choices.js) or typing a new one;
+     handlers_plan.go saves them to the pantry and tells the plan. Step 3
+     reads the whole request back - dates, what gets replaced, every ask -
+     and is the only step that submits. It stands in for the old "this
+     replaces your plan" confirm: the same warning, next to everything else
+     about to happen, instead of a second dialog after the fact.
+
+     What was submitted is kept on the plan (db.PlanRequest). "Reuse an
+     earlier request" on step 1 loads one back in from GET /plan/requests.
 
      The modal's own form always posts to /plan/generate. */}}
 {{define "partials/must_include_modal.html"}}
-{{template "partials/modal_open.html" dict "ID" "must-include-modal" "Title" "Anything you want to eat this week?" "Form" true}}
+{{template "partials/modal_open.html" dict "ID" "must-include-modal" "Title" "Anything you want to eat?" "Form" true}}
   <form method="POST" action="/plan/generate" id="must-include-form">
     {{.CSRFField}}
     <input type="hidden" name="week" id="must-include-week" value="">
     <input type="hidden" name="scope" id="must-include-scope" value="full">
 
     <div id="must-include-step-1" tabindex="-1">
+    <div class="gen-when" aria-live="polite">
+      <span class="gen-when__icon" aria-hidden="true">{{icon "calendar"}}</span>
+      <div>
+        <strong id="must-include-when">Working out the dates…</strong>
+        <p class="gen-when__note" id="must-include-replaces" hidden></p>
+      </div>
+    </div>
+
+    <div class="field" id="must-include-target-field" hidden>
+      <span class="field-label">Today is the last day of this week - which week should it plan?</span>
+      <label class="people-picker__option">
+        <input type="radio" name="target-choice" value="next" checked>
+        <span>Next week <span class="text-muted" id="must-include-target-next"></span></span>
+      </label>
+      <label class="people-picker__option">
+        <input type="radio" name="target-choice" value="current">
+        <span>This week <span class="text-muted" id="must-include-target-current"></span></span>
+      </label>
+    </div>
+
+    <div class="field" id="must-include-reuse-field" hidden>
+      <label class="field-label" for="must-include-reuse">Reuse an earlier request</label>
+      <select class="field-input" id="must-include-reuse">
+        <option value="">Start fresh</option>
+      </select>
+      <p class="field-hint">Loads what you asked for that week - recipes, typed meals and on-hand food - so you can send it again or change it first.</p>
+    </div>
+
     <p class="text-muted">
       Pick from your saved recipes, or just describe something - the plan will
       build the rest of the week around it. Leave both blank to let it decide
@@ -69,7 +102,7 @@
     </div>
 
     <div class="modal-dialog__footer modal-dialog__footer--sticky">
-      <span class="field-hint modal-dialog__step">Step 1 of 2</span>
+      <span class="field-hint modal-dialog__step">Step 1 of 3</span>
       <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
       <button type="button" class="btn btn-primary" id="must-include-next">Next {{icon "arrow-right"}}</button>
     </div>
@@ -105,8 +138,19 @@
     <template id="onhand-icon-close">{{icon "close"}}</template>
 
     <div class="modal-dialog__footer modal-dialog__footer--sticky">
-      <span class="field-hint modal-dialog__step">Step 2 of 2</span>
+      <span class="field-hint modal-dialog__step">Step 2 of 3</span>
       <button type="button" class="btn btn-ghost" id="must-include-back">{{icon "arrow-left"}} Back</button>
+      <button type="button" class="btn btn-primary" id="must-include-review">Review {{icon "arrow-right"}}</button>
+    </div>
+    </div>
+
+    <div id="must-include-step-3" tabindex="-1" hidden>
+    <p class="text-muted">Nothing has been sent yet. This is what "Generate plan" will do.</p>
+    <dl class="gen-review" id="must-include-summary"></dl>
+
+    <div class="modal-dialog__footer modal-dialog__footer--sticky">
+      <span class="field-hint modal-dialog__step">Step 3 of 3</span>
+      <button type="button" class="btn btn-ghost" id="must-include-back-2">{{icon "arrow-left"}} Back</button>
       <button type="submit" class="btn btn-primary">{{icon "chef-hat"}} Generate plan</button>
     </div>
     </div>
@@ -130,23 +174,143 @@
     var selectedRow = document.getElementById('must-include-selected');
     var selected = {}; // id -> title
 
-    // Two steps in one form: "what do you want to eat" then "what's already
-    // in the fridge". Both halves stay in the DOM (just hidden), so every
-    // field posts together on the one submit from step 2.
+    // Three steps in one form: "what do you want to eat", "what's already in
+    // the fridge", then a read-back of the whole request. Every step stays in
+    // the DOM (just hidden), so every field posts together on the one submit
+    // from step 3.
     var title = document.getElementById('must-include-modal-title');
-    var step1 = document.getElementById('must-include-step-1');
-    var step2 = document.getElementById('must-include-step-2');
-    var stepTitles = ['Anything you want to eat this week?', 'Anything already in the fridge or pantry?'];
+    var steps = [
+        document.getElementById('must-include-step-1'),
+        document.getElementById('must-include-step-2'),
+        document.getElementById('must-include-step-3'),
+    ];
+    var stepTitles = ['Anything you want to eat?', 'Anything already in the fridge or pantry?', 'Ready to generate?'];
     var step = 1;
+    var textEl = document.getElementById('must-include-text');
 
     function showStep(n) {
+        // Leaving the fridge step with an ingredient still typed in the add
+        // row: count it rather than silently dropping it.
+        if (step === 2 && n === 3 && (addName.value || '').trim()) addFromInputs();
         step = n;
-        step1.hidden = n !== 1;
-        step2.hidden = n !== 2;
+        steps.forEach(function (el, i) { el.hidden = i !== n - 1; });
         title.textContent = stepTitles[n - 1];
+        if (n === 3) renderSummary();
         // The step itself, not its first field: on a phone, focusing a text
         // field throws the keyboard up over the thing you were about to tap.
-        (n === 1 ? step1 : step2).focus();
+        steps[n - 1].focus();
+    }
+
+    // ── Which days get planned ───────────────────────────────────────────
+    // Asked of the server rather than worked out here: the week boundary,
+    // "today", and the last-day rule all live in resolveGenerateTarget, and
+    // a second copy of them in the browser would only ever drift.
+    var whenEl = document.getElementById('must-include-when');
+    var replacesEl = document.getElementById('must-include-replaces');
+    var targetField = document.getElementById('must-include-target-field');
+    var targetChoices = form.querySelectorAll('input[name="target-choice"]');
+    var targetNextEl = document.getElementById('must-include-target-next');
+    var targetCurrentEl = document.getElementById('must-include-target-current');
+    var preview = null;     // the last answer from /plan/generate/preview
+    var rollOffer = null;   // set once the default week rolled on to next week
+    var previewSeq = 0;
+
+    function whenText(d) {
+        var n = d.days.length;
+        if (n === 1) return 'Plans ' + d.from_label + ' only (1 day)';
+        if (d.partial) return 'Plans the rest of this week: ' + d.from_label + ' – ' + d.to_label + ' (' + n + ' days)';
+        return 'Plans ' + d.week_label + ' (' + n + ' days)';
+    }
+
+    function replacesText(d) {
+        if (!d.replaces) return '';
+        return 'That week already has a plan with ' + d.replaces +
+            '. It will be replaced - canceled, but kept in Plan History.';
+    }
+
+    function loadPreview() {
+        var seq = ++previewSeq;
+        fetch('/plan/generate/preview?week=' + encodeURIComponent(weekInput.value) +
+            '&scope=' + encodeURIComponent(scopeInput.value), { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (seq !== previewSeq) return; // a newer choice is already in flight
+                if (!d || !d.ok) throw new Error((d && d.error) || 'bad response');
+                preview = d;
+                whenEl.textContent = whenText(d);
+                replacesEl.textContent = replacesText(d);
+                replacesEl.hidden = !d.replaces;
+                scopeField.hidden = !d.mid_week;
+                if (d.rolled && !rollOffer) {
+                    rollOffer = d;
+                    targetNextEl.textContent = '(' + d.week_label + ', recommended)';
+                    targetCurrentEl.textContent = '(' + d.current_week_label + ')';
+                    targetField.hidden = false;
+                }
+                if (step === 3) renderSummary();
+            })
+            .catch(function () {
+                if (seq !== previewSeq) return;
+                preview = null;
+                whenEl.textContent = 'Couldn\'t work out the dates - the plan page will show them once it starts.';
+                replacesEl.hidden = true;
+            });
+    }
+
+    targetChoices.forEach(function (r) {
+        r.addEventListener('change', function () {
+            if (!r.checked || !rollOffer) return;
+            weekInput.value = r.value === 'current' ? rollOffer.current_week_start : '';
+            loadPreview();
+        });
+    });
+
+    // ── Step 3: read the request back ────────────────────────────────────
+    var summaryEl = document.getElementById('must-include-summary');
+
+    function summaryRow(label, lines, note) {
+        var dt = document.createElement('dt');
+        dt.textContent = label;
+        var dd = document.createElement('dd');
+        // textContent throughout: recipe titles and typed asks are user input.
+        lines.forEach(function (line) {
+            var div = document.createElement('div');
+            div.textContent = line;
+            dd.appendChild(div);
+        });
+        if (note) {
+            var small = document.createElement('div');
+            small.className = 'field-hint';
+            small.textContent = note;
+            dd.appendChild(small);
+        }
+        summaryEl.appendChild(dt);
+        summaryEl.appendChild(dd);
+    }
+
+    function renderSummary() {
+        summaryEl.innerHTML = '';
+        if (preview) {
+            summaryRow('When', [whenText(preview)], replacesText(preview));
+        } else {
+            summaryRow('When', [whenEl.textContent]);
+        }
+
+        var asks = Object.keys(selected).map(function (id) { return selected[id] + ' (saved recipe)'; });
+        textEl.value.split('\n').forEach(function (line) {
+            if (line.trim()) asks.push(line.trim());
+        });
+        summaryRow('Meals you asked for',
+            asks.length ? asks : ['Nothing specific - the plan decides every meal.']);
+
+        var have = Object.keys(rows).map(function (key) {
+            var li = rows[key];
+            return li.querySelector('input[type=hidden]').value + ' - ' +
+                li.querySelector('input[type=number]').value + ' ' + li.querySelector('select').value;
+        });
+        summaryRow('Already have',
+            have.length ? have : ['Nothing listed.'],
+            have.length ? 'Used up first, kept off the shopping list, and saved to your Pantry.' : '');
     }
 
     // Step 2: rows of ingredient + quantity + unit. The row inputs are the
@@ -359,27 +523,95 @@
 
     document.getElementById('must-include-next').addEventListener('click', function () { showStep(2); });
     document.getElementById('must-include-back').addEventListener('click', function () { showStep(1); });
+    document.getElementById('must-include-review').addEventListener('click', function () { showStep(3); });
+    document.getElementById('must-include-back-2').addEventListener('click', function () { showStep(2); });
 
-    // Enter in step 1's search box would otherwise submit the whole form and
-    // skip the fridge question. stopPropagation as well as preventDefault:
-    // modal.js's document-level data-confirm handler doesn't check
-    // defaultPrevented, and would pop the "replace your plan?" confirm here.
+    // Enter in an earlier step's field would otherwise submit the whole form
+    // and skip the read-back. Only step 3 submits.
     form.addEventListener('submit', function (e) {
-        if (step === 1) {
+        if (step < 3) {
             e.preventDefault();
             e.stopPropagation();
-            showStep(2);
-            return;
+            showStep(step + 1);
         }
-        // Generate was clicked with an ingredient still typed in the add row:
-        // count it rather than silently dropping it.
-        if ((addName.value || '').trim()) addFromInputs();
     });
 
     scopeChoices.forEach(function (r) {
         r.addEventListener('change', function () {
+            if (!r.checked) return;
             scopeInput.value = r.value;
+            loadPreview();
         });
+    });
+
+    // ── Reuse an earlier request ─────────────────────────────────────────
+    var reuseField = document.getElementById('must-include-reuse-field');
+    var reuseSel = document.getElementById('must-include-reuse');
+    var reusable = {}; // plan id -> request, as GET /plan/requests returned it
+
+    function clearRequest() {
+        selected = {};
+        renderSelected();
+        q.value = '';
+        textEl.value = '';
+        Object.keys(rows).forEach(removeRow);
+    }
+
+    function applyRequest(req) {
+        clearRequest();
+        var lines = req.text ? [req.text] : [];
+        (req.recipes || []).forEach(function (rc) {
+            // A recipe deleted since can't be picked, so its title is carried
+            // over as a typed ask rather than dropped.
+            if (rc.missing) lines.push(rc.title);
+            else selected[String(rc.id)] = rc.title;
+        });
+        textEl.value = lines.join('\n');
+        renderSelected();
+        renderList(lastRows);
+        (req.on_hand || []).forEach(function (it) { addRow(it.name, it.quantity, it.unit); });
+        (req.on_hand_other || []).forEach(function (name) { addRow(name, 1, 'each'); });
+    }
+
+    function addReuseOption(req) {
+        if (reusable[req.plan_id]) return;
+        reusable[req.plan_id] = req;
+        reuseSel.appendChild(new Option(req.week_label + ': ' + req.summary, String(req.plan_id)));
+        reuseField.hidden = false;
+    }
+
+    function loadReusable(preselect) {
+        reusable = {};
+        reuseSel.length = 1; // keep "Start fresh"
+        reuseSel.value = '';
+        reuseField.hidden = true;
+        fetch('/plan/requests', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                ((d && d.requests) || []).forEach(addReuseOption);
+                if (!preselect) return;
+                if (reusable[preselect]) return reusable[preselect];
+                // Older than the list goes back: fetch that one plan's request.
+                return fetch('/plan/requests?plan_id=' + encodeURIComponent(preselect),
+                    { headers: { 'Accept': 'application/json' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (one) {
+                        var req = one && one.requests && one.requests[0];
+                        if (req) addReuseOption(req);
+                        return req;
+                    });
+            })
+            .then(function (req) {
+                if (!req) return;
+                reuseSel.value = String(req.plan_id);
+                applyRequest(req);
+            })
+            .catch(function () {});
+    }
+
+    reuseSel.addEventListener('change', function () {
+        var req = reusable[reuseSel.value];
+        if (req) applyRequest(req); else clearRequest();
     });
 
     function renderSelected() {
@@ -484,39 +716,28 @@
         // otherwise the hidden field stays "full", the only sensible value.
         var midWeek = trigger.getAttribute('data-mid-week') === 'true';
         scopeField.hidden = !midWeek;
-        if (midWeek) {
-            scopeChoices.forEach(function (r) { r.checked = r.value === 'remaining'; });
-            scopeInput.value = 'remaining';
-        } else {
-            scopeInput.value = 'full';
-        }
-        // The trigger's own confirm text/title live under data-generate-confirm*,
-        // not data-confirm: modal.js treats any data-confirm element outside a
-        // form as something to intercept and confirm on click, which would pop
-        // the "this replaces your plan" dialog before the picker even opens.
-        // It belongs on this form instead, so it fires at submit time - after
-        // "Generate plan" is clicked, not before the picker shows.
-        var confirmMsg = trigger.getAttribute('data-generate-confirm') || '';
-        if (confirmMsg) {
-            form.setAttribute('data-confirm', confirmMsg);
-            form.setAttribute('data-confirm-title', trigger.getAttribute('data-generate-confirm-title') || 'Generate plan');
-        } else {
-            form.removeAttribute('data-confirm');
-            form.removeAttribute('data-confirm-title');
-        }
-        selected = {};
-        renderSelected();
-        q.value = '';
-        document.getElementById('must-include-text').value = '';
-        Object.keys(rows).forEach(removeRow);
+        // "remaining" is always what's sent: the server ignores it for any
+        // week that isn't already underway, and the preview below corrects
+        // the choice's visibility if the trigger's own flag was out of date.
+        scopeChoices.forEach(function (r) { r.checked = r.value === 'remaining'; });
+        scopeInput.value = 'remaining';
+        rollOffer = null;
+        preview = null;
+        targetField.hidden = true;
+        targetChoices.forEach(function (r) { r.checked = r.value === 'next'; });
+        whenEl.textContent = 'Working out the dates…';
+        replacesEl.hidden = true;
+
+        clearRequest();
         buildNameChoices();
         clearAddRow();
         step = 1;
-        step1.hidden = false;
-        step2.hidden = true;
+        steps.forEach(function (el, i) { el.hidden = i !== 0; });
         title.textContent = stepTitles[0];
+        loadPreview();
         loadRecipes('');
         loadPantry();
+        loadReusable(trigger.getAttribute('data-reuse-plan') || '');
     });
 })();
 </script>

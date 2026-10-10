@@ -186,19 +186,19 @@ func (s *Server) buildBackgroundProcesses(ctx context.Context, householdID int64
 	switch {
 	case s.cfg.AutoPlanHour < 0:
 		procs = append(procs, backgroundProcess{
-			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the Saturday night before it starts.",
+			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the night before it starts.",
 			Status: "off", StatusLabel: "Not configured", Detail: "AUTO_PLAN_HOUR=-1",
 		})
 	case s.llmGen() == nil:
 		procs = append(procs, backgroundProcess{
-			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the Saturday night before it starts.",
+			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the night before it starts.",
 			Status: "warn", StatusLabel: "Waiting on AI provider", Detail: "AUTO_PLAN_HOUR is set but no LLM is configured",
 		})
 	default:
 		procs = append(procs, backgroundProcess{
-			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the Saturday night before it starts.",
+			Name: "Auto-plan generation", Description: "Generates next week's plan automatically the night before it starts.",
 			Status: "ok", StatusLabel: "Running",
-			Detail: fmt.Sprintf("Saturdays at %02d:00 - %s", s.cfg.AutoPlanHour, lastRunDetail(s.lastAutoPlanCheck())),
+			Detail: fmt.Sprintf("%s at %02d:00 - %s", autoPlanDay(s.cfg.WeekStartDay), s.cfg.AutoPlanHour, lastRunDetail(s.lastAutoPlanCheck())),
 		})
 	}
 
@@ -300,4 +300,13 @@ func formatUptime(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%ds", seconds)
 	}
+}
+
+// autoPlanDay names the day the auto-plan scheduler fires on: the last day of
+// the week under WEEK_START_DAY, the night before the next one starts.
+func autoPlanDay(weekStartDay string) string {
+	if weekStartDay == "monday" {
+		return "Sundays"
+	}
+	return "Saturdays"
 }

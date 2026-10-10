@@ -50,7 +50,7 @@ func (s *Server) handleDayStatusImpact(w http.ResponseWriter, r *http.Request) {
 	date := r.PathValue("date")
 	ctx := r.Context()
 
-	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
+	p := s.planForDate(ctx, hh, date)
 	if p == nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "no plan"})
 		return
@@ -113,7 +113,7 @@ func (s *Server) handleDayStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	p, _ := s.store.GetLatestPlan(ctx, hh.ID)
+	p := s.planForDate(ctx, hh, date)
 	if p == nil {
 		http.Redirect(w, r, "/plan", http.StatusSeeOther)
 		return
@@ -129,7 +129,7 @@ func (s *Server) handleDayStatus(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.SetPlanDayStatus(ctx, p.ID, date, status); err != nil {
 		log.Printf("day status %s -> %s: %v", date, status, err)
 		s.setNotify(w, NotifyDanger, "Couldn't save that. Try again.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, planURL(p), http.StatusSeeOther)
 		return
 	}
 
@@ -173,9 +173,9 @@ func (s *Server) handleDayStatus(w http.ResponseWriter, r *http.Request) {
 
 	s.setNotify(w, NotifySuccess, dayStatusMessage(date, status, resolved, resolution))
 
-	dest := "/plan"
+	dest := planURL(p)
 	if fillDate != "" {
-		dest += "?fill=" + url.QueryEscape(fillDate+"|"+fillSlot)
+		dest += "&fill=" + url.QueryEscape(fillDate+"|"+fillSlot)
 	}
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }

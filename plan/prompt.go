@@ -10,7 +10,7 @@ import (
 
 const systemPrompt = `You are a household meal planner. Generate a weekly meal plan as structured JSON.
 
-The plan covers breakfast, lunch, and dinner for 7 days (sunday through saturday).
+The plan covers breakfast, lunch, and dinner for the 7 days of the week named in the request.
 Return ONLY valid JSON matching this schema - no prose, no markdown fences, no explanation:
 
 {
@@ -107,8 +107,8 @@ func storeNames(stores []*db.GroceryStore) (names []string, hasWarehouse bool) {
 // onHand is food the household says is already in the fridge or pantry this
 // week - the plan should be built around using it up; nil/empty for none.
 // days restricts which day(s) the LLM should plan for - lowercase day names
-// ("sunday", ...); nil/empty means the full week, matching systemPrompt's
-// "7 days (sunday through saturday)" as written. A mid-week regenerate that
+// ("sunday", ...); nil/empty means the full week, all 7 days from weekStart
+// on whichever weekday that falls. A mid-week regenerate that
 // only wants the remaining days passes a subset here instead of asking (and
 // paying) for meals on days that have already happened.
 func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.GroceryStore, weekStart, weekEnd time.Time, requested, onHand, days []string) (system, user string) {
@@ -174,7 +174,7 @@ func BuildPrompt(hh *db.Household, profile *PreferenceProfile, stores []*db.Groc
 			strings.Join(profile.Dislikes, ", "))
 	}
 	if profile.LeftoverTolerance {
-		firstDay := "The week's first day (Sunday)"
+		firstDay := "The week's first day (" + weekStart.Weekday().String() + ")"
 		if len(days) > 0 && len(days) < 7 {
 			firstDay = "The first day of this range (" + strings.Title(days[0]) + ")" //nolint:staticcheck
 		}

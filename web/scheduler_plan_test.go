@@ -150,3 +150,66 @@ func TestMaybeAutoGeneratePlan_TriggersAndIsIdempotent(t *testing.T) {
 		t.Fatalf("got %d plans, want exactly 1 (no duplicate auto-generation)", len(all))
 	}
 }
+
+// With WEEK_START_DAY=monday the night before the week starts is Sunday, and
+// the plan it makes is for the Monday-to-Sunday week that follows - not a
+// Saturday trigger for a Sunday week.
+func TestMaybeAutoGeneratePlan_MondayWeek(t *testing.T) {
+	s, hh := newSchedulerTestServer(t, 20)
+	s.cfg.WeekStartDay = "monday"
+	ctx := context.Background()
+	saturday := time.Date(2026, 10, 10, 20, 0, 0, 0, time.UTC)
+
+	s.maybeAutoGeneratePlanAt(ctx, saturday)
+	if s.jobs.Get(hh.ID) != nil {
+		t.Fatal("a Monday-start week must not auto-plan on Saturday")
+	}
+
+	s.maybeAutoGeneratePlanAt(ctx, saturday.AddDate(0, 0, 1))
+	job := s.jobs.Get(hh.ID)
+	if job == nil {
+		t.Fatal("expected a job to start on Sunday, the night before a Monday week")
+	}
+	<-job.Done()
+
+	p, err := s.store.GetPlanByID(ctx, job.PlanID)
+	if err != nil || p == nil {
+		t.Fatalf("get generated plan: %v", err)
+	}
+	if p.WeekStart != "2026-10-12" || p.WeekEnd != "2026-10-18" {
+		t.Fatalf("plan week = %s..%s, want 2026-10-12..2026-10-18", p.WeekStart, p.WeekEnd)
+	}
+	meals, _ := s.store.ListMealsByPlan(ctx, p.ID)
+	for _, m := range meals {
+		if m.Day < p.WeekStart || m.Day > p.WeekEnd {
+			t.Errorf("meal %q is on %s, outside the plan's week", m.Title, m.Day)
+		}
+	}
+	if len(meals) != 21 {
+		t.Errorf("got %d meals, want 21", len(meals))
+	}
+}
+
+// The trigger day is the household's own calendar day, not UTC's: late
+// Saturday evening in New York is already Sunday in UTC.
+func TestMaybeAutoGeneratePlan_HouseholdLocalDay(t *testing.T) {
+	s, _ := newSchedulerTestServer(t, 21)
+	ctx := context.Background()
+	ny, err := s.store.CreateHousehold(ctx, db.CreateHouseholdParams{
+		Name: "NY", HouseholdSize: 2, WeeklyBudgetCents: 10000, Timezone: "America/New_York",
+	})
+	if err != nil {
+		t.Fatalf("household: %v", err)
+	}
+	// Sat Oct 10 2026, 21:30 in New York = Sun Oct 11, 01:30 UTC.
+	s.maybeAutoGeneratePlanAt(ctx, time.Date(2026, 10, 11, 1, 30, 0, 0, time.UTC))
+	job := s.jobs.Get(ny.ID)
+	if job == nil {
+		t.Fatal("expected a job on the household's Saturday evening")
+	}
+	<-job.Done()
+	p, _ := s.store.GetPlanByID(ctx, job.PlanID)
+	if p == nil || p.WeekStart != "2026-10-11" {
+		t.Fatalf("plan = %+v, want the week starting 2026-10-11", p)
+	}
+}

@@ -55,6 +55,67 @@ func (s *store) GetPlanOnHand(ctx context.Context, planID int64) ([]string, erro
 	return names, nil
 }
 
+// SetPlanRequest records the generate dialog's submission on the plan it
+// produced (00041), so it can be shown later and sent again for another week.
+func (s *store) SetPlanRequest(ctx context.Context, planID int64, req PlanRequest) error {
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE plans SET gen_request = ? WHERE id = ?`, string(raw), planID)
+	return err
+}
+
+// GetPlanRequest returns SetPlanRequest's submission, or nil (not an error)
+// for a plan that has none - built by hand, by the scheduler, or before 00041.
+func (s *store) GetPlanRequest(ctx context.Context, planID int64) (*PlanRequest, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT gen_request FROM plans WHERE id = ?`, planID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && raw == "") {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var req PlanRequest
+	if err := json.Unmarshal([]byte(raw), &req); err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
+// ListPlanRequests returns the household's most recent saved requests, newest
+// first - the generate dialog's "reuse an earlier request" list. Canceled
+// plans are included: a request is worth reusing whether or not the plan it
+// made was later regenerated.
+func (s *store) ListPlanRequests(ctx context.Context, householdID int64, limit int) ([]*StoredPlanRequest, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, week_start, week_end, created_at, gen_request
+		FROM plans
+		WHERE household_id = ? AND gen_request != ''
+		ORDER BY created_at DESC, id DESC
+		LIMIT ?`, householdID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*StoredPlanRequest
+	for rows.Next() {
+		var r StoredPlanRequest
+		var createdAt, raw string
+		if err := rows.Scan(&r.PlanID, &r.WeekStart, &r.WeekEnd, &createdAt, &raw); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(raw), &r.Request); err != nil {
+			continue // one unreadable row must not hide the rest
+		}
+		r.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
+
 func (s *store) UpdatePlanStatus(ctx context.Context, planID int64, status string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE plans SET status = ? WHERE id = ?`, status, planID)

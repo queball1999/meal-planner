@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"goeat/db"
+	"goeat/plan"
 )
 
 // lastAutoPlanCheck reports when this server's auto-plan scheduler last
@@ -19,12 +20,11 @@ func (s *Server) lastAutoPlanCheck() time.Time {
 
 // RunAutoPlanScheduler ticks every 15 minutes and, once configured
 // (cfg.AutoPlanHour >= 0), triggers an automatic plan generation the night
-// before the week starts - Saturday at the household's local AutoPlanHour.
-// plan.Generate always targets the next Sunday regardless of the
-// WEEK_START_DAY setting (see plan/generate.go nextSunday), so the trigger
-// day is fixed at Saturday to match. The existing "Regenerate"/"Plan my week"
-// button already covers on-demand generation; this covers doing it
-// automatically. Safe to run with no household configured yet or no LLM set -
+// before the week starts: the last day of the week under WEEK_START_DAY
+// (Saturday for a Sunday week, Sunday for a Monday week) at the household's
+// local AutoPlanHour, for the week starting the next morning. The existing
+// "Regenerate"/"Plan my week" button already covers on-demand generation;
+// this covers doing it automatically. Safe to run with no household configured yet or no LLM set -
 // both are checked every tick and simply skip.
 func (s *Server) RunAutoPlanScheduler(ctx context.Context) {
 	t := time.NewTicker(15 * time.Minute)
@@ -71,8 +71,8 @@ func (s *Server) maybeAutoGeneratePlanAt(ctx context.Context, wallClock time.Tim
 }
 
 // maybeAutoGenerateFor is one household's turn of the auto-plan tick. Each
-// household is judged in its own timezone, so "Saturday at AutoPlanHour"
-// lands at a different instant for each.
+// household is judged in its own timezone, so "the night before the week
+// starts" lands at a different instant for each.
 func (s *Server) maybeAutoGenerateFor(ctx context.Context, hh *db.Household, wallClock time.Time) {
 	loc := time.UTC
 	if hh.Timezone != "" {
@@ -81,12 +81,18 @@ func (s *Server) maybeAutoGenerateFor(ctx context.Context, hh *db.Household, wal
 		}
 	}
 	now := wallClock.In(loc)
-	if now.Weekday() != time.Saturday || now.Hour() != s.cfg.AutoPlanHour {
+	if now.Hour() != s.cfg.AutoPlanHour {
 		return
 	}
-
-	// The week plan.Generate will target always starts tomorrow (Sunday).
-	targetWeekStart := now.AddDate(0, 0, 1).Format("2006-01-02")
+	// The household's calendar date, as the midnight-UTC day plan.WeekBounds
+	// works in - not the instant, which near midnight is a different date in
+	// UTC than it is at the household's kitchen table.
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	if _, weekEnd := plan.WeekBounds(today, s.cfg.WeekStartDay); !today.Equal(weekEnd) {
+		return // not the night before a week starts
+	}
+	weekStart := today.AddDate(0, 0, 1)
+	targetWeekStart := weekStart.Format("2006-01-02")
 	existing, err := s.store.ListPlansInRange(ctx, hh.ID, targetWeekStart, targetWeekStart)
 	if err != nil {
 		log.Printf("auto-plan: check existing plan for %s: %v", targetWeekStart, err)
@@ -100,5 +106,5 @@ func (s *Server) maybeAutoGenerateFor(ctx context.Context, hh *db.Household, wal
 	}
 
 	log.Printf("auto-plan: starting scheduled generation for household %d, week of %s", hh.ID, targetWeekStart)
-	s.startPlanGeneration(hh.ID)
+	s.startPlanGenerationForWeek(hh.ID, weekStart, weekStart, nil, nil, nil)
 }

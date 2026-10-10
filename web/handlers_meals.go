@@ -144,6 +144,14 @@ func (s *Server) handleMealLock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	locked := r.FormValue("locked") == "1"
-	_ = s.store.UpdateMealLocked(r.Context(), mealID, locked)
-	http.Redirect(w, r, "/plan", http.StatusSeeOther)
+	ctx := r.Context()
+	_ = s.store.UpdateMealLocked(ctx, mealID, locked)
+	// Back to the board the meal is on, which need not be the newest plan's.
+	dest := "/plan"
+	if meal, _ := s.store.GetMealByID(ctx, mealID); meal != nil {
+		if p, _ := s.store.GetPlanByID(ctx, meal.PlanID); p != nil {
+			dest = planURL(p)
+		}
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }

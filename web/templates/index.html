@@ -40,15 +40,16 @@
             <div class="plan-status__actions">
                 <a href="/plan{{$d.PlanWeekParam}}" class="btn btn-primary btn-sm">{{icon "calendar-week"}} View plan</a>
                 {{if and $d.HasLLM $d.IsCurrentWeek}}
+                {{/* The plan on this card, not "the current week": once next
+                     week is planned ahead the card shows that plan, and its
+                     Regenerate must not quietly replan this week instead. */}}
                 <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal" data-requires="edit"
-                        data-week="" data-mid-week="{{$d.TodayMidWeek}}" data-generate-confirm-title="Regenerate plan"
-                        data-generate-confirm="This replaces your current plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference.">
+                        data-week="{{$d.PlanWeekStart}}" data-mid-week="{{and $d.TodayMidWeek (not $d.PlanWeekAhead)}}">
                     {{icon "autorenew"}} Regenerate
                 </button>
                 {{else if and $d.HasLLM (not $d.IsPastWeek)}}
                 <button type="button" class="btn btn-secondary btn-sm" data-modal-open="must-include-modal" data-requires="edit"
-                        data-week="{{$d.WeekParam}}" data-generate-confirm-title="Regenerate plan"
-                        data-generate-confirm="This replaces the plan for {{$d.WeekLabel}} with a new one. The current plan will be canceled but kept in Plan History for reference.">
+                        data-week="{{$d.WeekParam}}">
                     {{icon "autorenew"}} Regenerate this week
                 </button>
                 {{end}}
@@ -62,14 +63,22 @@
         <h2 class="skeleton-card__title">No plan yet this week</h2>
         <p class="skeleton-card__body">
             Set your <a href="/preferences">dietary preferences</a> and
-            <a href="/stores">grocery stores</a>, then generate your first plan.
+            <a href="/stores">grocery stores</a>, then generate a plan - or
+            build one yourself from your saved recipes.
         </p>
-        {{if $d.HasLLM}}
-        <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-requires="edit" data-week="" data-mid-week="{{$d.TodayMidWeek}}">
-            {{icon "chef-hat"}} Plan my week
-        </button>
-        {{else}}
-        <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
+        <div class="skeleton-card__actions">
+            {{if $d.HasLLM}}
+            <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-requires="edit" data-week="" data-mid-week="{{$d.TodayMidWeek}}">
+                {{icon "chef-hat"}} Plan my week
+            </button>
+            {{end}}
+            <form method="POST" action="/plan/manual">
+                {{$.CSRFField}}<input type="hidden" name="week" value="">
+                <button type="submit" class="btn {{if $d.HasLLM}}btn-secondary{{else}}btn-primary{{end}}">{{icon "pencil"}} Plan it myself</button>
+            </form>
+        </div>
+        {{if not $d.HasLLM}}
+        <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to have the AI plan it for you.</p>
         {{end}}
         {{else if $d.IsPastWeek}}
         <h2 class="skeleton-card__title">No plan for {{$d.WeekNavLabel}}</h2>
@@ -78,13 +87,20 @@
         </p>
         {{else}}
         <h2 class="skeleton-card__title">No plan yet for {{$d.WeekNavLabel}}</h2>
-        <p class="skeleton-card__body">Generate one now, or wait for it to be planned automatically.</p>
-        {{if $d.HasLLM}}
-        <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-requires="edit" data-week="{{$d.WeekParam}}">
-            {{icon "chef-hat"}} Plan this week
-        </button>
-        {{else}}
-        <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to enable AI generation.</p>
+        <p class="skeleton-card__body">Generate one now, build it yourself, or wait for it to be planned automatically.</p>
+        <div class="skeleton-card__actions">
+            {{if $d.HasLLM}}
+            <button type="button" class="btn btn-primary" data-modal-open="must-include-modal" data-requires="edit" data-week="{{$d.WeekParam}}">
+                {{icon "chef-hat"}} Plan this week
+            </button>
+            {{end}}
+            <form method="POST" action="/plan/manual">
+                {{$.CSRFField}}<input type="hidden" name="week" value="{{$d.WeekParam}}">
+                <button type="submit" class="btn {{if $d.HasLLM}}btn-secondary{{else}}btn-primary{{end}}">{{icon "pencil"}} Plan it myself</button>
+            </form>
+        </div>
+        {{if not $d.HasLLM}}
+        <p class="form-section__desc">Configure an LLM provider in <code>.env</code> to have the AI plan it for you.</p>
         {{end}}
         {{end}}
     </div>
@@ -210,9 +226,7 @@
                     <a href="/plan?week={{.WeekStart}}" class="btn-icon" title="View plan" aria-label="View plan">{{icon "calendar"}}</a>
                     {{else if and .CanRegenerate $d.HasLLM}}
                     <button type="button" class="btn-icon" data-modal-open="must-include-modal" data-requires="edit"
-                            data-week="{{.WeekStart}}" data-mid-week="{{.TodayMidWeek}}"
-                            data-generate-confirm-title="Retry plan"
-                            data-generate-confirm="Retry generating the plan for {{fmtWeekRange .WeekStart .WeekEnd}}? This replaces the failed attempt."
+                            data-week="{{.WeekStart}}" data-mid-week="{{.TodayMidWeek}}" data-reuse-plan="{{.ID}}"
                             title="Retry generating this plan" aria-label="Retry generating this plan">{{icon "autorenew"}}</button>
                     {{else}}
                     <span class="btn-icon is-disabled" title="This plan didn't finish generating">{{icon "alert"}}</span>

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"goeat/db"
@@ -36,13 +37,13 @@ func (s *Server) handleMealSwap(w http.ResponseWriter, r *http.Request) {
 	recipeID, err := strconv.ParseInt(r.FormValue("recipe_id"), 10, 64)
 	if err != nil {
 		s.setNotify(w, NotifyDanger, "Pick a recipe first.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, planURL(p), http.StatusSeeOther)
 		return
 	}
 	resolution := r.FormValue("resolution")
 	if !plan.ValidSwapResolution(resolution) {
 		s.setNotify(w, NotifyDanger, "That isn't a leftover option.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, planURL(p), http.StatusSeeOther)
 		return
 	}
 
@@ -62,7 +63,7 @@ func (s *Server) handleMealSwap(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("meal swap %d: %v", meal.ID, err)
 		s.setNotify(w, NotifyDanger, "Couldn't swap that meal.")
-		http.Redirect(w, r, "/plan", http.StatusSeeOther)
+		http.Redirect(w, r, planURL(p), http.StatusSeeOther)
 		return
 	}
 
@@ -76,9 +77,9 @@ func (s *Server) handleMealSwap(w http.ResponseWriter, r *http.Request) {
 	s.repriceInBackground(p.ID, hh, false)
 	s.setNotify(w, NotifySuccess, mealSwapMessage(res, dayLabel(meal.Day)+" "+meal.Slot, resolution))
 
-	dest := "/plan"
+	dest := planURL(p)
 	if res.FillDate != "" {
-		dest += fmt.Sprintf("?fill=%s|%s", res.FillDate, res.FillSlot)
+		dest += "&fill=" + url.QueryEscape(res.FillDate+"|"+res.FillSlot)
 	}
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
