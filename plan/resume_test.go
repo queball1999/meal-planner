@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"goeat/llm"
@@ -26,7 +27,11 @@ func (g *cutOffGenerator) Generate(ctx context.Context, req llm.GenerateRequest)
 	g.maxTokens = append(g.maxTokens, req.MaxTokens)
 	i := g.calls
 	g.calls++
-	return llm.GenerateResponse{Content: g.replies[i], Truncated: g.truncated[i]}, nil
+	resp := llm.GenerateResponse{Content: g.replies[i], Truncated: g.truncated[i]}
+	if resp.Truncated {
+		resp.OutputTokens = req.MaxTokens
+	}
+	return resp, nil
 }
 
 // A reply cut off at the token limit must come back as a resumable
@@ -49,6 +54,12 @@ func TestGenerate_TruncatedReplyResumesWithSamePrompt(t *testing.T) {
 	}
 	if te.PlanID != planID || te.MaxTokens != llm.DefaultPlanMaxTokens {
 		t.Fatalf("TruncatedError = %+v, want plan %d at %d tokens", te, planID, llm.DefaultPlanMaxTokens)
+	}
+	// The message names what came back and what to raise the limit to.
+	wantMsg := fmt.Sprintf("parse llm response: response was cut off before completing - %d output tokens came back against a limit of %d; try again with the limit raised to at least %d",
+		llm.DefaultPlanMaxTokens, llm.DefaultPlanMaxTokens, 2*llm.DefaultPlanMaxTokens)
+	if te.OutputTokens != llm.DefaultPlanMaxTokens || te.Error() != wantMsg {
+		t.Errorf("message = %q, want %q", te.Error(), wantMsg)
 	}
 	if p, _ := store.GetLatestPlan(ctx, hhID); p == nil || p.Status != "error" {
 		t.Fatalf("plan status after cut-off = %v, want error", p)

@@ -14,6 +14,12 @@ var perPageChoices = []int{10, 25, 50, 100}
 
 const defaultPerPage = 25
 
+// The dashboard's plan history is one widget among several, so it starts at
+// five rows and offers smaller steps than a full list page.
+var dashPlansPerPageChoices = []int{5, 10, 25, 50}
+
+const dashPlansPerPage = 5
+
 // Pagination is the view model behind the shared "pagination" partial. It is
 // built by paginate, which also slices the page's rows, so a handler never
 // does the arithmetic itself.
@@ -39,6 +45,10 @@ type Pagination struct {
 	// Param is the name of the page parameter, so a page with more than one
 	// paginated table can scope them (see PaginateNamed).
 	Param string
+	// Anchor, when set, is the id of the element the paged table lives in:
+	// page links and the rows-per-page form land back on it instead of the
+	// top of a page the table sits far down (the dashboard's plan history).
+	Anchor string
 }
 
 // HasPages reports whether the bar is worth rendering at all - a single page
@@ -55,11 +65,19 @@ func paginate[T any](r *http.Request, items []T) ([]T, Pagination) {
 // that renders several independently paged tables (the Prices page has one
 // per store). Every table still shares one ?per_page=.
 func paginateNamed[T any](r *http.Request, items []T, param string) ([]T, Pagination) {
+	return paginateSized(r, items, param, defaultPerPage, perPageChoices)
+}
+
+// paginateSized is paginateNamed with its own default page size and size
+// choices, for a table that should start smaller than a full list page (the
+// dashboard's plan history is a widget among others, not the whole page).
+// choices must be ascending and include def.
+func paginateSized[T any](r *http.Request, items []T, param string, def int, choices []int) ([]T, Pagination) {
 	q := r.URL.Query()
 
-	perPage := defaultPerPage
+	perPage := def
 	if n, err := strconv.Atoi(q.Get("per_page")); err == nil {
-		perPage = clampPerPage(n)
+		perPage = clampPerPage(n, choices)
 	}
 
 	total := len(items)
@@ -93,7 +111,7 @@ func paginateNamed[T any](r *http.Request, items []T, param string) ([]T, Pagina
 		From:        start + 1,
 		To:          end,
 		Pages:       pageWindow(page, totalPages),
-		PerPageOpts: perPageChoices,
+		PerPageOpts: choices,
 		Query:       carryQuery(q, param),
 		Carried:     carriedPairs(q, param),
 		Param:       param,
@@ -111,16 +129,16 @@ func paginateNamed[T any](r *http.Request, items []T, param string) ([]T, Pagina
 }
 
 // clampPerPage snaps a requested size to the nearest allowed choice.
-func clampPerPage(n int) int {
-	for _, c := range perPageChoices {
+func clampPerPage(n int, choices []int) int {
+	for _, c := range choices {
 		if n == c {
 			return n
 		}
 	}
-	if n < perPageChoices[0] {
-		return perPageChoices[0]
+	if n < choices[0] {
+		return choices[0]
 	}
-	return perPageChoices[len(perPageChoices)-1]
+	return choices[len(choices)-1]
 }
 
 // pageWindow returns at most 7 page numbers centred on the current page, so
@@ -151,7 +169,18 @@ func pageWindow(page, totalPages int) []int {
 // query fragment inside an href, which would turn the carried "&" separators
 // into "%26" and drop every filter.
 func (p Pagination) Link(page int) template.URL {
-	return template.URL("?" + p.Query + p.Param + "=" + strconv.Itoa(page))
+	return template.URL("?" + p.Query + p.Param + "=" + strconv.Itoa(page) + p.fragment())
+}
+
+// FormAction is the rows-per-page form's action: empty (submit to the current
+// page) unless the table has an Anchor to land back on.
+func (p Pagination) FormAction() template.URL { return template.URL(p.fragment()) }
+
+func (p Pagination) fragment() string {
+	if p.Anchor == "" {
+		return ""
+	}
+	return "#" + url.PathEscape(p.Anchor)
 }
 
 // CarriedPairs exposes Carried to the pagination partial, which renders one

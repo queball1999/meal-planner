@@ -188,7 +188,7 @@
 </div>
 
 {{/* ── Plan history table ───────────────────────────────────────────────── */}}
-<div class="card card--flush plan-history">
+<div class="card card--flush plan-history" id="plan-history">
     <div class="plan-history__header">
         <h2 class="plan-history__title">{{icon "history"}} Plan history</h2>
         <a href="/plan/history" class="btn btn-ghost btn-sm">View all</a>
@@ -242,6 +242,7 @@
         </tbody>
     </table>
     </div>
+    {{template "pagination" $d.PlansPage}}
     {{else}}
     <p class="form-section__desc" style="padding:1rem">
         No past plans yet - generate your first plan above.

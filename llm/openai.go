@@ -157,13 +157,20 @@ func (c *openAIClient) Generate(ctx context.Context, req GenerateRequest) (Gener
 	// about the actual cause. Name it instead.
 	if strings.TrimSpace(content) == "" {
 		reasoned := strings.TrimSpace(choice.Message.ReasoningContent)
+		// No content, but the usage is real: callers report how much came back.
+		spent := GenerateResponse{
+			InputTokens:  cr.Usage.PromptTokens,
+			OutputTokens: cr.Usage.CompletionTokens,
+			ProviderName: c.provider,
+			ModelName:    cr.Model,
+		}
 		switch {
 		case choice.FinishReason == "length" && reasoned != "":
-			return GenerateResponse{}, fmt.Errorf(
+			return spent, fmt.Errorf(
 				"openai: model spent all %d output tokens reasoning and returned no answer - raise max_tokens or disable thinking for this call: %w",
 				cr.Usage.CompletionTokens, ErrTruncated)
 		case choice.FinishReason == "length":
-			return GenerateResponse{}, fmt.Errorf(
+			return spent, fmt.Errorf(
 				"openai: response was cut off at the %d-token limit before any content was produced: %w",
 				cr.Usage.CompletionTokens, ErrTruncated)
 		case reasoned != "":

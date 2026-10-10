@@ -41,7 +41,7 @@
     </ul>
     {{end}}
 
-    <form class="pager__size" method="GET" aria-label="Rows per page">
+    <form class="pager__size" method="GET"{{if .Anchor}} action="{{.FormAction}}"{{end}} aria-label="Rows per page">
         {{/* Re-submit the current filters; the page resets to 1 on a size change. */}}
         {{range $k, $v := .CarriedPairs}}
         <input type="hidden" name="{{$k}}" value="{{$v}}">

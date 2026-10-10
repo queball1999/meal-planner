@@ -135,3 +135,33 @@ func seq(n int) []int {
 	}
 	return out
 }
+
+// The dashboard's plan history starts at five rows, pages on its own
+// parameter, and every link lands back on the widget.
+func TestPaginateSizedDashboardPlans(t *testing.T) {
+	items := make([]int, 12)
+	for i := range items {
+		items[i] = i + 1
+	}
+
+	r := httptest.NewRequest("GET", "/?cal=month", nil)
+	got, p := paginateSized(r, items, "plans_page", dashPlansPerPage, dashPlansPerPageChoices)
+	if len(got) != 5 || p.PerPage != 5 || p.TotalPages != 3 {
+		t.Fatalf("default: %d rows, per page %d, %d pages; want 5, 5, 3", len(got), p.PerPage, p.TotalPages)
+	}
+	p.Anchor = "plan-history"
+	if link := string(p.Link(2)); link != "?cal=month&plans_page=2#plan-history" {
+		t.Errorf("link = %q", link)
+	}
+
+	r = httptest.NewRequest("GET", "/?plans_page=2&per_page=5&page=9", nil)
+	got, p = paginateSized(r, items, "plans_page", dashPlansPerPage, dashPlansPerPageChoices)
+	if len(got) != 5 || got[0] != 6 || p.Page != 2 {
+		t.Errorf("page 2: first=%v page=%d, want 6 and 2", got, p.Page)
+	}
+
+	r = httptest.NewRequest("GET", "/?per_page=3", nil)
+	if _, p = paginateSized(r, items, "plans_page", dashPlansPerPage, dashPlansPerPageChoices); p.PerPage != 5 {
+		t.Errorf("per_page=3 clamped to %d, want 5", p.PerPage)
+	}
+}

@@ -2859,6 +2859,9 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
 .plan-history__scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 .plan-history .data-table { width: 100%; }
+/* The card is flush, so the pager supplies its own gutters to line up with
+ * the table's first and last columns. */
+.plan-history .pager { margin-top: 0; padding: var(--sp-3) var(--sp-6) var(--sp-4); }
 .plan-history .data-table th:first-child,
 .plan-history .data-table td:first-child { padding-left: var(--sp-6); }
 .plan-history .data-table th:last-child,

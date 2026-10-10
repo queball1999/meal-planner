@@ -48,7 +48,8 @@ type dashPageData struct {
 	StatsOverBudget bool
 	StatsMeals      int64
 	StatsPlans      int
-	RecentPlans     []historyPlanRow // up to 8 for the history strip
+	RecentPlans     []historyPlanRow // one page of the plan history table
+	PlansPage       Pagination
 	HasLLM          bool
 	Calendar        dashCalendar
 
@@ -302,9 +303,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if all, _ := s.store.ListPlans(ctx, hh.ID); len(all) > 0 {
-		if len(all) > 8 {
-			all = all[:8]
-		}
+		// Its own page parameter: the dashboard's other query parameters (the
+		// calendar's) must not move this table, and the reverse.
+		all, data.PlansPage = paginateSized(r, all, "plans_page", dashPlansPerPage, dashPlansPerPageChoices)
+		data.PlansPage.Anchor = "plan-history"
 		rows := make([]historyPlanRow, len(all))
 		for i, p := range all {
 			canRegen := canRegeneratePlan(p, curStart)

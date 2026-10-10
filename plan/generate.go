@@ -201,13 +201,26 @@ type genState struct {
 // ResumeGeneration can send the very same request again with a bigger budget
 // and carry on from there.
 type TruncatedError struct {
-	PlanID    int64
-	MaxTokens int // the budget the cut-off reply had
-	st        *genState
+	PlanID       int64
+	MaxTokens    int // the budget the cut-off reply had
+	OutputTokens int // what the provider says came back; 0 when it didn't say
+	st           *genState
+}
+
+// SuggestedMaxTokens is the limit to try next. How much more the reply
+// needed is unknowable from a cut-off one, so this doubles the budget - the
+// same figure the progress screen's "Try again" starts on.
+func (e *TruncatedError) SuggestedMaxTokens() int {
+	return e.MaxTokens * 2
 }
 
 func (e *TruncatedError) Error() string {
-	return fmt.Sprintf("parse llm response: response was cut off before completing (max %d output tokens) - try again with a higher limit", e.MaxTokens)
+	got := "the provider did not report how many came back"
+	if e.OutputTokens > 0 {
+		got = fmt.Sprintf("%d output tokens came back", e.OutputTokens)
+	}
+	return fmt.Sprintf("parse llm response: response was cut off before completing - %s against a limit of %d; try again with the limit raised to at least %d",
+		got, e.MaxTokens, e.SuggestedMaxTokens())
 }
 
 // ResumeGeneration re-sends the request that was cut off in te with
@@ -237,7 +250,7 @@ func (st *genState) run(ctx context.Context, gen llm.Generator, j *Job) (int64, 
 	resp, err := runGenerationLoop(ctx, gen, st.loop, st.gc, j)
 	if errors.Is(err, errLoopTruncated) {
 		_ = store.UpdatePlanStatus(ctx, planID, "error")
-		return planID, &TruncatedError{PlanID: planID, MaxTokens: st.loop.maxTokens, st: st}
+		return planID, &TruncatedError{PlanID: planID, MaxTokens: st.loop.maxTokens, OutputTokens: resp.OutputTokens, st: st}
 	}
 	if err != nil {
 		_ = store.UpdatePlanStatus(ctx, planID, "error")
@@ -253,7 +266,7 @@ func (st *genState) run(ctx context.Context, gen llm.Generator, j *Job) (int64, 
 		// Some OpenAI-compatible servers don't report finish_reason
 		// reliably; a reply that stops mid-object is still a cut-off one.
 		if !strings.HasSuffix(raw, "}") {
-			return planID, &TruncatedError{PlanID: planID, MaxTokens: st.loop.maxTokens, st: st}
+			return planID, &TruncatedError{PlanID: planID, MaxTokens: st.loop.maxTokens, OutputTokens: resp.OutputTokens, st: st}
 		}
 		return planID, fmt.Errorf("parse llm response: %w", err)
 	}
