@@ -228,6 +228,11 @@ func ResumeGeneration(ctx context.Context, gen llm.Generator, te *TruncatedError
 func (st *genState) run(ctx context.Context, gen llm.Generator, j *Job) (int64, error) {
 	store, planID := st.store, st.planID
 	ctx = llm.WithPurpose(llm.WithHousehold(ctx, st.householdID), "plan")
+	// Every call from here on - the tool loop and any lookup it triggers - is
+	// logged against this plan, and the progress screen is told which plan
+	// that is so its debug panel shows this generation's calls only.
+	ctx = llm.WithPlan(ctx, planID)
+	j.EmitPlan(planID)
 
 	resp, err := runGenerationLoop(ctx, gen, st.loop, st.gc, j)
 	if errors.Is(err, errLoopTruncated) {

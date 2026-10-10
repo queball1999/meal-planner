@@ -38,8 +38,10 @@ func (d *debugLogger) Generate(ctx context.Context, req GenerateRequest) (Genera
 
 	hhID, _ := ctx.Value(ctxKeyRunHousehold).(int64)
 	purpose, _ := ctx.Value(ctxKeyRunPurpose).(string)
+	planID, _ := ctx.Value(ctxKeyRunPlan).(int64)
 	c := db.LLMCall{
 		HouseholdID: hhID,
+		PlanID:      planID,
 		Purpose:     purpose,
 		Provider:    d.inner.ProviderName(),
 		Model:       d.inner.ModelName(),

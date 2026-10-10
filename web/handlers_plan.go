@@ -1681,9 +1681,13 @@ func (s *Server) handlePlanGenerateStatus(w http.ResponseWriter, r *http.Request
 		event, msg := "done", "no active job"
 		if te := s.resumableGenFor(hh.ID); te != nil {
 			// Reconnected after a cut-off generation: offer "Try again" again.
+			fmt.Fprintf(w, "event: plan\ndata: %d\n\n", te.PlanID)
 			fmt.Fprintf(w, "event: resumable\ndata: %d\n\n", te.MaxTokens)
 			event, msg = "error", te.Error()
 		} else if p, _ := s.store.GetLatestPlan(r.Context(), hh.ID); p != nil {
+			// Same "plan" event a live job sends, so the debug panel can
+			// still show the run that just ended.
+			fmt.Fprintf(w, "event: plan\ndata: %d\n\n", p.ID)
 			if s.reconcilePlanStatus(r.Context(), hh.ID, p) == "error" {
 				event = "error"
 				msg = "The last plan generation didn't finish. Check Settings → AI Logs, then regenerate."

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -494,8 +495,12 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Not s.llmGen(), so not wrapped by NewServer either: log it here, or a
+	// test call is the one LLM request the Audit Log never sees.
+	logged := llm.NewDebugLogger(gen, s.store)
+
 	start := time.Now()
-	resp, err := gen.Generate(r.Context(), llm.GenerateRequest{
+	resp, err := logged.Generate(llm.WithPurpose(r.Context(), "test"), llm.GenerateRequest{
 		System: "You are a helpful assistant.",
 		Prompt: testPrompt,
 	})
@@ -516,13 +521,25 @@ func (s *Server) handleSettingsTestAI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleLLMDebugLog returns the 10 most recent LLM calls as JSON (used by the
-// settings page inline preview). The full log is at GET /admin/llm-log.
+// handleLLMDebugLog returns the LLM calls of one plan generation as JSON,
+// newest first (the generation progress screen's debug panel). Only that
+// run's calls: anything else the instance did around the same time - another
+// plan's background pricing, a chat - stays out. The full log, every call
+// regardless of plan, is at GET /admin/llm-log.
 //
-//	GET /admin/llm-debug
+//	GET /admin/llm-debug?plan_id=N
 func (s *Server) handleLLMDebugLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	entries := s.llmDebugEntries(r.Context(), 10)
+	entries := []llmDebugEntry{}
+	hh := middleware.HouseholdFromCtx(r)
+	planID, _ := strconv.ParseInt(r.URL.Query().Get("plan_id"), 10, 64)
+	if hh != nil && planID > 0 {
+		raw, err := s.store.ListLLMCallsForPlan(r.Context(), hh.ID, planID)
+		if err != nil {
+			log.Printf("llm debug: list calls for plan %d: %v", planID, err)
+		}
+		entries = toLLMDebugEntries(raw)
+	}
 	json.NewEncoder(w).Encode(entries)
 }
 
@@ -640,6 +657,7 @@ func (s *Server) handleLLMLogPage(w http.ResponseWriter, r *http.Request) {
 }
 
 type llmDebugEntry struct {
+	ID         int64     `json:"id"`
 	At         string    `json:"at"`
 	at         time.Time // unformatted At, for merge-sorting against scrape entries
 	System     string    `json:"system,omitempty"`
@@ -661,9 +679,14 @@ func (s *Server) llmDebugEntries(ctx context.Context, limit int) []llmDebugEntry
 		log.Printf("audit log: list llm calls: %v", err)
 		return nil
 	}
+	return toLLMDebugEntries(raw)
+}
+
+func toLLMDebugEntries(raw []*db.LLMCall) []llmDebugEntry {
 	out := make([]llmDebugEntry, len(raw))
 	for i, e := range raw {
 		out[i] = llmDebugEntry{
+			ID:         e.ID,
 			At:         inAppTZ(e.At).Format("2006-01-02 15:04:05"),
 			at:         e.At,
 			System:     e.System,

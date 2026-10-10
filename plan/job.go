@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +22,7 @@ const (
 
 // JobEvent is one SSE event emitted during plan generation.
 type JobEvent struct {
-	Type    string // "status" | "llm_start" | "llm_delta" | "done" | "error" | "canceled"
+	Type    string // "status" | "plan" | "llm_start" | "llm_delta" | "done" | "error" | "canceled"
 	Message string
 	PlanID  int64 // set on "done" events
 }
@@ -107,6 +108,16 @@ func (j *Job) EmitStatus(message string) {
 		return
 	}
 	j.Emit(JobEvent{Type: "status", Message: message})
+}
+
+// EmitPlan is a nil-safe shorthand for Emit(JobEvent{Type: "plan", ...}) -
+// tells the generation page which plan row this run is building, which is
+// what its debug panel asks the call log for (see llm.WithPlan).
+func (j *Job) EmitPlan(planID int64) {
+	if j == nil || planID == 0 {
+		return
+	}
+	j.Emit(JobEvent{Type: "plan", Message: strconv.FormatInt(planID, 10)})
 }
 
 // EmitLLMStart is a nil-safe shorthand for Emit(JobEvent{Type: "llm_start"}) -

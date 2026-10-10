@@ -18,6 +18,7 @@ type runCtxKey int
 const (
 	ctxKeyRunHousehold runCtxKey = iota
 	ctxKeyRunPurpose
+	ctxKeyRunPlan
 )
 
 // WithHousehold tags ctx with the household every LLM call made under it is
@@ -33,6 +34,12 @@ func WithHousehold(ctx context.Context, householdID int64) context.Context {
 // The innermost tag wins.
 func WithPurpose(ctx context.Context, purpose string) context.Context {
 	return context.WithValue(ctx, ctxKeyRunPurpose, purpose)
+}
+
+// WithPlan tags ctx with the plan whose generation the LLM calls under it
+// belong to, so the call log can show one generation's calls on their own.
+func WithPlan(ctx context.Context, planID int64) context.Context {
+	return context.WithValue(ctx, ctxKeyRunPlan, planID)
 }
 
 // runRecorder wraps a Generator and writes one ai_runs row per Generate call,

@@ -19,7 +19,7 @@ func (m *memCalls) InsertLLMCall(_ context.Context, c db.LLMCall) error {
 // already canceled - with the prompt, reply and context tags.
 func TestDebugLoggerRecordsEveryCall(t *testing.T) {
 	store := &memCalls{}
-	ctx := WithPurpose(WithHousehold(context.Background(), 7), "chat")
+	ctx := WithPlan(WithPurpose(WithHousehold(context.Background(), 7), "chat"), 3)
 
 	ok := NewDebugLogger(stubGen{resp: GenerateResponse{Content: `{"say":"hi"}`, InputTokens: 10}}, store)
 	_, _ = ok.Generate(ctx, GenerateRequest{System: "sys", Prompt: "hello"})
@@ -34,7 +34,7 @@ func TestDebugLoggerRecordsEveryCall(t *testing.T) {
 	}
 	c := store.calls[0]
 	if c.Prompt != "hello" || c.System != "sys" || c.Response != `{"say":"hi"}` ||
-		c.HouseholdID != 7 || c.Purpose != "chat" || c.InputToks != 10 || c.At.IsZero() {
+		c.HouseholdID != 7 || c.PlanID != 3 || c.Purpose != "chat" || c.InputToks != 10 || c.At.IsZero() {
 		t.Errorf("first call = %+v", c)
 	}
 	if store.calls[1].Error != "boom" || store.calls[1].Prompt != "again" {

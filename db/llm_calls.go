@@ -14,6 +14,7 @@ const LLMCallKeep = 500
 type LLMCall struct {
 	ID          int64
 	HouseholdID int64 // 0 when the call ran outside a household
+	PlanID      int64 // 0 unless the call ran for a plan generation
 	Purpose     string
 	Provider    string
 	Model       string
@@ -38,12 +39,16 @@ func (s *store) InsertLLMCall(ctx context.Context, c LLMCall) error {
 	if c.HouseholdID != 0 {
 		hh = c.HouseholdID
 	}
+	var planID any
+	if c.PlanID != 0 {
+		planID = c.PlanID
+	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO llm_calls
-		    (household_id, purpose, provider, model, system, prompt, response,
+		    (household_id, plan_id, purpose, provider, model, system, prompt, response,
 		     error, duration_ms, input_tokens, output_tokens, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		hh, c.Purpose, c.Provider, c.Model, c.System, c.Prompt, c.Response,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		hh, planID, c.Purpose, c.Provider, c.Model, c.System, c.Prompt, c.Response,
 		c.Error, c.DurationMS, c.InputToks, c.OutputToks,
 		at.UTC().Format(time.RFC3339Nano))
 	if err != nil {
@@ -58,17 +63,31 @@ func (s *store) InsertLLMCall(ctx context.Context, c LLMCall) error {
 	return nil
 }
 
+const llmCallCols = `id, COALESCE(household_id, 0), COALESCE(plan_id, 0), purpose,
+	provider, model, system, prompt, response, error, duration_ms, input_tokens,
+	output_tokens, created_at`
+
 // ListLLMCalls returns the most recent calls, newest first, capped at limit
 // (defaulting to and capped at LLMCallKeep).
 func (s *store) ListLLMCalls(ctx context.Context, limit int) ([]*LLMCall, error) {
 	if limit <= 0 || limit > LLMCallKeep {
 		limit = LLMCallKeep
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, COALESCE(household_id, 0), purpose, provider, model, system,
-		       prompt, response, error, duration_ms, input_tokens, output_tokens,
-		       created_at
-		FROM llm_calls ORDER BY id DESC LIMIT ?`, limit)
+	return s.queryLLMCalls(ctx,
+		`SELECT `+llmCallCols+` FROM llm_calls ORDER BY id DESC LIMIT ?`, limit)
+}
+
+// ListLLMCallsForPlan returns every kept call made for one plan's generation,
+// newest first. householdID must own the plan's calls: another household's
+// plan id returns nothing.
+func (s *store) ListLLMCallsForPlan(ctx context.Context, householdID, planID int64) ([]*LLMCall, error) {
+	return s.queryLLMCalls(ctx,
+		`SELECT `+llmCallCols+` FROM llm_calls
+		 WHERE plan_id = ? AND household_id = ? ORDER BY id DESC`, planID, householdID)
+}
+
+func (s *store) queryLLMCalls(ctx context.Context, query string, args ...any) ([]*LLMCall, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list llm calls: %w", err)
 	}
@@ -78,8 +97,8 @@ func (s *store) ListLLMCalls(ctx context.Context, limit int) ([]*LLMCall, error)
 	for rows.Next() {
 		var c LLMCall
 		var at string
-		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Purpose, &c.Provider, &c.Model,
-			&c.System, &c.Prompt, &c.Response, &c.Error, &c.DurationMS,
+		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.PlanID, &c.Purpose, &c.Provider,
+			&c.Model, &c.System, &c.Prompt, &c.Response, &c.Error, &c.DurationMS,
 			&c.InputToks, &c.OutputToks, &at); err != nil {
 			return nil, fmt.Errorf("scan llm call: %w", err)
 		}

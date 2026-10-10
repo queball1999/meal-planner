@@ -311,8 +311,18 @@
 
     var lastDebugHTML = null;
 
+    /* The panel shows this generation's calls and nothing else: the server
+     * names the plan it is building in a "plan" event, and the log is asked
+     * for that plan alone. Until then there is nothing of this run to show. */
+    var debugPlanID = 0;
+    es.addEventListener('plan', function (e) {
+        debugPlanID = parseInt(e.data, 10) || 0;
+        refreshDebugLog();
+    });
+
     function refreshDebugLog() {
-        fetch('/admin/llm-debug')
+        if (!debugPlanID) return;
+        fetch('/admin/llm-debug?plan_id=' + debugPlanID)
         .then(function (r) { return r.json(); })
         .then(function (entries) {
             if (!entries || entries.length === 0) {
@@ -337,7 +347,7 @@
                 var isErr = !!e.error;
                 var time  = new Date(e.at).toLocaleTimeString([], { timeZone: document.body.dataset.appTz || undefined });
                 var border = isErr ? 'var(--color-danger,#ef4444)' : 'var(--accent)';
-                var key = String(e.at) + '|' + i;
+                var key = String(e.id);
                 return '<details class="llm-debug-entry" data-key="' + esc(key) + '" style="border-left-color:' + border + '">' +
                     '<summary class="llm-debug-summary">' +
                         '<span class="llm-debug-time">' + time + '</span>' +

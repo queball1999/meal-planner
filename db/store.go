@@ -390,4 +390,5 @@ type Store interface {
 
 	InsertLLMCall(ctx context.Context, c LLMCall) error
 	ListLLMCalls(ctx context.Context, limit int) ([]*LLMCall, error)
+	ListLLMCallsForPlan(ctx context.Context, householdID, planID int64) ([]*LLMCall, error)
 }
