@@ -111,6 +111,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /plan/list/stop-pricing", edit(http.HandlerFunc(s.handlePlanListStopPricing)))
 	mux.Handle("GET /plan/list/pricing-progress", view(http.HandlerFunc(s.handlePlanListPricingProgress)))
 	mux.Handle("POST /plan/list/reprice", edit(http.HandlerFunc(s.handlePlanListReprice)))
+	mux.Handle("POST /plan/list/rebuild", edit(http.HandlerFunc(s.handlePlanListRebuild)))
 	mux.Handle("GET /plan/history", view(http.HandlerFunc(s.handlePlanHistory)))
 	mux.Handle("GET /plan/history/{id}/detail", view(http.HandlerFunc(s.handlePlanHistoryDetail)))
 	mux.Handle("POST /plan/generate", edit(http.HandlerFunc(s.handlePlanGenerate)))
@@ -134,6 +135,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /plan/recipe-options", view(http.HandlerFunc(s.handleRecipeOptions)))
 	mux.Handle("GET /plan/pantry-options", view(http.HandlerFunc(s.handlePantryOptions)))
 	mux.Handle("POST /plan/days/{date}/{slot}/fill", edit(http.HandlerFunc(s.handleMealFill)))
+	mux.Handle("POST /plan/recipe-new", edit(http.HandlerFunc(s.handleRecipeNew)))
 	mux.Handle("GET /plan/days/{date}/{slot}/leftover-sources", view(http.HandlerFunc(s.handleLeftoverSources)))
 	mux.Handle("POST /plan/{id}/delete", edit(http.HandlerFunc(s.handlePlanDelete)))
 

@@ -408,7 +408,13 @@ func pantryNote(item *db.ShoppingListItem) string {
 	if item.InPantry {
 		return fmt.Sprintf("all %s %s already in your pantry", pricing.FormatQty(item.PantryQtyUsed), unit)
 	}
-	return fmt.Sprintf("%s %s already in your pantry", pricing.FormatQty(item.PantryQtyUsed), unit)
+	note := fmt.Sprintf("%s %s already in your pantry", pricing.FormatQty(item.PantryQtyUsed), unit)
+	// The quantity beside this note is what the recipes need in all, so say
+	// what is left to buy rather than leave the subtraction to the reader.
+	if left := item.NeedQuantity - item.PantryQtyUsed; left > 0 {
+		note += fmt.Sprintf(", %s to buy", pricing.FormatQty(pricing.Round2(left)))
+	}
+	return note
 }
 
 // mealTagsFor resolves a shopping-list line's meal_ingredient_refs (a JSON
@@ -605,7 +611,8 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 	if line.ItemID != nil {
 		linked, _ = s.store.GetItem(ctx, *line.ItemID)
 	}
-	qty := lineNeed(line)
+	need := lineNeed(line)
+	qty := need
 	if raw := strings.TrimSpace(r.FormValue("quantity")); raw != "" {
 		if q, perr := strconv.ParseFloat(raw, 64); perr == nil && q > 0 {
 			qty = q
@@ -616,13 +623,63 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 		unit = lineStockUnit(line, linked)
 	}
 
+	// Having some of it is not having it: 3 eggs against 23 needed leaves 20
+	// to buy. The line stays on the list, the pantry is told what there is,
+	// and a rescale takes that off what the line buys. Only judged when the
+	// amount is in the line's own unit, the one the dialog offers.
+	partial := qty < need && pricing.CanonUnit(unit) == pricing.CanonUnit(lineStockUnit(line, linked))
+	if partial {
+		if err := s.store.MarkShoppingListItemInPantry(ctx, id, false); err != nil {
+			log.Printf("list have: unmark %d: %v", id, err)
+		}
+	}
+	// rescale brings the line in step with the pantry, in the background.
+	rescale := func() { s.repriceInBackground(line.PlanID, hh, true) }
+	toBuy := pricing.FormatQty(pricing.Round2(need - qty))
+
 	term := pricing.Normalize(line.DisplayName)
 	existing, _ := s.store.GetPantryItemByTerm(ctx, hh.ID, term)
 	if existing != nil {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "have": true, "pantry": "existing",
-			"message": fmt.Sprintf("%s is already in your pantry - quantity left as it was.", existing.Name),
-		})
+		// An existing row is corrected, never added to (the upsert below
+		// would): down or up to the amount just given for part of a line, and
+		// only up for a whole one - saying "I have this" is no reason to
+		// throw away stock the pantry counts beyond it.
+		var conv []*db.UnitConversion
+		if line.ItemID != nil {
+			conv, _ = s.store.ListConversionsForItem(ctx, *line.ItemID)
+		}
+		inRowUnit, ok := qty, true
+		if existing.Unit != "" && pricing.CanonUnit(existing.Unit) != pricing.CanonUnit(unit) {
+			inRowUnit, ok = pricing.Convert(qty, unit, existing.Unit, conv)
+		}
+		changed := false
+		if ok && inRowUnit > 0 && (inRowUnit > existing.QuantityOnHand || (partial && inRowUnit != existing.QuantityOnHand)) {
+			if err := s.store.UpdatePantryItem(ctx, db.UpdatePantryItemParams{
+				ID: existing.ID, QuantityOnHand: inRowUnit, Unit: existing.Unit,
+			}); err != nil {
+				log.Printf("list have: update pantry row %d: %v", existing.ID, err)
+			} else {
+				changed = true
+			}
+		}
+		switch {
+		case partial:
+			rescale()
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "have": false, "partial": true, "pantry": "existing",
+				"message": fmt.Sprintf("Your pantry has %s %s of %s - %s still to buy.", pricing.FormatQty(qty), unit, existing.Name, toBuy),
+			})
+		case changed:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "have": true, "pantry": "existing",
+				"message": fmt.Sprintf("Your pantry now has %s %s of %s.", pricing.FormatQty(qty), unit, existing.Name),
+			})
+		default:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "have": true, "pantry": "existing",
+				"message": fmt.Sprintf("%s is already in your pantry - quantity left as it was.", existing.Name),
+			})
+		}
 		return
 	}
 
@@ -644,6 +701,14 @@ func (s *Server) handleShoppingListHave(w http.ResponseWriter, r *http.Request) 
 	}
 	linkPantryItem(r, s.store, hh.ID, pi)
 
+	if partial {
+		rescale()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "have": false, "partial": true, "pantry": "added",
+			"message": fmt.Sprintf("Added %s %s of %s to your pantry - %s still to buy.", pricing.FormatQty(qty), unit, line.DisplayName, toBuy),
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "have": true, "pantry": "added",
 		"message": fmt.Sprintf("Added %s %s of %s to your pantry.", pricing.FormatQty(qty), unit, line.DisplayName),

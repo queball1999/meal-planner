@@ -1671,7 +1671,8 @@ func guestNote(guests int, slots []string) string {
 // repriceInBackground rebuilds a plan's shopping list off the request path.
 // Costing can make a live lookup per ingredient and run for minutes, which is
 // far too long to hold a form POST open, so the user gets an immediate redirect
-// and the list catches up. At most one rebuild per plan runs at a time.
+// and the list catches up. At most one rebuild per plan runs at a time; one
+// asked for while another is running is queued behind it, not dropped.
 //
 // quantityOnly selects buildRescalePricer over buildPricer: true for a change
 // that only alters how much of each ingredient is needed (guests added,
@@ -1688,6 +1689,16 @@ func (s *Server) repriceInBackground(planID int64, hh *db.Household, quantityOnl
 
 	s.repriceMu.Lock()
 	if s.repricingPlans[planID] {
+		// Not dropped: the run in flight read the plan before this change was
+		// made (a recipe edited while its swap was still being priced left the
+		// removed ingredient on the list for good). One follow-up run is
+		// queued for when it finishes, however many changes pile up meanwhile,
+		// and it is a full one if any of them needed that.
+		if s.repriceQueued == nil {
+			s.repriceQueued = map[int64]queuedReprice{}
+		}
+		q := s.repriceQueued[planID]
+		s.repriceQueued[planID] = queuedReprice{hh: hh, full: q.full || !quantityOnly}
 		s.repriceMu.Unlock()
 		return
 	}
@@ -1713,11 +1724,9 @@ func (s *Server) repriceInBackground(planID int64, hh *db.Household, quantityOnl
 	ctx = pricing.WithProgress(ctx, prog)
 
 	go func() {
-		defer func() {
-			s.repriceMu.Lock()
-			delete(s.repricingPlans, planID)
-			s.repriceMu.Unlock()
-		}()
+		// Registered first, so it runs last: the follow-up run it may start
+		// must find this one's cancel func and progress already cleared.
+		defer s.repriceDone(planID)
 		defer cancel()
 		defer plan.ClearPricingCancel(planID)
 		defer func() { prog.Finish(ctx.Err()) }()
@@ -1733,6 +1742,26 @@ func (s *Server) repriceInBackground(planID int64, hh *db.Household, quantityOnl
 			log.Printf("reprice: shopping list fallback for plan %d: %v", planID, err)
 		}
 	}()
+}
+
+// queuedReprice is a rebuild asked for while another was running for the same
+// plan - see repriceInBackground.
+type queuedReprice struct {
+	hh   *db.Household
+	full bool // at least one of the queued changes needed a full reprice
+}
+
+// repriceDone marks a plan's rebuild as finished and starts the one that was
+// queued behind it, if any.
+func (s *Server) repriceDone(planID int64) {
+	s.repriceMu.Lock()
+	delete(s.repricingPlans, planID)
+	q, queued := s.repriceQueued[planID]
+	delete(s.repriceQueued, planID)
+	s.repriceMu.Unlock()
+	if queued {
+		s.repriceInBackground(planID, q.hh, !q.full)
+	}
 }
 
 // isRepricing reports whether a repriceInBackground run is in flight for
@@ -1752,6 +1781,23 @@ func (s *Server) isRepricing(planID int64) bool {
 //
 //	POST /plan/list/reprice
 func (s *Server) handlePlanListReprice(w http.ResponseWriter, r *http.Request) {
+	s.rebuildList(w, r, true)
+}
+
+// handlePlanListRebuild regenerates the shopping list from the meal plan as
+// it stands now: every line is worked out again from the meals' ingredients,
+// so one for an ingredient no meal uses any more is dropped and a missing one
+// is added. Unlike a reprice it keeps the prices already found - only a line
+// that is new or was never priced is looked up (pricing.RescaleShoppingList).
+//
+//	POST /plan/list/rebuild
+func (s *Server) handlePlanListRebuild(w http.ResponseWriter, r *http.Request) {
+	s.rebuildList(w, r, false)
+}
+
+// rebuildList is the two handlers above: the checks they share, then a full
+// reprice or a rebuild that keeps prices.
+func (s *Server) rebuildList(w http.ResponseWriter, r *http.Request, reprice bool) {
 	hh := middleware.HouseholdFromCtx(r)
 	if hh == nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "no household"})
@@ -1767,7 +1813,7 @@ func (s *Server) handlePlanListReprice(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"ok": false, "error": "this list is read only"})
 		return
 	}
-	if s.priceChain() == nil {
+	if reprice && s.priceChain() == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "no price sources configured"})
 		return
 	}
@@ -1782,7 +1828,11 @@ func (s *Server) handlePlanListReprice(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	s.repriceInBackground(p.ID, hh, false)
+	if reprice {
+		s.repriceInBackground(p.ID, hh, false)
+	} else {
+		s.refreshShoppingList(ctx, p.ID)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

@@ -81,6 +81,9 @@ type Server struct {
 	// rebuilds that race each other's DELETE-then-INSERT.
 	repriceMu      sync.Mutex
 	repricingPlans map[int64]bool
+	// repriceQueued holds the one follow-up rebuild owed to a plan whose list
+	// changed while a rebuild was already running. Guarded by repriceMu.
+	repriceQueued map[int64]queuedReprice
 
 	// pendingChat holds the assistant's paused runs, keyed by household - a
 	// mutating tool call waiting on a yes.

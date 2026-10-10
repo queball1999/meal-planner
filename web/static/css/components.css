@@ -2249,6 +2249,15 @@ details[open] > .llm-debug-summary::before { transform: rotate(90deg); }
    RECIPE PICKER (filling a plan slot from a saved recipe)
    ══════════════════════════════════════════════════════════════════════════ */
 
+/* "Or add a new recipe": the field and its button on one line. */
+.pick-new__row {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+}
+.pick-new__row .field-input { flex: 1; min-width: 0; }
+.pick-new__row .btn { flex: none; white-space: nowrap; }
+
 .recipe-picker {
     list-style: none;
     margin: var(--sp-3) 0 0;

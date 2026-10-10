@@ -293,6 +293,22 @@
       <input class="field-input" id="pick-recipe-q" type="search" autocomplete="off"
              placeholder="Type to filter…">
     </div>
+    {{/* For the dish that is not saved yet: a few words for the AI to write
+         a recipe from, or a link to import (POST /plan/recipe-new). Either
+         way the new recipe then goes in the slot like a picked one. No name
+         on the input - it is not part of this form's submit. */}}
+    <div class="field" id="pick-new">
+      <label class="field-label" for="pick-new-q">Or add a new recipe</label>
+      <div class="pick-new__row">
+        <input class="field-input" id="pick-new-q" type="text" autocomplete="off"
+               placeholder="{{if .Data.HasLLM}}Describe a dish (&quot;sloppy joes&quot;) or paste a recipe link{{else}}Paste a recipe link{{end}}">
+        <button type="button" class="btn btn-primary btn-sm" id="pick-new-btn">{{icon "plus"}} Add &amp; use</button>
+      </div>
+      <p class="field-hint" id="pick-new-hint">
+        {{if .Data.HasLLM}}The AI writes a recipe from a description; a link is imported as on the Recipes page.{{else}}A link is imported as on the Recipes page.{{end}}
+        It is saved to your recipes and put in this slot.
+      </p>
+    </div>
     <ul class="recipe-picker" id="pick-recipe-list" role="listbox"
         aria-label="Saved recipes"></ul>
     <p class="field-hint" id="pick-recipe-empty" hidden>
@@ -529,6 +545,8 @@
         pickLeftoverOf.value = '';
         pickResolution.value = '';
         pickQ.value = '';
+        var newQ = document.getElementById('pick-new-q');
+        if (newQ) newQ.value = '';
         pickLeftovers.hidden = true;
         pickLeftoversList.innerHTML = '';
         loadRecipes('');
@@ -647,6 +665,71 @@
             pickResolution.value = checked ? checked.value : 'carry';
             window.goeat.closeModal('swap-leftovers');
             pickForm.submit();
+        });
+    }
+
+    // ── Add a new recipe from the picker ─────────────────────────────────
+    // The server saves the recipe (AI-written from a description, or imported
+    // from a link) and answers with its id; from there it is the same as
+    // clicking a saved recipe's row, leftover questions included.
+    var pickNewQ = document.getElementById('pick-new-q');
+    var pickNewBtn = document.getElementById('pick-new-btn');
+    var pickNewHint = document.getElementById('pick-new-hint');
+    if (pickNewQ && pickNewBtn) {
+        var pickNewHintText = pickNewHint ? pickNewHint.textContent : '';
+        var toast = function (msg, kind) { (window.showToast || function () {})(msg, kind || 'info'); };
+        var addNew = function () {
+            var q = pickNewQ.value.trim();
+            if (!q || pickNewBtn.disabled) return;
+            var csrf = pickForm.querySelector('input[type="hidden"][name]');
+            var label = pickNewBtn.innerHTML;
+            pickNewBtn.disabled = true;
+            pickNewQ.disabled = true;
+            pickNewBtn.textContent = 'Adding…';
+            if (pickNewHint) {
+                pickNewHint.textContent = /^https?:\/\//i.test(q)
+                    ? 'Importing the recipe - this can take a little while.'
+                    : 'Writing the recipe - this can take a little while.';
+            }
+            var restore = function () {
+                pickNewBtn.disabled = false;
+                pickNewQ.disabled = false;
+                pickNewBtn.innerHTML = label;
+                if (pickNewHint) pickNewHint.textContent = pickNewHintText;
+            };
+            fetch('/plan/recipe-new', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrf ? csrf.value : '' },
+                body: 'q=' + encodeURIComponent(q),
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d || !d.ok) {
+                        restore();
+                        toast((d && d.error) || 'Could not add that recipe', 'error');
+                        return;
+                    }
+                    pickID.value = d.recipe_id;
+                    pickLeftoverOf.value = '';
+                    if (swapPending && swapPending.orphaned.length) {
+                        restore();
+                        pickNewQ.value = '';
+                        openSwapLeftovers(d.title);
+                        return;
+                    }
+                    pickForm.submit();
+                })
+                .catch(function () {
+                    restore();
+                    toast('Could not add that recipe', 'error');
+                });
+        };
+        pickNewBtn.addEventListener('click', addNew);
+        // Enter here must not submit the picker form with no recipe chosen.
+        pickNewQ.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            addNew();
         });
     }
 

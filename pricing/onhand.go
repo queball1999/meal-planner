@@ -135,7 +135,8 @@ func singularTokens(term string) []string {
 // carryHaveTicks keeps a line the household ticked "I already have this" on
 // the list being rebuilt ticked on the new one. Matched the same way the
 // rescale path matches rows (itemKey), so it only ever carries a tick to the
-// same ingredient.
+// same ingredient. A line the pantry covers part of is the exception - see
+// below.
 func carryHaveTicks(prior []*db.ShoppingListItem, items []AggItem, deducted map[int]PantryDeduction) {
 	if len(prior) == 0 {
 		return
@@ -152,6 +153,12 @@ func carryHaveTicks(prior []*db.ShoppingListItem, items []AggItem, deducted map[
 	for i, it := range items {
 		if ticked[itemKey(it.ItemID, it.NormalizedTerm)] {
 			d := deducted[i]
+			// The pantry holds a counted amount of this and it is not enough:
+			// 3 eggs against 23 needed is 20 to buy, not a line to skip. The
+			// count is the more exact statement, so it wins over the tick.
+			if d.Used > 0 && !d.Covered {
+				continue
+			}
 			d.Covered = true
 			deducted[i] = d
 		}

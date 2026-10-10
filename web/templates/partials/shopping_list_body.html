@@ -45,6 +45,10 @@
                     title="Price the whole list again from scratch, the way a new plan is priced">
                 {{icon "autorenew"}} Reprice
             </button>
+            <button type="button" class="popover__item" id="rebuild-btn"
+                    title="Work the list out again from the meals on the plan, keeping the prices already found">
+                {{icon "refresh"}} Regenerate from meal plan
+            </button>
             {{end}}
             <button type="button" class="popover__item" data-pricing-progress
                     title="See what the last pricing run did, or how the current one is going">
@@ -319,8 +323,9 @@
 
 {{template "partials/modal_open.html" dict "ID" "have-it" "Title" "I already have this"}}
   <p id="have-it-desc">
-    This stays on the list for reference but is not counted in the estimated
-    total, and is skipped when the list syncs to Home Assistant.
+    If you have all of it, this stays on the list for reference but is not
+    counted in the estimated total, and is skipped when the list syncs to
+    Home Assistant. If you have only some, the line stays and buys the rest.
   </p>
   <div class="field">
     <label class="field-label" for="have-it-qty">How much do you have?</label>
@@ -330,7 +335,8 @@
     </div>
     <p class="field-hint" id="have-it-hint">
       Added to your pantry if it is not there yet. If you already track it,
-      the quantity you have recorded is left alone.
+      a smaller amount entered here replaces what is recorded, and a larger
+      one raises it.
     </p>
   </div>
   <div class="modal-dialog__footer">
@@ -675,6 +681,15 @@
                         return;
                     }
                     if (d.message) toast(d.message, d.pantry === 'failed' ? 'warning' : 'success');
+                    // Less than the line needs: it stays on the list, and the
+                    // server is rescaling it to what is left to buy - follow
+                    // that the way a pricing run is followed.
+                    if (d.partial) {
+                        setHaveState(btn, false);
+                        pricingStopped = false;
+                        refreshLive().then(pollPricing).catch(function () {});
+                        return;
+                    }
                     // Not in the .catch chain below: a failed refresh leaves
                     // the saved mark in place, it just shows old totals.
                     refreshLive().catch(function () {});
@@ -737,6 +752,28 @@
                         location.reload();
                     })
                     .catch(function () { toast('Reprice failed', 'error'); repriceBtn.disabled = false; });
+            });
+        });
+    }
+
+    // Regenerate from the meal plan (handlePlanListRebuild): the lines are
+    // worked out again from the meals, prices already found are kept. Also in
+    // the background, so the same reload-and-poll as a reprice.
+    var rebuildBtn = document.getElementById('rebuild-btn');
+    if (rebuildBtn) {
+        rebuildBtn.addEventListener('click', function () {
+            window.goeat.confirm('The list is worked out again from the meals on the plan: items no meal uses any more are removed and missing ones are added. Prices already found are kept, and only new items are looked up.', {
+                title: 'Regenerate shopping list', confirmLabel: 'Regenerate',
+            }).then(function (ok) {
+                if (!ok) return;
+                rebuildBtn.disabled = true;
+                fetch('/plan/list/rebuild' + window.location.search, { method: 'POST', headers: jsonHeaders })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.ok) { toast(d.error || 'Could not regenerate the list', 'error'); rebuildBtn.disabled = false; return; }
+                        location.reload();
+                    })
+                    .catch(function () { toast('Could not regenerate the list', 'error'); rebuildBtn.disabled = false; });
             });
         });
     }
@@ -1060,12 +1097,19 @@
     // on swapped-in rows with no extra wiring; only the checkbox's inline
     // onchange and the plain data-conv-btn/data-meal-id hovercard/popover
     // delegation need nothing special either.
-    (function pollPricing() {
-        if (pricingStopped) return;
+    //
+    // A declaration, not an IIFE, and safe to call twice: a change made on
+    // this page that starts a background rescale (a partial "I have some of
+    // this") calls it again to pick the loop back up.
+    var pollWaiting = false;
+    function pollPricing() {
+        if (pricingStopped || pollWaiting) return;
         var live = document.getElementById('shopping-list-live');
         if (!live || live.dataset.pricing !== '1') return;
 
+        pollWaiting = true;
         setTimeout(function () {
+            pollWaiting = false;
             if (pricingStopped) return;
             // refreshLive re-hides the "still pricing" banner if pricing was
             // stopped after the fragment's render started - never let it
@@ -1078,7 +1122,8 @@
                 // than leaving the list stuck on stale skeleton rows.
                 .catch(function () { if (!pricingStopped) pollPricing(); });
         }, 2000);
-    })();
+    }
+    pollPricing();
 })();
 </script>
 {{end}}

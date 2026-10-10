@@ -98,3 +98,52 @@ func TestSeedShoppingListHonoursOnHandAndTicks(t *testing.T) {
 		t.Errorf("after reprice = %v, want olive oil and saffron still marked", got)
 	}
 }
+
+// A tick does not outrank a counted pantry: with 3 eggs on the shelf and 23
+// needed, a line ticked "I already have this" comes back from a rebuild as 20
+// to buy, not as a line to skip.
+func TestSeedShoppingListPartialPantryDropsTick(t *testing.T) {
+	ctx := context.Background()
+	store, hhID := newPantryStore(t)
+	hh, _ := store.GetHousehold(ctx, hhID)
+
+	p, err := store.CreatePlan(ctx, db.CreatePlanParams{HouseholdID: hhID, WeekStart: "2026-01-04", WeekEnd: "2026-01-10"})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	m, err := store.CreateMeal(ctx, db.CreateMealParams{
+		PlanID: p.ID, Day: "2026-01-05", Slot: "breakfast", Title: "Scrambled Eggs",
+		Effort: "quick", Servings: 2, CookedPortions: 2,
+	})
+	if err != nil {
+		t.Fatalf("meal: %v", err)
+	}
+	if err := store.CreateMealIngredient(ctx, db.CreateMealIngredientParams{
+		MealID: m.ID, Name: "eggs", Quantity: 23, Unit: "each", NormalizedTerm: pricing.Normalize("eggs"),
+	}); err != nil {
+		t.Fatalf("ingredient: %v", err)
+	}
+	stockPantry(t, store, hhID, "eggs", pricing.Normalize("eggs"), 3, "each", nil)
+
+	eggs := func() *db.ShoppingListItem {
+		t.Helper()
+		if _, err := pricing.SeedShoppingList(ctx, store, p.ID, hh); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		rows, _ := store.ListShoppingListItems(ctx, p.ID)
+		if len(rows) != 1 {
+			t.Fatalf("got %d lines, want 1", len(rows))
+		}
+		return rows[0]
+	}
+
+	row := eggs()
+	if err := store.MarkShoppingListItemInPantry(ctx, row.ID, true); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	row = eggs()
+	if row.InPantry || row.PantryQtyUsed != 3 || row.BuyQuantity != 20 || row.NeedQuantity != 23 {
+		t.Errorf("after rebuild: in_pantry=%v used=%v buy=%v need=%v, want false/3/20/23",
+			row.InPantry, row.PantryQtyUsed, row.BuyQuantity, row.NeedQuantity)
+	}
+}
